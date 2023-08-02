@@ -60,6 +60,9 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+if DEBUG:
+    MIDDLEWARE += ['django_browser_reload.middleware.BrowserReloadMiddleware']
+
 ROOT_URLCONF = 'fedowallet_django.urls'
 
 TEMPLATES = [
