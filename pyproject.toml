@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "federatedopenwallet"
+version = "0.1.0"
+description = ""
+authors = ["Jonas Legion <jturbeaux@pm.me>"]
+license = "AGLv3"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+django = "4.2"
+django-solo = "2.1.0"
+django-extensions = "3.2.3"
+werkzeug = "^2.3.6"
+django-browser-reload = "^1.11.0"
+djangorestframework = "^3.14.0"
+markdown = "^3.4.4"
+django-filter = "^23.2"
+ipdb = "^0.13.13"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
