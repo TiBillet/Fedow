@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'solo',
     'django_extensions',
     'rest_framework',
+    'rest_framework_api_key',
 ]
 
 if DEBUG:
@@ -112,6 +113,12 @@ AUTH_PASSWORD_VALIDATORS = [
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
 ]
+
+REST_FRAMEWORK = {
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework_api_key.permissions.HasAPIKey",
+    ]
+}
 
 
 # Internationalization

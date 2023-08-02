@@ -182,6 +182,18 @@ django = ">=3.0"
 pytz = "*"
 
 [[package]]
+name = "djangorestframework-api-key"
+version = "2.3.0"
+description = "API key permissions for the Django REST Framework"
+category = "main"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "djangorestframework-api-key-2.3.0.tar.gz", hash = "sha256:c2fa61280069acd8dc0e9dd1840e0e1934a2a85631069326f4d1e3a91ca9aa9a"},
+    {file = "djangorestframework_api_key-2.3.0-py3-none-any.whl", hash = "sha256:eed94f383e96ca8f9f9e4182406fe28b5585629d0039f65cbb7e6e254778f674"},
+]
+
+[[package]]
 name = "executing"
 version = "1.2.0"
 description = "Get the currently executing AST node of a frame, and other information"
@@ -609,4 +621,4 @@ watchdog = ["watchdog (>=2.3)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "d571ea1e66db50814fc07c161a44d606c0bbeee131f5ae5b9658fe4d4050ac02"
+content-hash = "4de0d82443e32bfde7792fbdc995883bb34a9bd2c9a0af4f4704985d3c9da16f"

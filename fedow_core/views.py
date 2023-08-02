@@ -2,6 +2,8 @@ from django.shortcuts import render
 from rest_framework import viewsets
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework_api_key.permissions import HasAPIKey
+
 from fedow_core.models import Transaction
 from fedow_core.serializers import TransactionSerializer
 from rest_framework.pagination import PageNumberPagination
@@ -40,5 +42,5 @@ class TransactionAPI(viewsets.ViewSet):
         return Response(serializer.errors)
 
     def get_permissions(self):
-        permission_classes = [AllowAny]
+        permission_classes = [HasAPIKey]
         return [permission() for permission in permission_classes]
