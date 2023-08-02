@@ -7,12 +7,13 @@ class Asset(models.Model):
     # One asset per currency
     uuid = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, db_index=True)
 
+    RTL, G1, T4S = 'RTL', 'G1', 'T4S'
     TYPE_ACRONYMS = (
-        ('RTL', 'Reunion Tiers Lieux Assets'),
-        ('G1', 'June'),
-        ('T4S', 'Ti 4 Sous'),
+        (RTL, 'Reunion Tiers Lieux Assets'),
+        (G1, 'June'),
+        (T4S, 'Ti 4 Sous'),
     )
-    type = models.CharField(max_length=3, choices=TYPE_ACRONYMS, default='RTL', unique=True)
+    type = models.CharField(max_length=3, choices=TYPE_ACRONYMS, default=RTL, unique=True)
 
     def name(self):
         return self.get_type_display()
