@@ -39,3 +39,16 @@ poetry install
 poetry run python manage.py migrate
 poetry run python manage.py runserver
 ```
+
+
+## Documentation
+
+work in progress ...
+
+## Contact :
+
+Venez discuter du projet avec nous, on adore ça ! 
+
+- https://discord.gg/ecb5jtP7vY
+- https://chat.tiers-lieux.org/channel/TiBillet
+- https://chat.communecter.org/channel/Tibillet
