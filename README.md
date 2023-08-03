@@ -1,4 +1,4 @@
-# FEDOW : Federation and Open Wallet
+# FEDOW : Federated and open wallet
 
 Parce qu'une banque, ça peut être un logiciel libre :
 Pas besoin de blockchain, de NFT, de Dapp ou autre hype techno solutionniste.
@@ -10,7 +10,19 @@ des monnaies temps ou même des monnaies qui ne sont pas des monnaies.
 Un outil simple pour créer une minuscule banque à l'échelle d'un petit ou d'un grand territoire et faire vivre une
 économie locale, sociale et solidaire.
 
-- Monnaies locales
-- Monnaies temps
-- Assets et token privés
-- Blockchain extérieures
+## Installation 
+
+```bash
+cp env_example .env
+# Editer le fichier .env avec vos variables
+docker compose up -d
+```
+
+## Environnement de developpement
+
+```bash
+git pull
+poetry install
+poetry run python manage.py migrate
+poetry run python manage.py runserver
+```
