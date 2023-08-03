@@ -10,6 +10,14 @@ des monnaies temps ou même des monnaies qui ne sont pas des monnaies.
 Un outil simple pour créer une minuscule banque à l'échelle d'un petit ou d'un grand territoire et faire vivre une
 économie locale, sociale et solidaire.
 
+## Contexte
+
+Projet construit et financé par :
+- 
+- Coopérative Code Commun (https://codecommun.coop)
+- la Réunion des Tiers-lieux (https://www.communecter.org/costum/co/index/slug/LaReunionDesTiersLieux/#welcome)
+- Communecter (https://www.communecter.org/)
+
 ## Installation 
 
 ```bash
