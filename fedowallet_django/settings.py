@@ -39,7 +39,6 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'fedow_user',
     'fedow_core',
     'solo',
     'django_extensions',
@@ -47,8 +46,8 @@ INSTALLED_APPS = [
     'rest_framework_api_key',
 ]
 
-if DEBUG:
-    INSTALLED_APPS += ['django_browser_reload']
+# if DEBUG:
+#     INSTALLED_APPS += ['django_browser_reload']
 
 
 MIDDLEWARE = [
@@ -61,8 +60,8 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-if DEBUG:
-    MIDDLEWARE += ['django_browser_reload.middleware.BrowserReloadMiddleware']
+# if DEBUG:
+#     MIDDLEWARE += ['django_browser_reload.middleware.BrowserReloadMiddleware']
 
 ROOT_URLCONF = 'fedowallet_django.urls'
 
@@ -143,4 +142,4 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-AUTH_USER_MODEL = 'fedow_user.CustomUser'
+AUTH_USER_MODEL = 'fedow_core.CustomUser'
