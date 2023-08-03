@@ -12,13 +12,18 @@ Un outil simple pour créer une minuscule banque à l'échelle d'un petit ou d'u
 
 ## Contexte
 
-Projet construit et financé par :
-- 
+Construit à la base pour créer un système de cashless euro ou monnaie temps (comme en festival) pour plusieurs lieux, le
+dépot présent est une séparation du code source initialement intégré au projet du point de vente Cashless TiBillet. (https://tibillet.org)
+
+### Projet construit, financé et expériementé avec le soutien de :
+
 - Coopérative Code Commun (https://codecommun.coop)
 - la Réunion des Tiers-lieux (https://www.communecter.org/costum/co/index/slug/LaReunionDesTiersLieux/#welcome)
+- La Raffinerie (https://www.laraffinerie.re/)
 - Communecter (https://www.communecter.org/)
+- Pôle régional des musiques actuelles de la Réunion (https://prma-reunion.fr/)
 
-## Installation 
+## Installation
 
 ```bash
 cp env_example .env
