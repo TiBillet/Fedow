@@ -1,32 +1,17 @@
 from rest_framework_api_key.models import APIKey
 from django.contrib.auth.models import AbstractUser
-
+from solo.models import SingletonModel
 from django.db import models
 from uuid import uuid4
+from stdimage import JPEGField
+from stdimage.validators import MaxSizeValidator, MinSizeValidator
 
-### USER MODEL
-
-class CustomUser(AbstractUser):
-    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
-    email = models.EmailField(max_length=100, unique=True)
-
-###
 
 class Asset(models.Model):
     # One asset per currency
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
-
-    RTL, G1, T4S, STRIPE = 'RTL', 'G1', 'T4S', 'STR'
-    TYPE_ACRONYMS = (
-        (RTL, 'Reunion Tiers Lieux Assets'),
-        (G1, 'June'),
-        (T4S, 'Ti 4 Sous'),
-        (STRIPE, 'Stripe'),
-    )
-    type = models.CharField(max_length=3, choices=TYPE_ACRONYMS, default=RTL, unique=True)
-
-    def name(self):
-        return self.get_type_display()
+    name = models.CharField(max_length=100, unique=True)
+    currency = models.CharField(max_length=3, unique=True)
 
 
 class Wallet(models.Model):
@@ -42,12 +27,13 @@ class Wallet(models.Model):
 
     ip = models.GenericIPAddressField(verbose_name="Ip source")
 
+
 class Token(models.Model):
     # One token per user per currency
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
     value = models.DecimalField(max_digits=20, decimal_places=2)
-    wallet = models.ForeignKey(Wallet, on_delete=models.PROTECT)
-    asset = models.ForeignKey(Asset, on_delete=models.PROTECT)
+    wallet = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name='tokens')
+    asset = models.ForeignKey(Asset, on_delete=models.PROTECT, related_name='tokens')
 
     class Meta:
         unique_together = [['wallet', 'asset']]
@@ -62,12 +48,100 @@ class Transaction(models.Model):
 
     sender = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name='transactions_sent')
     receiver = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name='transactions_received')
+    token = models.ForeignKey(Token, on_delete=models.PROTECT, related_name='transactions')
 
-    token = models.ForeignKey(Token, on_delete=models.PROTECT)
     date = models.DateTimeField(auto_now_add=True)
     amount = models.DecimalField(max_digits=20, decimal_places=2)
     comment = models.CharField(max_length=100, blank=True)
 
+    SALE, CREATION, REFILL, TRANSFER = 'S', 'C', 'R', 'T'
+    TYPE_ACTION = (
+        (SALE, "Vente d'article"),
+        (CREATION, 'Creation monétaire'),
+        (REFILL, 'Recharge Cashless'),
+        (TRANSFER, 'Transfert'),
+    )
+    action = models.CharField(max_length=1, choices=TYPE_ACTION, default=SALE, unique=True)
 
     class Meta:
         ordering = ['-date']
+
+
+class Configuration(SingletonModel):
+    instance_name = models.CharField(max_length=100, unique=True)
+    # Wallet used to create money
+    primary_wallet = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='primary')
+
+    def primary_key(self):
+        return self.primary_wallet.key
+
+
+class FedowUser(AbstractUser):
+    """
+    User model with email as unique identifier
+    """
+    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
+    email = models.EmailField(max_length=100, unique=True)
+
+    # customer standard user
+    stripe_customer_id = models.CharField(max_length=21, blank=True, null=True)
+
+    wallet = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='user')
+
+
+class Place(models.Model):
+    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
+    name = models.CharField(max_length=100, unique=True)
+
+    # User with Stripe connect and cashless federated server
+    wallet = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='place')
+    stripe_connect_account = models.CharField(max_length=21, blank=True, null=True)
+    cashless_server_url = models.URLField(blank=True, null=True)
+    cashless_server_key = models.CharField(max_length=100, blank=True, null=True)
+
+    admin = models.ManyToManyField(FedowUser, related_name='places')
+
+    logo = JPEGField(upload_to='images/',
+                     validators=[
+                         MinSizeValidator(720, 720),
+                         MaxSizeValidator(1920, 1920)
+                     ],
+                     blank=True, null=True,
+                     variations={
+                         'hdr': (720, 720),
+                         'med': (480, 480),
+                         'thumbnail': (150, 90),
+                         'crop': (480, 270, True),
+                     },
+                     delete_orphans=True,
+                     verbose_name='logo',
+                     )
+
+
+class Origin(models.Model):
+    place = models.ForeignKey(Place, on_delete=models.PROTECT, related_name='origins')
+    generation = models.IntegerField()
+    img = JPEGField(upload_to='images/',
+                    validators=[
+                        MinSizeValidator(720, 720),
+                        MaxSizeValidator(1920, 1920)
+                    ],
+                    blank=True, null=True,
+                    variations={
+                        'hdr': (720, 720),
+                        'med': (480, 480),
+                        'thumbnail': (150, 90),
+                        'crop': (480, 270, True),
+                    },
+                    delete_orphans=True,
+                    verbose_name='img',
+                    )
+
+
+class NFCCard(models.Model):
+    uuid = models.UUIDField(primary_key=True, editable=False, db_index=True)
+    first_tag_id = models.CharField(max_length=8, editable=False, db_index=True)
+    nfc_tag_id = models.UUIDField(max_length=8, editable=False, db_index=True)
+    number = models.CharField(max_length=8, editable=False, db_index=True)
+    user = models.ForeignKey(FedowUser, on_delete=models.PROTECT, related_name='cards', blank=True, null=True)
+    origin = models.ForeignKey(Origin, on_delete=models.PROTECT, related_name='cards', blank=True, null=True)
