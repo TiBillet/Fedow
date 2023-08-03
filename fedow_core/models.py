@@ -2,7 +2,6 @@ from rest_framework_api_key.models import APIKey
 from django.contrib.auth.models import AbstractUser
 
 from django.db import models
-import uuid
 from uuid import uuid4
 
 ### USER MODEL
