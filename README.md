@@ -1,9 +1,5 @@
 # FEDOW : Federated and open wallet.
 
-| :exclamation:  Work in progress |
-|---------------------------------|
-
-
 > [!WARNING]  
 > Work in progress. ALPHA RELEASE.
 
