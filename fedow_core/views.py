@@ -64,10 +64,10 @@ class TestApiKey(viewsets.ViewSet):
     """
 
     def list(self, request):
-        return Response({'message': 'Hello, world!'})
+        return Response({'message': 'Hello world!'})
 
     def get_permissions(self):
-        permission_classes = [AllowAny]
+        permission_classes = [HasAPIKey]
         return [permission() for permission in permission_classes]
 
 
