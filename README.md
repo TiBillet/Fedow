@@ -1,7 +1,9 @@
-# FEDOW : Federated and open wallet.
 
 > [!WARNING]  
 > Work in progress. ALPHA RELEASE.
+
+
+# FEDOW : Federated and open wallet.
 
 Because a bank can be free software:
 You don't need blockchain, NFT, Dapp or any other techno-solutionist hype.
