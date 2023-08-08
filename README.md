@@ -3,8 +3,9 @@
 | :exclamation:  Work in progress |
 |---------------------------------|
 
-[!WARNING]  
-Work in progress. ALPHA RELEASE.
+
+> [!WARNING]  
+> Work in progress. ALPHA RELEASE.
 
 Because a bank can be free software:
 You don't need blockchain, NFT, Dapp or any other techno-solutionist hype.
