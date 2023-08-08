@@ -40,6 +40,13 @@ poetry run python manage.py migrate
 poetry run python manage.py runserver
 ```
 
+## Test
+
+```bash
+poetry shell
+coverage run --source='.' manage.py test
+coverage report
+```
 
 ## Documentation
 

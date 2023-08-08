@@ -69,14 +69,14 @@ class TestApiKey(viewsets.ViewSet):
 
 class HelloWorld(viewsets.ViewSet):
     """
-    API Test AllowAny . Si hello word, vous avez la permission :)
+    API Test AllowAny. If hello word, you have permission :)
 
-    Exemple :
+    Example:
     GET /api/ : Hello, world!
     """
 
     def list(self, request):
-        return Response({'message': 'Hello, world!'})
+        return Response({'message': 'Hello world!'})
 
     def get_permissions(self):
         permission_classes = [AllowAny]
