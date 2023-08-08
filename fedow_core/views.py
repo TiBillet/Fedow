@@ -8,6 +8,7 @@ from fedow_core.models import Transaction
 from fedow_core.serializers import TransactionSerializer
 from rest_framework.pagination import PageNumberPagination
 
+
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 100
     page_size_query_param = 'page_size'
@@ -19,6 +20,7 @@ def apikey_validate(request):
     Return Wallet associate to a public key
     Check ip Source and public key
     """
+
 
 """
 def user_apikey_valid(view):
@@ -51,6 +53,7 @@ def user_apikey_valid(view):
 
 """
 
+
 # Create your views here.
 class TestApiKey(viewsets.ViewSet):
     """
@@ -66,6 +69,7 @@ class TestApiKey(viewsets.ViewSet):
     def get_permissions(self):
         permission_classes = [AllowAny]
         return [permission() for permission in permission_classes]
+
 
 class HelloWorld(viewsets.ViewSet):
     """
@@ -87,8 +91,8 @@ class TransactionAPI(viewsets.ViewSet):
     """
     API CRUD : create read update delete
     Exemple :
-    GET /api/transaction/ : liste des utilisateurs
-    GET /api/user/transaction/ : utilisateur avec primary key <uuid>
+    GET /api/transaction/ : liste des transactions
+    GET /api/user/transaction/ : transactions avec primary key <uuid>
     """
     pagination_class = StandardResultsSetPagination
 

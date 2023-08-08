@@ -1,21 +1,30 @@
-# FEDOW : Federated and open wallet
+# FEDOW : Federated and open wallet.
 
-Parce qu'une banque, ça peut être un logiciel libre :
-Pas besoin de blockchain, de NFT, de Dapp ou autre hype techno solutionniste.
+| :exclamation:  Work in progress |
+|---------------------------------|
 
-Il suffit d'un moteur de création monnétaire, de gestion de comptes et de transactions.
-Tout ceci en gestion fédérée et transparente, pour créer des réseaux de points de ventes acceptant des monnaies locales,
-des monnaies temps ou même des monnaies qui ne sont pas des monnaies.
 
-Un outil simple pour créer une minuscule banque à l'échelle d'un petit ou d'un grand territoire et faire vivre une
-économie locale, sociale et solidaire.
+Because a bank can be free software:
+You don't need blockchain, NFT, Dapp or any other techno-solutionist hype.
 
-## Contexte
+All you need is an engine for money creation, account management and transactions.
+All this under federated and transparent management, to create networks of points of sale accepting local currencies,
+time currencies or even currencies that are not currencies.
 
-Construit à la base pour créer un système de cashless euro ou monnaie temps (comme en festival) pour plusieurs lieux, le
-dépot présent est une séparation du code source initialement intégré au projet du point de vente Cashless TiBillet. (https://tibillet.org)
+A simple tool for creating a tiny bank on the scale of a small or large area and supporting a local, social and
+inclusive economy.
+local, social and inclusive economy.
 
-### Projet construit, financé et expériementé avec le soutien de :
+## Context
+
+Originally designed to create a cashless euro or time currency system (as used at festivals) for several venues, the
+current repository is a separation of the source code originally integrated into the TiBillet cashless point of sale
+project.
+
+Current repository is a separation of the source code initially integrated into the TiBillet cashless point of sale
+project (https://tibillet.org).
+
+### Project built, financed and tested with the support of :
 
 - Coopérative Code Commun (https://codecommun.coop)
 - la Réunion des Tiers-lieux (https://www.communecter.org/costum/co/index/slug/LaReunionDesTiersLieux/#welcome)
@@ -23,15 +32,15 @@ dépot présent est une séparation du code source initialement intégré au pro
 - Communecter (https://www.communecter.org/)
 - Pôle régional des musiques actuelles de la Réunion (https://prma-reunion.fr/)
 
-## Installation
+## Install
 
 ```bash
 cp env_example .env
-# Editer le fichier .env avec vos variables
+# Edit .env 
 docker compose up -d
 ```
 
-## Environnement de developpement
+## Development environment
 
 ```bash
 git pull
@@ -46,6 +55,8 @@ poetry run python manage.py runserver
 poetry shell
 coverage run --source='.' manage.py test
 coverage report
+# or 
+coverage html
 ```
 
 ## Documentation
@@ -53,8 +64,6 @@ coverage report
 work in progress ...
 
 ## Contact :
-
-Venez discuter du projet avec nous, on adore ça ! 
 
 - https://discord.gg/ecb5jtP7vY
 - https://chat.tiers-lieux.org/channel/TiBillet
