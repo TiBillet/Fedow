@@ -64,9 +64,10 @@ coverage html
 
 ### Create a new asset
 
-The currency asset can only be created if you have access to the server. No API point for that.
-
-The function returns a private key. Don't lose it and store it in a safe place. It is encrypted on the server side and
+> [!WARNING]  
+> The currency asset can only be created if you have access to the server. No API for that.
+> 
+>The function returns a private key. Don't lose it and store it in a safe place. It is encrypted on the server side and
 can never be revealed again.
 
 ```bash
