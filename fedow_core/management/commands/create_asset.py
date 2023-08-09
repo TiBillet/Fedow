@@ -61,7 +61,8 @@ class Command(BaseCommand):
             key=primary_key,
         )
         self.stdout.write(self.style.SUCCESS(f"Asset succesfully created."), ending='\n')
-        self.stdout.write(self.style.ERROR(f"Don't lose it and store it in a safe place. It is encrypted on the server side and can never be revealed again."), ending='\n')
+        self.stdout.write(self.style.ERROR(f"!!! Don't lose it and store it in a safe place. It is encrypted on the server side and can never be revealed again."), ending='\n')
         self.stdout.write(f"-------", ending='\n')
         self.stdout.write(f"{key}", ending='\n')
         self.stdout.write(f"-------", ending='\n')
+        self.stdout.write(f"", ending='\n')
