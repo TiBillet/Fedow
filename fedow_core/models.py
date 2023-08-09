@@ -21,7 +21,7 @@ class Asset(models.Model):
 class Wallet(models.Model):
     # One wallet per user
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
-    name = models.CharField(max_length=100, unique=True, blank=True, null=True)
+    name = models.CharField(max_length=100, blank=True, null=True)
 
     key = models.OneToOneField(APIKey,
                                on_delete=models.CASCADE,
@@ -31,6 +31,7 @@ class Wallet(models.Model):
 
     ip = models.GenericIPAddressField(verbose_name="Ip source")
 
+    # user = RelatedName FedowUser
 
 class Token(models.Model):
     # One token per user per currency
@@ -100,7 +101,7 @@ class FedowUser(AbstractUser):
     # customer standard user
     stripe_customer_id = models.CharField(max_length=21, blank=True, null=True)
 
-    wallet = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='user')
+    wallet = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='user', blank=True, null=True)
 
 
 class Place(models.Model):
@@ -120,7 +121,6 @@ class Place(models.Model):
                          MinSizeValidator(720, 720),
                          MaxSizeValidator(1920, 1920)
                      ],
-                     blank=True, null=True,
                      variations={
                          'hdr': (720, 720),
                          'med': (480, 480),
@@ -129,8 +129,11 @@ class Place(models.Model):
                      },
                      delete_orphans=True,
                      verbose_name='logo',
+                     blank=True, null=True,
                      )
 
+    def logo_variations(self):
+        return self.logo.variations
 
 class Origin(models.Model):
     place = models.ForeignKey(Place, on_delete=models.PROTECT, related_name='origins')
@@ -152,10 +155,10 @@ class Origin(models.Model):
                     )
 
 
-class NFCCard(models.Model):
+class Card(models.Model):
     uuid = models.UUIDField(primary_key=True, editable=False, db_index=True)
     first_tag_id = models.CharField(max_length=8, editable=False, db_index=True)
-    nfc_tag_id = models.UUIDField(max_length=8, editable=False, db_index=True)
+    nfc_tag_id = models.CharField(max_length=8, editable=False, db_index=True)
     number = models.CharField(max_length=8, editable=False, db_index=True)
     user = models.ForeignKey(FedowUser, on_delete=models.PROTECT, related_name='cards', blank=True, null=True)
     origin = models.ForeignKey(Origin, on_delete=models.PROTECT, related_name='cards', blank=True, null=True)

@@ -1,9 +1,13 @@
+from uuid import uuid4
+
 from django.test import TestCase
 from rest_framework import viewsets
 from rest_framework.permissions import AllowAny
 from rest_framework_api_key.models import APIKey
+from rest_framework.test import APIClient
 
-from fedow_core.models import Configuration
+from fedow_core.models import Configuration, Card
+from fedow_core.serializers import WalletCreateSerializer
 from fedow_core.views import HelloWorld
 
 
@@ -53,3 +57,16 @@ class ModelsTest(TestCase):
         config = Configuration(stripe_mode_test=True, stripe_test_api_key=None, stripe_api_key=None)
 
         assert config.get_stripe_api() is None
+
+    def test_create_wallet(self):
+        # Create card
+        card = Card.objects.create(
+            uuid=str(uuid4()),
+            nfc_tag_id=str(uuid4()).split('-')[0])
+
+        data = {
+            'email': 'test@example.com',
+            'uuid_card': str(card.uuid)
+        }
+        serializer = WalletCreateSerializer(data=data, context={'request': self.client.request()})
+        assert serializer.is_valid() is True

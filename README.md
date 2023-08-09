@@ -67,14 +67,14 @@ coverage html
 > [!WARNING]  
 > The currency asset can only be created if you have access to the server. No API for that.
 > 
->The function returns a private key. Don't lose it and store it in a safe place. It is encrypted on the server side and
+>The function returns a private key. Don't lose it and store it in a safe place. It is hashed on the server side and
 can never be revealed again.
 
 ```bash
 # Create new asset
 # arg1 = Asset name
-# arg2 = Asset code
-poetry run python manage.py create_asset FedPeakSou FPS
+# arg2 = Asset code (len 3 max)
+poetry run python manage.py create_asset Peaksu PKS
 # return the private key.
 ```
 

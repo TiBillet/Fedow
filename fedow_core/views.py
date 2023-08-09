@@ -2,10 +2,11 @@ from django.shortcuts import render
 from rest_framework import viewsets
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework_api_key.models import APIKey
 from rest_framework_api_key.permissions import HasAPIKey
 
 from fedow_core.models import Transaction
-from fedow_core.serializers import TransactionSerializer
+from fedow_core.serializers import TransactionSerializer, PlaceSerializer
 from rest_framework.pagination import PageNumberPagination
 
 
@@ -50,20 +51,18 @@ def user_apikey_valid(view):
 
     except:
         return False
-
 """
 
 
 # Create your views here.
 class TestApiKey(viewsets.ViewSet):
     """
-    API Test HasAPIKey. Si hello word, vous avez la permission :)
-
-    Exemple :
-    GET /api/ : Hello, world!
+    GET /helloworld_apikey/ : Hello, world!
     """
 
     def list(self, request):
+        key = request.META["HTTP_AUTHORIZATION"].split()[1]
+        api_key = APIKey.objects.get_from_key(key)
         return Response({'message': 'Hello world!'})
 
     def get_permissions(self):
@@ -73,10 +72,7 @@ class TestApiKey(viewsets.ViewSet):
 
 class HelloWorld(viewsets.ViewSet):
     """
-    API Test AllowAny. If hello word, you have permission :)
-
-    Example:
-    GET /api/ : Hello, world!
+    GET /heloworld/ : Hello, world!
     """
 
     def list(self, request):
@@ -87,12 +83,26 @@ class HelloWorld(viewsets.ViewSet):
         return [permission() for permission in permission_classes]
 
 
+
+class PlaceAPI(viewsets.ViewSet):
+    """
+    GET /place : Places where we can use all federated wallets
+    GET /place/<uuid> : Retrieve one place
+    POST /place : Create a place where we can use all federated wallets
+    """
+
+    def create(self, request):
+        serializer = PlaceSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors)
+
+
 class TransactionAPI(viewsets.ViewSet):
     """
-    API CRUD : create read update delete
-    Exemple :
-    GET /api/transaction/ : liste des transactions
-    GET /api/user/transaction/ : transactions avec primary key <uuid>
+    GET /transaction/ : liste des transactions
+    GET /user/transaction/ : transactions avec primary key <uuid>
     """
     pagination_class = StandardResultsSetPagination
 
