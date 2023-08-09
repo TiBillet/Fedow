@@ -39,6 +39,7 @@ class Command(BaseCommand):
         if len(currency_code) > 3:
             raise CommandError('Max 3 for currency code')
 
+        self.stdout.write(f"", ending='\n')
         self.stdout.write(f"NAME : {asset_name} - CURRENCY CODE : {currency_code}", ending='\n')
 
         try :
