@@ -5,7 +5,7 @@
 
 # FEDOW : Federated and open wallet.
 
-### FLOSS Engine for local and time currency
+### Free and open-source engine for time and local currency.
 
 Because a bank can be free software:
 You don't need blockchain, NFT, Dapp or any other techno-solutionist hype.
