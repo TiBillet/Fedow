@@ -11,8 +11,12 @@ class Asset(models.Model):
     # One asset per currency
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
     name = models.CharField(max_length=100, unique=True)
-    currency = models.CharField(max_length=3, unique=True)
+    currency_code = models.CharField(max_length=3, unique=True)
 
+    key = models.OneToOneField(APIKey,
+                               on_delete=models.CASCADE,
+                               related_name="asset_key"
+                               )
 
 class Wallet(models.Model):
     # One wallet per user
@@ -22,7 +26,7 @@ class Wallet(models.Model):
     key = models.OneToOneField(APIKey,
                                on_delete=models.CASCADE,
                                blank=True, null=True,
-                               related_name="api_key"
+                               related_name="wallet_key"
                                )
 
     ip = models.GenericIPAddressField(verbose_name="Ip source")

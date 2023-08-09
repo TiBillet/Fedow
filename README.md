@@ -1,7 +1,5 @@
-
 > [!WARNING]  
 > Work in progress. ALPHA RELEASE.
-
 
 # FEDOW : Federated and open wallet.
 
@@ -64,7 +62,20 @@ coverage html
 
 ## Documentation
 
-work in progress ...
+### Create a new asset
+
+The currency asset can only be created if you have access to the server. No API point for that.
+
+The function returns a private key. Don't lose it and store it in a safe place. It is encrypted on the server side and
+can never be revealed again.
+
+```bash
+# Create new asset
+# arg1 = Asset name
+# arg2 = Asset code
+poetry run python manage.py create_asset FedPeakSou FPS
+# return the private key.
+```
 
 ## Contact :
 
