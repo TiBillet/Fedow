@@ -23,6 +23,7 @@ class PlaceSerializer(serializers.Serializer):
             'name'
         )
 
+
 class WalletCreateSerializer(serializers.Serializer):
     email = serializers.EmailField()
     uuid_card = serializers.UUIDField()

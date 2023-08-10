@@ -65,3 +65,4 @@ class ModelsTest(TestCase):
 
         print(response)
         assert response.status_code == 200
+        #TODO : vérifié que l'user est lié au wallet

@@ -29,7 +29,7 @@ class Wallet(models.Model):
                                related_name="wallet_key"
                                )
 
-    ip = models.GenericIPAddressField(verbose_name="Ip source")
+    ip = models.GenericIPAddressField(verbose_name="Ip source", default='0.0.0.0')
 
     # user = RelatedName FedowUser
 
@@ -73,7 +73,8 @@ class Transaction(models.Model):
 
 
 class Configuration(SingletonModel):
-    instance_name = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=100)
+    domain = models.URLField()
     # Wallet used to create money
     primary_wallet = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='primary')
 

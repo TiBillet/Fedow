@@ -54,6 +54,7 @@ class HelloWorld(viewsets.ViewSet):
         permission_classes = [AllowAny]
         return [permission() for permission in permission_classes]
 
+
 class WalletAPI(viewsets.ViewSet):
     """
     GET /wallet/ : liste des wallets
