@@ -82,13 +82,13 @@ Stripe account to the Stripe connect account of the TiBillet server is carried o
 To do this, you need to create a federated main asset, then create an entry for each federated Tibillet server.
 
 > [!WARNING]  
-> The federated currency asset can only be created if you have access to the server.
-> Same for each input of TiBillet server. We call them "Places".
-> No API for each of these actions is available.
+> The primary and federated monetary asset can only be created if you have access to the server.
+> The same applies to each TiBillet server. We will call them "Places".
+> There is no API for each of these actions.
 
 > [!WARNING]
-> Each key returned are private.
-> Don't lose it and store it in a safe place.
+> Each key returned is private.
+> Do not lose them and keep them in a safe place.
 > They are hashed on the server side and can never be revealed again.
 
 ### Create a new asset
@@ -100,6 +100,16 @@ To do this, you need to create a federated main asset, then create an entry for 
 poetry run python manage.py create_asset Peaksu PKS
 # return the private key.
 ```
+
+### Connect a TiBillet server
+
+```bash
+```
+
+### API documentation
+
+To create new user wallet and perform transactions, see the OpenAPI documentation :
+(work in progress... )
 
 ## Contact :
 
