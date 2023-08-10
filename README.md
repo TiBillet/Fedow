@@ -47,6 +47,7 @@ docker compose up -d
 git pull
 poetry install
 poetry run python manage.py migrate
+poetry run python manage.py install
 poetry run python manage.py runserver
 ```
 
@@ -104,6 +105,9 @@ poetry run python manage.py create_asset Peaksu PKS
 ### Connect a TiBillet server
 
 ```bash
+# Create new place
+poetry run python manage.py new_place "Manapany Festival"
+# Copy the string and paste it to the TiBillet server administration.
 ```
 
 ### API documentation
