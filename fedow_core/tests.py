@@ -14,9 +14,9 @@ from fedow_core.views import HelloWorld
 # Create your tests here.
 
 
-class APITestCase(TestCase):
+class APITestHelloWorld(TestCase):
     def setUp(self):
-        api_key, self.key = APIKey.objects.create_key(name="my-remote-service")
+        api_key, self.key = APIKey.objects.create_key(name="test_helloworld")
 
     #     Animal.objects.create(name="lion", sound="roar")
     #     Animal.objects.create(name="cat", sound="meow")
@@ -46,27 +46,22 @@ class APITestCase(TestCase):
 
 
 class ModelsTest(TestCase):
-    # def setUp(self):
-    #     Configuration.objects.create(
-    #         stripe_mode_test=True,
-    #         stripe_test_api_key=None,
-    #         stripe_api_key='prout')
+    def setUp(self):
+        # Création des variables nécéssaires à plusieurs tests
+        api_key, self.key = APIKey.objects.create_key(name="test_helloworld")
+        self.uuid_test = uuid4()
 
-    def test_both_api_keys_none(self):
-        # config = Configuration.get_solo()
-        config = Configuration(stripe_mode_test=True, stripe_test_api_key=None, stripe_api_key=None)
-
-        assert config.get_stripe_api() is None
-
-    def test_create_wallet(self):
+    def test_card_create(self):
         # Create card
-        card = Card.objects.create(
-            uuid=str(uuid4()),
-            nfc_tag_id=str(uuid4()).split('-')[0])
+        self.card = Card.objects.create(
+            uuid=str(self.uuid_test),
+            nfc_tag_id=str(self.uuid_test).split('-')[0])
 
-        data = {
+    def test_wallet_create(self):
+        response = self.client.post('/wallet/', {
             'email': 'test@example.com',
-            'uuid_card': str(card.uuid)
-        }
-        serializer = WalletCreateSerializer(data=data, context={'request': self.client.request()})
-        assert serializer.is_valid() is True
+            'uuid_card': f'{self.uuid_test}'
+        }, headers={'Authorization': f'Api-Key {self.key}'}, format='json')
+
+        print(response)
+        assert response.status_code == 200

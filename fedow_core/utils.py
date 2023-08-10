@@ -1,6 +1,7 @@
 
 def get_client_ip(request):
     # import ipdb; ipdb.set_trace()
+
     x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
     x_real_ip = request.META.get('HTTP_X_REAL_IP')
 

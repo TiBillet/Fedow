@@ -62,13 +62,36 @@ coverage html
 
 ## Documentation
 
-### Create a new asset
+This project is a part of the TiBillet Cooperative tools.
+
+https://tibillet.org
+
+Fedow was designed from the outset to connect different TiBillet point-of-sale servers so that they could share the
+cards of their respective users.
+
+Stripe connect is currently the accepted payment endpoint.
+
+Each TiBillet server connected to Fedow has a primary wallet and a Stripe Connect id.
+
+When a cashless reload is validated by Fedow, the card is reloaded and the money is available on the primary Stripe
+account.
+
+When a purchase is made in one of the points of sale of any federated TiBillet server, a transfer from the primary
+Stripe account to the Stripe connect account of the TiBillet server is carried out.
+
+To do this, you need to create a federated main asset, then create an entry for each federated Tibillet server.
 
 > [!WARNING]  
-> The currency asset can only be created if you have access to the server. No API for that.
-> 
->The function returns a private key. Don't lose it and store it in a safe place. It is hashed on the server side and
-can never be revealed again.
+> The federated currency asset can only be created if you have access to the server.
+> Same for each input of TiBillet server. We call them "Places".
+> No API for each of these actions is available.
+
+> [!WARNING]
+> Each key returned are private.
+> Don't lose it and store it in a safe place.
+> They are hashed on the server side and can never be revealed again.
+
+### Create a new asset
 
 ```bash
 # Create new asset
