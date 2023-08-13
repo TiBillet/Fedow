@@ -1,8 +1,12 @@
+from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_api_key.models import APIKey
-from django.contrib.auth.hashers import make_password, check_password
-from fedow_core.models import Transaction, Place, FedowUser, Card, Wallet
+from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction
 from fedow_core.utils import get_client_ip
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 
 def get_or_create_fedowuser(email):
@@ -16,29 +20,39 @@ def get_or_create_fedowuser(email):
         created = True
     return user, created
 
-"""
-class ApiKeyValidator(serializers.Serializer):
-    def validate(self, attrs):
-        # Get request, viewset and model of the view
+
+class ConnectPlaceCashless(serializers.Serializer):
+    uuid = serializers.PrimaryKeyRelatedField(queryset=Place.objects.all())
+    ip = serializers.IPAddressField()
+    url = serializers.URLField()
+    apikey = serializers.CharField(max_length=41, min_length=41)
+
+    def validate_uuid(self, value):
+        place: Place = value
+        self.place = place
+        # Si place à déja été configuré, on renvoie un 400
+        if place.cashless_server_ip or place.cashless_server_url or place.cashless_server_key:
+            logger.error(f"{timezone.localtime()} Place already configured {self.context.get('request').data}")
+            raise serializers.ValidationError("Place already configured")
+        return value
+
+    def validate_ip(self, value):
         request = self.context.get('request')
-        # viewset = self.context.get('viewsets')
-        # model = viewset.model
+        if value != get_client_ip(request):
+            raise serializers.ValidationError("Invalid IP")
+        return value
 
-        # Get ip
-        self.ip = get_client_ip(request)
 
-        # Get api key
+    def validate(self, attrs):
+        request = self.context.get('request')
+        # Check if key is the temp given by the manual creation.
         key = request.META["HTTP_AUTHORIZATION"].split()[1]
         api_key = APIKey.objects.get_from_key(key)
+        if self.place.wallet.key != api_key or 'temp_' not in api_key.name:
+            logger.error(f"{timezone.localtime()} Place create Unauthorized {request.data}")
+            raise serializers.ValidationError("Unauthorized")
 
-        # import ipdb; ipdb.set_trace()
-
-        if api_key.is_valid():
-            return attrs
-
-        raise serializers.ValidationError("Invalid API key")
-"""
-
+        return attrs
 
 class PlaceSerializer(serializers.ModelSerializer):
     class Meta:

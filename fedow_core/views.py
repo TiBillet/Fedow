@@ -1,3 +1,6 @@
+import base64
+
+from django.core.validators import URLValidator
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import viewsets, status
@@ -7,13 +10,8 @@ from rest_framework_api_key.models import APIKey
 from rest_framework_api_key.permissions import HasAPIKey
 
 from fedow_core.models import Transaction, Place
-from fedow_core.serializers import TransactionSerializer, PlaceSerializer, WalletCreateSerializer
+from fedow_core.serializers import TransactionSerializer, PlaceSerializer, WalletCreateSerializer, ConnectPlaceCashless
 from rest_framework.pagination import PageNumberPagination
-
-from fedow_core.utils import get_client_ip
-import logging
-
-logger = logging.getLogger(__name__)
 
 
 class StandardResultsSetPagination(PageNumberPagination):
@@ -92,29 +90,22 @@ class PlaceAPI(viewsets.ViewSet):
     def create(self, request):
         # Request only work if came from Cashless server
         # with the right API key gived at the manual creation of new place
+        validator = ConnectPlaceCashless(data=request.data, context={'request': request})
+        if validator.is_valid():
+            place = validator.validated_data['uuid']
+            place.cashless_server_ip = validator.validated_data['ip']
+            place.cashless_server_url = validator.validated_data['url']
+            place.cashless_server_key = validator.validated_data['apikey']
+            # Create the definitive key for the cashless server
+            api_key, key = APIKey.objects.create_key(name=place.name)
+            place.wallet.key = api_key
+            place.wallet.save()
+            place.save()
 
-        # Check place exist
-        place = get_object_or_404(Place, pk=request.data.get('uuid'))
-        ip = get_client_ip(request)
+            key_b64 = base64.b64encode(key.encode('utf-8')).decode('utf-8')
 
-        # Si place a déja été configuré, on renvoie un 400
-        if place.cashless_server_ip or place.cashless_server_url or place.cashless_server_key:
-            logger.error(f"{timezone.localtime()} Place already configured - ip : {ip} - {request.data}")
-            return Response('HTTP_400_BAD_REQUEST', status=status.HTTP_400_BAD_REQUEST)
-
-        # Check if key is the temp given by the manual creation
-        key = request.META["HTTP_AUTHORIZATION"].split()[1]
-        api_key = APIKey.objects.get_from_key(key)
-        if place.wallet.key != api_key or 'temp_' not in api_key.name:
-            logger.error(f"{timezone.localtime()} Place create Unauthorized - ip : {ip} - {request.data}")
-            return Response('Unauthorized', status=status.HTTP_401_UNAUTHORIZED)
-
-        # Get url, key and ip from cashless server
-        place.cashless_server_ip  = ip
-        place.cashless_server_url = request.data.get('csu')
-        place.cashless_server_key = request.data.get('csk')
-
-        return Response(PlaceSerializer(place).data, status=status.HTTP_201_CREATED)
+            return Response(key_b64, status=status.HTTP_202_ACCEPTED)
+        return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get_permissions(self):
         permission_classes = [AllowAny]

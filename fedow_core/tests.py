@@ -83,17 +83,35 @@ class ModelsTest(TestCase):
 
         data = {
             'uuid': f'{self.place.uuid}',
-            'csu' : 'https://cashless.billetistan.com',
-            'csk' : 'aequaibeegheeLae3teiLein9eetex',
+            'ip': '127.0.0.1',
+            'url' : 'https://cashless.billetistan.com',
+            'apikey' : '8JheL9iC.9zeoWy1ETlqVBIorpAgUGldqsZOF2ASF',
         }
 
         # Test with bad key
         response = self.client.post('/place/', data, headers={'Authorization': f'Api-Key {self.key}'}, format='json')
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.place.refresh_from_db()
+        self.assertIsNone(self.place.cashless_server_url)
+        self.assertIsNone(self.place.cashless_server_ip)
+        self.assertIsNone(self.place.cashless_server_key)
 
         # test with key from the place creation
         response = self.client.post('/place/', data, headers={'Authorization': f'Api-Key {self.billetistan_temp_key}'}, format='json')
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.place.refresh_from_db()
+
+        key = base64.b64decode(response.content).decode('utf-8')
+        self.assertTrue(APIKey.objects.is_valid(key))
+
+        self.assertEqual(self.place.cashless_server_url, data.get('url'))
+        self.assertEqual(self.place.cashless_server_ip, data.get('ip'))
+        self.assertEqual(self.place.cashless_server_key, data.get('apikey'))
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+
+
+
+
+
 
 
     def xtest_card_create(self):
