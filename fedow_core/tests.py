@@ -70,6 +70,7 @@ class ModelsTest(TestCase):
             try:
                 decoded_data = json.loads(base64.b64decode(line).decode('utf-8'))
                 self.assertIsInstance(decoded_data, dict)
+                print(line)
                 billetistan = decoded_data
                 break
             except:

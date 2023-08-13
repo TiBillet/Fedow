@@ -1,2 +1,7 @@
 SECRET_KEY=""
 DOMAIN=""
+
+# Stripe
+STRIPE_KEY=""
+STRIPE_KEY_TEST=""
+STRIPE_TEST=True

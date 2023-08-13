@@ -1,6 +1,7 @@
 import base64
 import json
 
+import stripe
 from django.core.management.base import BaseCommand, CommandError
 from django.utils.text import slugify
 from rest_framework_api_key.models import APIKey
@@ -38,6 +39,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         configuration = Configuration.get_solo()
+        stripe.api_key = configuration.get_stripe_api()
+
         if not configuration.domain:
             raise CommandError('Please set the domain name in the admin panel')
 

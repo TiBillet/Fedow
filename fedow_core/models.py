@@ -1,3 +1,4 @@
+from django.conf import settings
 from rest_framework_api_key.models import APIKey
 from django.contrib.auth.models import AbstractUser
 from solo.models import SingletonModel
@@ -84,16 +85,11 @@ class Configuration(SingletonModel):
     def primary_key(self):
         return self.primary_wallet.key
 
-    stripe_api_key = models.CharField(max_length=110, blank=True, null=True)
-    stripe_test_api_key = models.CharField(max_length=110, blank=True, null=True)
-
-    stripe_mode_test = models.BooleanField(default=True)
-
     def get_stripe_api(self):
-        if self.stripe_mode_test:
-            return self.stripe_test_api_key
+        if settings.STRIPE_TEST:
+            return settings.STRIPE_KEY_TEST
         else:
-            return self.stripe_api_key
+            return settings.STRIPE_KEY
 
 
 class FedowUser(AbstractUser):

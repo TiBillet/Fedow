@@ -22,6 +22,7 @@ django-stdimage = "^6.0.1"
 stripe = "^5.5.0"
 coverage = "^7.2.7"
 django-cryptography = "^1.1"
+python-dotenv = "^1.0.0"
 
 [build-system]
 requires = ["poetry-core"]
