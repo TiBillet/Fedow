@@ -69,7 +69,7 @@ class Command(BaseCommand):
 
         json_key_to_cashless = {
             "domain": configuration.domain,
-            "place_uuid": f"{place.uuid}",
+            "uuid": f"{place.uuid}",
             "temp_key": key,
         }
         encoded_data = base64.b64encode(json.dumps(json_key_to_cashless).encode('utf-8')).decode('utf-8')

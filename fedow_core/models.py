@@ -5,6 +5,7 @@ from django.db import models
 from uuid import uuid4
 from stdimage import JPEGField
 from stdimage.validators import MaxSizeValidator, MinSizeValidator
+from django_cryptography.fields import encrypt
 
 
 class Asset(models.Model):
@@ -17,6 +18,7 @@ class Asset(models.Model):
                                on_delete=models.CASCADE,
                                related_name="asset_key"
                                )
+
 
 class Wallet(models.Model):
     # One wallet per user
@@ -32,6 +34,7 @@ class Wallet(models.Model):
     ip = models.GenericIPAddressField(verbose_name="Ip source", default='0.0.0.0')
 
     # user = RelatedName FedowUser
+
 
 class Token(models.Model):
     # One token per user per currency
@@ -92,6 +95,7 @@ class Configuration(SingletonModel):
         else:
             return self.stripe_api_key
 
+
 class FedowUser(AbstractUser):
     """
     User model with email as unique identifier
@@ -111,9 +115,11 @@ class Place(models.Model):
 
     # User with Stripe connect and cashless federated server
     wallet = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='place')
-    stripe_connect_account = models.CharField(max_length=21, blank=True, null=True)
-    cashless_server_url = models.URLField(blank=True, null=True)
-    cashless_server_key = models.CharField(max_length=100, blank=True, null=True)
+    stripe_connect_account = models.CharField(max_length=21, blank=True, null=True, editable=False)
+
+    cashless_server_ip = encrypt(models.GenericIPAddressField(blank=True, null=True, editable=False))
+    cashless_server_url = encrypt(models.URLField(blank=True, null=True, editable=False))
+    cashless_server_key = encrypt(models.CharField(max_length=100, blank=True, null=True, editable=False))
 
     admin = models.ManyToManyField(FedowUser, related_name='places')
 
@@ -135,6 +141,7 @@ class Place(models.Model):
 
     def logo_variations(self):
         return self.logo.variations
+
 
 class Origin(models.Model):
     place = models.ForeignKey(Place, on_delete=models.PROTECT, related_name='origins')

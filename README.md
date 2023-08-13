@@ -16,7 +16,7 @@ A simple tool for creating a tiny bank on the scale of a small or large area and
 inclusive economy.
 local, social and inclusive economy.
 
-## Context
+### Context
 
 Originally designed to create a cashless euro or time currency system (as used at festivals) for several venues, the
 current repository is a separation of the source code originally integrated into the TiBillet cashless point of sale

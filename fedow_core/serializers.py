@@ -16,13 +16,40 @@ def get_or_create_fedowuser(email):
         created = True
     return user, created
 
-class PlaceSerializer(serializers.Serializer):
+"""
+class ApiKeyValidator(serializers.Serializer):
+    def validate(self, attrs):
+        # Get request, viewset and model of the view
+        request = self.context.get('request')
+        # viewset = self.context.get('viewsets')
+        # model = viewset.model
+
+        # Get ip
+        self.ip = get_client_ip(request)
+
+        # Get api key
+        key = request.META["HTTP_AUTHORIZATION"].split()[1]
+        api_key = APIKey.objects.get_from_key(key)
+
+        # import ipdb; ipdb.set_trace()
+
+        if api_key.is_valid():
+            return attrs
+
+        raise serializers.ValidationError("Invalid API key")
+"""
+
+
+class PlaceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Place
         fields = (
-            'name'
+            'uuid',
+            'name',
         )
 
+    def validate(self, attrs):
+        return attrs
 
 class WalletCreateSerializer(serializers.Serializer):
     email = serializers.EmailField()
@@ -58,13 +85,14 @@ class WalletCreateSerializer(serializers.Serializer):
         api_key, self.key = APIKey.objects.create_key(name=self.user.email[:50])
 
         # Create wallet
-        self.wallet =Wallet.objects.create(
-            key = api_key,
-            ip = ip,
-            user = self.user
+        self.wallet = Wallet.objects.create(
+            key=api_key,
+            ip=ip,
+            user=self.user
         )
 
         return attrs
+
 
 class TransactionSerializer(serializers.ModelSerializer):
     class Meta:

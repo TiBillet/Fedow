@@ -1,5 +1,5 @@
 from django.urls import path, include
-from fedow_core.views import TransactionAPI, TestApiKey, HelloWorld, WalletAPI
+from fedow_core.views import TransactionAPI, TestApiKey, HelloWorld, WalletAPI, PlaceAPI
 # from django.conf import settings
 from rest_framework import routers
 
@@ -10,6 +10,7 @@ router.register(r'helloworld', HelloWorld, basename='testapikey')
 
 router.register(r'transaction', TransactionAPI, basename='transaction')
 router.register(r'wallet', WalletAPI, basename='wallet')
+router.register(r'place', PlaceAPI, basename='place')
 
 urlpatterns = [
     path('', include(router.urls)),
