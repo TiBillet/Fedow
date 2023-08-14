@@ -77,7 +77,7 @@ class Command(BaseCommand):
         }
         encoded_data = base64.b64encode(json.dumps(json_key_to_cashless).encode('utf-8')).decode('utf-8')
 
-        self.stdout.write(self.style.SUCCESS(f"New place succesfully created. Please enter this string in your TiBillet admin panel."), ending='\n')
+        self.stdout.write(self.style.SUCCESS(
+            f"New place succesfully created. Please enter this string in your TiBillet admin panel."), ending='\n')
         self.stdout.write(f"", ending='\n')
         self.stdout.write(f"{encoded_data}", ending='\n')
-        self.stdout.write(f"", ending='\n')
