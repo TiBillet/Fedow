@@ -13,7 +13,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f'Configuration and master wallet already exists : {config.name}'), ending='\n')
         except Exception as e:
 
-            instance_name = os.environ.get('DOMAIN','fedow.betabillet.tech')
+            instance_name = os.environ.get('DOMAIN','172.17.0.1:8008')
 
             primary_key, key = APIKey.objects.create_key(name=instance_name)
             primary_wallet = Wallet.objects.create(

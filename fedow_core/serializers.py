@@ -38,6 +38,7 @@ class ConnectPlaceCashless(serializers.Serializer):
     def validate_ip(self, value):
         request = self.context.get('request')
         if value != get_client_ip(request):
+            logger.error(f"{timezone.localtime()} ERROR Place create Invalid IP {get_client_ip(request)}")
             raise serializers.ValidationError("Invalid IP")
         return value
 
