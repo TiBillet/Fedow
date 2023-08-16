@@ -111,7 +111,9 @@ class Place(models.Model):
 
     # User with Stripe connect and cashless federated server
     wallet = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='place')
+
     stripe_connect_account = models.CharField(max_length=21, blank=True, null=True, editable=False)
+    stripe_connect_valid = models.BooleanField(default=False)
 
     cashless_server_ip = encrypt(models.GenericIPAddressField(blank=True, null=True, editable=False))
     cashless_server_url = encrypt(models.URLField(blank=True, null=True, editable=False))

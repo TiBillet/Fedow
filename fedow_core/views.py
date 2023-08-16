@@ -152,25 +152,40 @@ def create_account_link_for_onboard(place: Place):
 
     account_link = stripe.AccountLink.create(
         account=place.stripe_connect_account,
-        refresh_url=f"{url_cashless_server}/onboard_stripe_return/{place.stripe_connect_account}",
-        return_url=f"{url_cashless_server}/onboard_stripe_return/{place.stripe_connect_account}",
+        refresh_url=f"{url_cashless_server}/api/onboard_stripe_return/{place.stripe_connect_account}",
+        return_url=f"{url_cashless_server}/api/onboard_stripe_return/{place.stripe_connect_account}",
         type="account_onboarding",
     )
 
     url_onboard = account_link.get('url')
     return url_onboard
 
-@permission_classes([AllowAny])
+@permission_classes([HasAPIKey])
 class Onboard_stripe_return(APIView):
-    def get(self, request, id_acc_connect):
+    def get(self, request, encoded_data):
+        decoded_data = json.loads(base64.b64decode(encoded_data).decode('utf-8'))
+        uuid = decoded_data.get('uuid')
+
+        api_key = APIKey.objects.get_from_key(request.META["HTTP_AUTHORIZATION"].split()[1])
+        place = Place.objects.get(pk=uuid)
+        if place.wallet.key != api_key:
+            return Response("Unauthorized", status=status.HTTP_401_UNAUTHORIZED)
+
         stripe.api_key = Configuration.get_solo().get_stripe_api()
-        info_stripe = stripe.Account.retrieve(id_acc_connect)
+        info_stripe = stripe.Account.retrieve(decoded_data.get('id_acc_connect'))
         details_submitted = info_stripe.details_submitted
         if details_submitted:
+            place.stripe_connect_account = decoded_data.get('id_acc_connect')
+            place.stripe_connect_valid = True
+            place.save()
             logger.info(f"details_submitted : {details_submitted}")
+            return Response("OK", status=status.HTTP_200_OK)
             # TODO: COntinuer l'installation
         else:
-            return Response(f"{create_account_link_for_onboard()}", status=status.HTTP_206_PARTIAL_CONTENT)
+            # return Response(f"{create_account_link_for_onboard()}", status=status.HTTP_206_PARTIAL_CONTENT)
+            place.stripe_connect_valid = False
+            place.save()
+            return Response("Compte stripe non valide", status=status.HTTP_406_NOT_ACCEPTABLE)
 
 
 @permission_classes([HasAPIKey])

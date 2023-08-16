@@ -14,5 +14,5 @@ router.register(r'place', PlaceAPI, basename='place')
 
 urlpatterns = [
     path('', include(router.urls)),
-    path('onboard_stripe_return/<str:id_acc_connect>/', Onboard_stripe_return.as_view()),
+    path('onboard_stripe_return/<str:encoded_data>/', Onboard_stripe_return.as_view()),
 ]

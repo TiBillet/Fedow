@@ -11,7 +11,7 @@ services:
       - "./:/fedow"
       - "./bashrc:/home/fedow/.bashrc"
     working_dir: /fedow
-    command: "bash ./launcher_test.sh"
+    command: "bash ./launcher_dev.sh"
 #    command: "sleep infinity"
     labels:
       - "traefik.enable=true"
