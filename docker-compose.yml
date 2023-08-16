@@ -1,29 +1,21 @@
 version: '3'
 services:
-#  fedow_postgres:
-#    image: postgres:11.5-alpine
-#    hostname: fedow_postgres
-#    container_name: fedow_postgres
-#    restart: unless-stopped
-#    volumes:
-#      - fedowDb:/var/lib/postgresql/data
-#    env_file:
-#      - .env
-
-  fedow_django:
-    hostname: fedow_django
-    container_name: fedow_django
+  fedow:
+    hostname: fedow
+    container_name: fedow
     build: .
+    env_file: .env
     user: fedow
     restart: unless-stopped
     volumes:
       - "./:/fedow"
       - "./bashrc:/home/fedow/.bashrc"
     working_dir: /fedow
-    env_file:
-      - ./.env
     command: "bash ./launcher_test.sh"
 #    command: "sleep infinity"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.fedow.rule=Host(`fedow.traefik.me`)"
+      - "traefik.http.routers.fedow-tls.tls.domains[0].main=fedow.traefik.me"
+      - "traefik.http.routers.fedow-tls.tls.domains[0].sans=fedow-*.traefik.me"
 
-volumes:
-  fedowDb:
