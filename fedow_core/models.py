@@ -6,7 +6,6 @@ from django.db import models
 from uuid import uuid4
 from stdimage import JPEGField
 from stdimage.validators import MaxSizeValidator, MinSizeValidator
-from django_cryptography.fields import encrypt
 
 
 class Asset(models.Model):
@@ -115,9 +114,9 @@ class Place(models.Model):
     stripe_connect_account = models.CharField(max_length=21, blank=True, null=True, editable=False)
     stripe_connect_valid = models.BooleanField(default=False)
 
-    cashless_server_ip = encrypt(models.GenericIPAddressField(blank=True, null=True, editable=False))
-    cashless_server_url = encrypt(models.URLField(blank=True, null=True, editable=False))
-    cashless_server_key = encrypt(models.CharField(max_length=100, blank=True, null=True, editable=False))
+    cashless_server_ip = models.GenericIPAddressField(blank=True, null=True, editable=False)
+    cashless_server_url = models.URLField(blank=True, null=True, editable=False)
+    cashless_server_key = models.CharField(max_length=100, blank=True, null=True, editable=False)
 
     admin = models.ManyToManyField(FedowUser, related_name='places')
 
