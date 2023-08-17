@@ -13,9 +13,9 @@ services:
     working_dir: /fedow
     command: "bash ./launcher_dev.sh"
 #    command: "sleep infinity"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.fedow.rule=Host(`fedow.traefik.me`)"
-      - "traefik.http.routers.fedow-tls.tls.domains[0].main=fedow.traefik.me"
-      - "traefik.http.routers.fedow-tls.tls.domains[0].sans=fedow-*.traefik.me"
+#    labels:
+#      - "traefik.enable=true"
+#      - "traefik.http.routers.fedow.rule=Host(`fedow.traefik.me`)"
+#      - "traefik.http.routers.fedow-tls.tls.domains[0].main=fedow.traefik.me"
+#      - "traefik.http.routers.fedow-tls.tls.domains[0].sans=fedow-*.traefik.me"
 
