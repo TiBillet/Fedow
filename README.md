@@ -45,7 +45,7 @@ docker compose up -d
 
 ```bash
 git pull
-poetry install
+poetry install --test # add test for pop database with test data
 poetry run python manage.py migrate
 poetry run python manage.py install
 poetry run python manage.py runserver

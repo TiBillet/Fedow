@@ -14,10 +14,27 @@ class Asset(models.Model):
     name = models.CharField(max_length=100, unique=True)
     currency_code = models.CharField(max_length=3, unique=True)
 
+    # Primary and federated asset send to cashless on new connection
+    # One by instance.
+    federated_primary = models.BooleanField(default=False, editable=False)
+
     key = models.OneToOneField(APIKey,
                                on_delete=models.CASCADE,
                                related_name="asset_key"
                                )
+
+    def save(self, force_insert=False, force_update=False, using=None, update_fields=None):
+        if self.federated_primary:
+            try :
+                primary = Asset.objects.get(federated_primary=True)
+                if primary != self:
+                    raise Exception("Federated primary already exist")
+            except Asset.DoesNotExist:
+                pass
+            except Exception as e:
+                raise Exception(f"Federated primary error : {e}")
+
+        super().save(force_insert, force_update, using, update_fields)
 
 
 class Wallet(models.Model):

@@ -13,7 +13,7 @@ from rest_framework.views import APIView
 from rest_framework_api_key.models import APIKey
 from rest_framework_api_key.permissions import HasAPIKey
 
-from fedow_core.models import Transaction, Place, Configuration
+from fedow_core.models import Transaction, Place, Configuration, Asset
 from fedow_core.serializers import TransactionSerializer, PlaceSerializer, WalletCreateSerializer, ConnectPlaceCashless
 from rest_framework.pagination import PageNumberPagination
 
@@ -148,12 +148,12 @@ def create_account_link_for_onboard(place: Place):
         place.stripe_connect_account = id_acc_connect
         place.save()
 
-    url_cashless_server = place.cashless_server_url
+    cashless_server_url = place.cashless_server_url
 
     account_link = stripe.AccountLink.create(
         account=place.stripe_connect_account,
-        refresh_url=f"{url_cashless_server}/api/onboard_stripe_return/{place.stripe_connect_account}",
-        return_url=f"{url_cashless_server}/api/onboard_stripe_return/{place.stripe_connect_account}",
+        refresh_url=f"{cashless_server_url}api/onboard_stripe_return/{place.stripe_connect_account}",
+        return_url=f"{cashless_server_url}api/onboard_stripe_return/{place.stripe_connect_account}",
         type="account_onboarding",
     )
 
@@ -179,8 +179,20 @@ class Onboard_stripe_return(APIView):
             place.stripe_connect_valid = True
             place.save()
             logger.info(f"details_submitted : {details_submitted}")
-            return Response("OK", status=status.HTTP_200_OK)
-            # TODO: COntinuer l'installation
+
+            # Stripe est OK
+            # Envoie des infos de la monnaie fédéré
+
+            federated_asset = Asset.objects.get(federated_primary=True)
+            data = {
+                'name': federated_asset.name,
+                'currency_code': federated_asset.currency_code,
+            }
+
+            data_encoded = base64.b64encode(json.dumps(data).encode('utf-8')).decode('utf-8')
+
+            return Response(data_encoded, status=status.HTTP_200_OK)
+
         else:
             # return Response(f"{create_account_link_for_onboard()}", status=status.HTTP_206_PARTIAL_CONTENT)
             place.stripe_connect_valid = False
