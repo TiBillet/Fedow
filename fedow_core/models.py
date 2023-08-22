@@ -1,4 +1,7 @@
+import stripe
 from django.conf import settings
+from django.db.models.signals import pre_save
+from django.dispatch import receiver
 from rest_framework_api_key.models import APIKey
 from django.contrib.auth.models import AbstractUser
 from solo.models import SingletonModel
@@ -64,16 +67,53 @@ class Token(models.Model):
         unique_together = [['wallet', 'asset']]
 
 
+class CheckoutStripe(models.Model):
+    # Si recharge, alors un paiement stripe doit être lié
+    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
+    checkout_session_id_stripe = models.CharField(max_length=80, unique=True)
+
+    NON, OPEN, PENDING, EXPIRE, PAID, VALID, NOTSYNC, CANCELED = 'N', 'O', 'W', 'E', 'P', 'V', 'S', 'C'
+    STATUT_CHOICES = (
+        (OPEN, 'A vérifier'),
+        (PENDING, 'En attente de paiement'),
+        (EXPIRE, 'Expiré'),
+        (PAID, 'Payée'),
+        (VALID, 'Payée et validée'),  # envoyé sur serveur cashless
+        (NOTSYNC, 'Payée mais problème de synchro cashless'),  # envoyé sur serveur cashless qui retourne une erreur
+        (CANCELED, 'Annulée'),
+    )
+    status = models.CharField(max_length=1, choices=STATUT_CHOICES, default=NON, verbose_name="Statut de la commande")
+
+
+    def is_valid(self):
+        if self.status == self.VALID:
+            # Déja validé, on renvoie None
+            return None
+
+        stripe.api_key = Configuration.get_solo().get_stripe_api()
+        checkout_session = stripe.checkout.Session.retrieve(
+            self.checkout_session_id_stripe,
+            # stripe_account=config.get_stripe_connect_account()
+        )
+        if checkout_session.payment_status == "paid":
+            self.status = self.PAID
+            self.save()
+            return True
+
+        return False
+
+
 class Transaction(models.Model):
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
     ip = models.GenericIPAddressField(verbose_name="Ip source")
 
-    primary_card_uuid = models.UUIDField(default=uuid4, editable=False)
-    card_uuid = models.UUIDField(default=uuid4, editable=False)
+    checkoupt_stripe = models.ForeignKey(CheckoutStripe, on_delete=models.PROTECT, related_name='checkout_stripe', blank=True, null=True)
+    primary_card_uuid = models.UUIDField(default=uuid4, editable=False, blank=True, null=True)
+    card_uuid = models.UUIDField(default=uuid4, editable=False, blank=True, null=True)
 
     sender = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name='transactions_sent')
     receiver = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name='transactions_received')
-    token = models.ForeignKey(Token, on_delete=models.PROTECT, related_name='transactions')
+    asset = models.ForeignKey(Asset, on_delete=models.PROTECT, related_name='transactions')
 
     date = models.DateTimeField(auto_now_add=True)
     amount = models.DecimalField(max_digits=20, decimal_places=2)
@@ -90,6 +130,22 @@ class Transaction(models.Model):
 
     class Meta:
         ordering = ['-date']
+
+@receiver(pre_save, sender=Transaction)
+def where_we_do_the_thing(sender, instance, **kwargs):
+    token_receiver, created_r = Token.objects.get_or_create(wallet=instance.receiver, asset=instance.asset)
+
+    if instance.action == Transaction.CREATION:
+        assert instance.sender == instance.receiver
+        assert instance.asset.federated_primary == True
+        token_receiver.value += instance.amount
+    else :
+        token_sender, created_s = Token.objects.get_or_create(wallet=instance.sender, asset=instance.asset)
+        token_sender.value -= instance.amount
+        token_sender.save()
+        token_receiver.value += instance.amount
+
+    token_receiver.save()
 
 
 class Configuration(SingletonModel):

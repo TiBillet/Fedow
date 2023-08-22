@@ -1,5 +1,6 @@
 from django.urls import path, include
-from fedow_core.views import TransactionAPI, TestApiKey, HelloWorld, WalletAPI, PlaceAPI, Onboard_stripe_return
+from fedow_core.views import TransactionAPI, TestApiKey, HelloWorld, WalletAPI, PlaceAPI, Onboard_stripe_return, \
+    Stripe_federated_charge
 # from django.conf import settings
 from rest_framework import routers
 
@@ -15,4 +16,5 @@ router.register(r'place', PlaceAPI, basename='place')
 urlpatterns = [
     path('', include(router.urls)),
     path('onboard_stripe_return/<str:encoded_data>/', Onboard_stripe_return.as_view()),
+    path('stripe_federated_charge/', Stripe_federated_charge.as_view()),
 ]

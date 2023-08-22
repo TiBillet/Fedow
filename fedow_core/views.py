@@ -13,11 +13,13 @@ from rest_framework.views import APIView
 from rest_framework_api_key.models import APIKey
 from rest_framework_api_key.permissions import HasAPIKey
 
-from fedow_core.models import Transaction, Place, Configuration, Asset
+from fedow_core.models import Transaction, Place, Configuration, Asset, CheckoutStripe, Token, Wallet
 from fedow_core.serializers import TransactionSerializer, PlaceSerializer, WalletCreateSerializer, ConnectPlaceCashless
 from rest_framework.pagination import PageNumberPagination
 
 import logging
+
+from fedow_core.utils import b64decode, get_request_ip
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +109,6 @@ class PlaceAPI(viewsets.ViewSet):
             place.cashless_server_url = validator.validated_data['url']
             place.cashless_server_key = validator.validated_data['apikey']
 
-
             # Create the definitive key for the cashless server
             api_key, key = APIKey.objects.create_key(name=place.name)
             place.wallet.key = api_key
@@ -160,6 +161,38 @@ def create_account_link_for_onboard(place: Place):
     url_onboard = account_link.get('url')
     return url_onboard
 
+
+@permission_classes([HasAPIKey])
+class Stripe_federated_charge(APIView):
+    def post(self, request):
+        # Verifier que la clé API soit celle du django Tenant
+        api_key = APIKey.objects.get_from_key(request.META["HTTP_AUTHORIZATION"].split()[1])
+        config = Configuration.get_solo()
+
+        # TODO: vérifier l'article paiement pour recharge fédéré
+        # import ipdb; ipdb.set_trace()
+
+        checkout, created = CheckoutStripe.objects.get_or_create(
+            checkout_session_id_stripe=request.data.get('checkout_session_id_stripe'))
+        if checkout.is_valid():
+            # Création de monnaie : On incrémente le wallet primaire
+            prime_wallet = config.primary_wallet,
+            prime_asset = Asset.objects.get(federated_primary=True)
+
+            Transaction.objects.create(
+                ip=get_request_ip(request),
+                checkoupt_stripe=checkout,
+                sender=prime_wallet,
+                receiver=prime_wallet,
+                asset=prime_asset,
+                action=Transaction.CREATION,
+            )
+
+            # primary_stripe_token, created = Token.objects.get_or_create(
+            # )
+            # federated_stripe = Asset.objects.get(federated_primary=True)
+
+
 @permission_classes([HasAPIKey])
 class Onboard_stripe_return(APIView):
     def get(self, request, encoded_data):
@@ -185,6 +218,7 @@ class Onboard_stripe_return(APIView):
 
             federated_asset = Asset.objects.get(federated_primary=True)
             data = {
+                'uuid': f'{federated_asset.uuid}',
                 'name': federated_asset.name,
                 'currency_code': federated_asset.currency_code,
             }
@@ -204,7 +238,6 @@ class Onboard_stripe_return(APIView):
 class Onboard(APIView):
     def get(self, request):
         return Response(f"{create_account_link_for_onboard()}", status=status.HTTP_202_ACCEPTED)
-
 
 
 class TransactionAPI(viewsets.ViewSet):
