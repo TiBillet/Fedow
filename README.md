@@ -18,7 +18,7 @@ Enfin, Fedow intégre des principes de [monnaie fondantes](https://fr.wikipedia.
 ### Moteur libre et open-source de gestion de monnaies temps et/ou locale.
 
 Parce qu'une banque peut être un logiciel libre :
-Nous n'avons pas besoin de blockchain fantaisiste, de NFT, de Dapp ou de tout autre battage techno-solutionniste.
+Nous n'avons pas besoin de blockchain spéculative, de NFT, de Dapp ou de tout autre battage techno-solutionniste.
 
 Tout ce dont nous avons besoin, c'est d'un moteur de création monétaire, de gestion de compte et de transactions.
 Le tout sous une gestion fédérée et transparente, pour créer des réseaux de points de vente acceptant des monnaies locales, des monnaies temporelles ou même des monnaies qui ne sont pas des monnaies.
