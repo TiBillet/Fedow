@@ -96,7 +96,9 @@ Une idée a été retenue. Elle à le mérite de résoudre les trois problémati
 Ou comment répondre à la grande question : *Comment faire pour avoir confiance en un système bancaire décentralisé sur lequel repose de l'argent réel ?*
 
 
-[ATTENTION DISCLAIMER PARTIE VULGARISATION TECHNIQUE CRYPTO !]
+> [!WARNING]  
+> Vulgarisation crypto un ptit peu technique !
+
 
 Pour créer un système décentralisé mais sécurisé et fiduciaire, le Bitcoin à proposé la preuve de travaill : Plus on est nombreux à vérifier, plus il est difficile de falsifier le document comptable car il faut convaincre la majorité pour faire consensus.
 
