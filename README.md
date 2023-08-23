@@ -61,7 +61,7 @@ Tout ceci avec du matériel DiY et du software low-tech, en favorisant au maximu
 
 Imaginons un mécanisme qui puisse à la fois :
 
-- Inciter de nouveaux acteurs à rejoindre la fédération ou en créer de nouvelles.
+- Inciter de nouveaux acteurs à rejoindre ou créer une fédération.
 - Financer le développement du projet libre et coopératif (Problématique récurrente dans le milieu des logiciels  libres).
 - Lutter contre la spéculation et l'accumulation des capitaux pour une économié réelle et non financiarisée.
 
