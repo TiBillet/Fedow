@@ -27,7 +27,7 @@ Un outil simple pour créer une petite banque à l'échelle d'un petit ou d'un g
 
 ### Pourquoi ?
 
-Chez Code Commun (la coopérative numérique qui développe l'écosystème TiBillet), nous pensons que le logiciel libre couplé à des pratiques de gouvernance ouverte et transparente pour une économie sociale et solidaire sont les conditions d'une société appaisée que nous souhaitons voir emmerger.
+Chez Code Commun (la coopérative numérique qui développe l'écosystème TiBillet), nous pensons que le logiciel libre couplé à des pratiques de gouvernance ouverte et transparente pour une économie sociale et solidaire sont les conditions d'une société que nous souhaitons voir emmerger.
 
 Avec **Fedow**, qui s'inscrit dans l'écosystème **TiBillet**, nous souhaitons permettre à chacun de créér ou rejoindre une fédéréation de monnaies **locale** ou **temps** et de participer à sa gouvernance.
 
