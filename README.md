@@ -9,7 +9,7 @@ Résumé :
 
 Outil [FLOSS](https://fr.wikipedia.org/wiki/Free/Libre_Open_Source_Software) de création et de gestion d'un groupement de monnaies locales, libre, complémentaire et citoyenne (MLCC) au sein d'un réseau fédéré. 
 
-S'intégrant aux outils [TiBillet](https://tibillet.org) il permet l'utilisation d'une même carte NFC qui porte des adhésion associative et un portefeuille dématérialisé dans différents lieux associatifs, coopératifs et/ou commerciaux.
+S'intégrant aux outils [TiBillet](https://tibillet.org) il permet l'utilisation d'une même carte NFC qui porte des adhésions associatives et un portefeuille dématérialisé dans différents lieux associatifs, coopératifs et/ou commerciaux.
 
 Enfin, Fedow intégre des principes de [monnaie fondantes](https://fr.wikipedia.org/wiki/Monnaie_fondante) dans une une chaine de block par preuve d'enjeux, transparente, non spéculative et non énergivore.
 
