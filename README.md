@@ -57,7 +57,7 @@ Couplés au reste des outils de TiBillet, il est alors possible de créer des po
 Tout ceci avec du matériel DiY et du software low-tech, en favorisant au maximum le re-emploi et le reconditionnement de matériel existant, et en utilisant une preuve d'enjeu comme mécanisme de consensus solide, sécurisé et transparent de validation (cf explications plus bas).
 
 
-### Financement et pérénisation du projet et lutte contre la spéculation.
+### Financement, pérénisation du projet et lutte contre la spéculation.
 
 Imaginons un mécanisme qui puisse à la fois :
 
