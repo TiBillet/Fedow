@@ -11,7 +11,7 @@ Outil [FLOSS](https://fr.wikipedia.org/wiki/Free/Libre_Open_Source_Software) de 
 
 S'intégrant aux outils [TiBillet](https://tibillet.org) il permet l'utilisation d'une même carte NFC qui porte des adhésions associatives et un portefeuille dématérialisé dans différents lieux associatifs, coopératifs et/ou commerciaux.
 
-Enfin, Fedow intégre des principes de [monnaie fondantes](https://fr.wikipedia.org/wiki/Monnaie_fondante) dans une une chaine de block par preuve d'enjeux, transparente, non spéculative et non énergivore.
+Enfin, Fedow intégre des principes de [monnaie fondantes](https://fr.wikipedia.org/wiki/Monnaie_fondante) dans une une chaine de block par preuve d'enjeu, transparente, non spéculative et non énergivore.
 
 ## Manifeste pour l'appropriation d'une économie locale, sociale et solidaire.
 
@@ -91,7 +91,7 @@ Une idée a été retenue. Elle à le mérite de résoudre les trois problémati
 - Example : 1/3 pour le noeud (organisateur de festival, association...),  1/3 pour un fond commun de soutien aux projets associatifs et coopératifs, 1/3 pour la maintenance et le développement de l'outil.
 
 
-### Blockchain bas carbone et mécanisme de confiance : La preuve d'enjeux (PoS) : 
+### Blockchain bas carbone et mécanisme de confiance : La preuve d'enjeu (PoS) : 
 
 Ou comment répondre à la grande question : *Comment faire pour avoir confiance en un système bancaire décentralisé sur lequel repose de l'argent réel ?*
 
