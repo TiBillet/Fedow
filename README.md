@@ -89,7 +89,8 @@ par [Silvio Gesell](https://fr.wikipedia.org/wiki/Silvio_Gesell).
   partagé mis à disposition de l'association.
 - Je scanne ma carte et je peux la recharger en ligne de 100€ : j'achète de la monnaie fédérée.
 - Je souhaite reserver une place au festival organisé par une autre association qui utilise TiBillet/Fedow et j'achète
-  le billet, des boissons et de la nourriture avec la même carte : Le festival bénéficie d'un système de cashless et reçoit
+  le billet, des boissons et de la nourriture avec la même carte : Le festival bénéficie d'un système de cashless et
+  reçoit
   de la monnaie fédérée.
 - Le festival peut échanger cette monnaie fédérée contre des euros, ou s'en servir pour payer ses prestataires avec tout
   le bénéfice
@@ -102,6 +103,8 @@ par [Silvio Gesell](https://fr.wikipedia.org/wiki/Silvio_Gesell).
   réinjecter dans le développement du réseau.
 - La coopérative se réunit régulièrement pour faire le point sur la circulation des monnaies et choisir les projets dans
   lesquels réinvestir l'argent récupéré.
+- Proposition première : 1/3 pour le noeud (organisateur de festival, association...), 1/3 pour la maintenance et le
+  développement de l'outil, 1/3 pour un fond commun de soutien aux projets associatifs et coopératifs.
 
 ### Project built, financed and tested with the support of :
 
