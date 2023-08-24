@@ -65,7 +65,7 @@ Imaginons un mécanisme qui puisse à la fois :
 - Financer le développement du projet libre et coopératif (Problématique récurrente dans le milieu des logiciels  libres).
 - Lutter contre la spéculation et l'accumulation des capitaux pour une économie réelle et non financiarisée.
 
-Une idée a été retenue. Elle a le mérite de résoudre les trois problématiques soulevées et s'inspire fortement de la [monnaie fondante](https://fr.wikipedia.org/wiki/Monnaie_fondante) théorisé un économiste proche de Proudhon : [Silvio Gesell](https://fr.wikipedia.org/wiki/Silvio_Gesell).
+Une idée a été retenue. Elle a le mérite de résoudre les trois problématiques soulevées et s'inspire fortement de la [monnaie fondante](https://fr.wikipedia.org/wiki/Monnaie_fondante) théorisé par l'économiste [Silvio Gesell](https://fr.wikipedia.org/wiki/Silvio_Gesell).
 
 #### Concepts :
 
@@ -275,7 +275,7 @@ Sur les relations entre consommation, écologie et crypto :
 
 Sur les consensus de validation de blockchain :
 
+- https://academy.binance.com/fr/articles/proof-of-authority-explained?hide=stickyBar
 - https://github.com/P2Enjoy/proof-of-consensus
 - https://www.geeksforgeeks.org/proof-of-stake-pos-in-blockchain/?ref=lbp
 - https://www.geeksforgeeks.org/delegated-proof-of-stake/?ref=lbp
-- https://academy.binance.com/fr/articles/proof-of-authority-explained?hide=stickyBar
