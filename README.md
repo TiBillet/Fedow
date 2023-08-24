@@ -73,7 +73,7 @@ Une idée a été retenue. Elle a le mérite de résoudre les trois problématiq
 - Chaque utilisateur dispose d'un portefeuille numérique qui lui permet d'utiliser toutes les monnaies du réseau.
 - Chaque lieu de point de vente est un **nœud** du réseau et est considéré comme un point de change.
 - Les portefeuilles sont utilisables à vie et sans frais pour les utilisateurs ni pour les **nœuds**.
-- Un [demeurage](https://fr.wikipedia.org/wiki/Demeurage_(finance)) est appliqué sur les portefeuilles sous la condition suivante : Si la monnaie n'est pas utilisée sous un certain délais (un an ou plus?) elle fond. **Une partie est prélevée pour être réinjecté dans le réseau coopératif.**
+- Un [demeurage](https://fr.wikipedia.org/wiki/Demeurage_(finance)) est appliqué sur les portefeuilles sous la condition suivante : Si la monnaie n'est pas utilisée sous un certain délai (un an ou plus?) elle fond. **Une partie est prélevée pour être réinjecté dans le réseau coopératif.**
 
 Les principes du demeurage et de la monnaie fondante permettent de favoriser la circulation des capitaux. En intégrant ce mécanisme dans le code de **Fedow**, nous tentons d'inciter la création d'un écosystème redistributif, social et solidaire.
 
