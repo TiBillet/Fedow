@@ -24,6 +24,7 @@ coverage = "^7.2.7"
 python-dotenv = "^1.0.0"
 gunicorn = "^21.2.0"
 cryptography = "^41.0.3"
+channels = {extras = ["daphne"], version = "^4.0.0"}
 
 [build-system]
 requires = ["poetry-core"]

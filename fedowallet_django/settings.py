@@ -35,6 +35,8 @@ ALLOWED_HOSTS.append(os.environ.get('DOMAIN','https://fedow.betabillet.tech/'))
 # Application definition
 
 INSTALLED_APPS = [
+    "daphne",
+    "django.contrib.sites",
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -84,7 +86,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'fedowallet_django.wsgi.application'
-
+ASGI_APPLICATION = "fedowallet_django.asgi.application"
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
@@ -134,7 +136,7 @@ USE_I18N = True
 USE_TZ = True
 
 
-# Static files (CSS, JavaScript, Images)
+# Static filesSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 STATIC_ROOT = os.path.join(BASE_DIR, "www", "static")
 STATIC_URL = 'static/'

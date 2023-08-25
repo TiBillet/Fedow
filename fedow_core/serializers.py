@@ -2,7 +2,7 @@ from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_api_key.models import APIKey
 from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction
-from fedow_core.utils import get_client_ip
+from fedow_core.utils import get_request_ip
 import logging
 
 logger = logging.getLogger(__name__)
@@ -37,8 +37,8 @@ class ConnectPlaceCashless(serializers.Serializer):
 
     def validate_ip(self, value):
         request = self.context.get('request')
-        if value != get_client_ip(request):
-            logger.error(f"{timezone.localtime()} ERROR Place create Invalid IP {get_client_ip(request)}")
+        if value != get_request_ip(request):
+            logger.error(f"{timezone.localtime()} ERROR Place create Invalid IP {get_request_ip(request)}")
             raise serializers.ValidationError("Invalid IP")
         return value
 
@@ -51,6 +51,7 @@ class ConnectPlaceCashless(serializers.Serializer):
             logger.error(f"{timezone.localtime()} ERROR Place create Unauthorized {request.data}")
             raise serializers.ValidationError("Unauthorized")
 
+        import ipdb; ipdb.set_trace()
         return attrs
 
 
@@ -90,7 +91,7 @@ class WalletCreateSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         # Get ip
-        ip = get_client_ip(self.context.get('request'))
+        ip = get_request_ip(self.context.get('request'))
 
         # Link card to user
         self.card.user = self.user
