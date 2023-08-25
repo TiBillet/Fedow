@@ -42,27 +42,21 @@ class Command(BaseCommand):
         self.stdout.write(f"", ending='\n')
         self.stdout.write(f"NAME : {asset_name} - CURRENCY CODE : {currency_code}", ending='\n')
 
-        try :
+        try:
             Asset.objects.get(name=asset_name)
             raise CommandError('Asset name already exist')
         except Asset.DoesNotExist:
             pass
 
-        try :
+        try:
             Asset.objects.get(currency_code=currency_code)
             raise CommandError('Asset currency_code already exist')
         except Asset.DoesNotExist:
             pass
 
-        primary_key, key = APIKey.objects.create_key(name=f"{asset_name}")
         Asset.objects.create(
             name=asset_name,
             currency_code=currency_code,
-            key=primary_key,
         )
+
         self.stdout.write(self.style.SUCCESS(f"Asset succesfully created."), ending='\n')
-        self.stdout.write(self.style.ERROR(f"!!! Don't lose it and store it in a safe place. It is hashed on the server side and can never be revealed again."), ending='\n')
-        self.stdout.write(f"-------", ending='\n')
-        self.stdout.write(f"{key}", ending='\n')
-        self.stdout.write(f"-------", ending='\n')
-        self.stdout.write(f"", ending='\n')

@@ -9,6 +9,8 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.exceptions import InvalidSignature
 import logging
 
+from django.conf import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -41,6 +43,37 @@ def get_request_ip(request):
         ip = request.META.get('REMOTE_ADDR')
 
     return ip
+
+def rsa_generator():
+    # Génération d'une paire de clés RSA
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048
+    )
+
+    # Extraction de la clé publique associée à partir de la clé privée
+    public_key = private_key.public_key()
+
+    # Sérialisation des clés au format PEM
+    private_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.BestAvailableEncryption(settings.SECRET_KEY.encode('utf-8'))
+    )
+
+    public_pem = public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+    return public_pem.decode('utf-8'), private_pem.decode('utf-8')
+
+
+def get_private_key(private_pem):
+    private_key = serialization.load_pem_private_key(
+        private_pem.encode('utf-8'),
+        password=settings.SECRET_KEY.encode('utf-8'),
+    )
+    return private_key
 
 
 def sign_message(message: str, private_key):

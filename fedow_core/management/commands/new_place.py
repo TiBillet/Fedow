@@ -6,7 +6,8 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils.text import slugify
 from rest_framework_api_key.models import APIKey
 
-from fedow_core.models import Asset, Place, Wallet, Configuration
+from fedow_core.models import Asset, Place, Wallet, Configuration, get_or_create_user
+from fedow_core.utils import rsa_generator
 
 """
 Pense bête :
@@ -35,7 +36,8 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         # Positional arguments
-        parser.add_argument('name', type=str)
+        parser.add_argument('--name', type=str)
+        parser.add_argument('--email', type=str)
 
     def handle(self, *args, **options):
         configuration = Configuration.get_solo()
@@ -45,6 +47,9 @@ class Command(BaseCommand):
             raise CommandError('Please set the domain name in the admin panel')
 
         place_name = options['name']
+        email = options['email']
+        user, created = get_or_create_user(email)
+
         self.stdout.write(f"", ending='\n')
 
         try:
@@ -59,16 +64,20 @@ class Command(BaseCommand):
             ending='\n')
 
         api_key, key = APIKey.objects.create_key(name=f"temp_{place_name}")
+        pub, priv = rsa_generator()
         # Create wallet
         wallet = Wallet.objects.create(
-            key=api_key,
+            private_rsa_key=priv,
+            public_rsa_key=pub,
             name=place_name,
         )
 
         place = Place.objects.create(
             name=place_name,
             wallet=wallet,
+
         )
+        place.admin.add(user)
 
         json_key_to_cashless = {
             "domain": configuration.domain,
@@ -77,6 +86,7 @@ class Command(BaseCommand):
         }
         encoded_data = base64.b64encode(json.dumps(json_key_to_cashless).encode('utf-8')).decode('utf-8')
 
+        # TODO: Envoyer la clé par email
         self.stdout.write(self.style.SUCCESS(
             f"New place succesfully created. Please enter this string in your TiBillet admin panel."), ending='\n')
         self.stdout.write(f"", ending='\n')

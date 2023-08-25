@@ -1,5 +1,6 @@
 import stripe
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
 from rest_framework_api_key.models import APIKey
@@ -21,14 +22,14 @@ class Asset(models.Model):
     # One by instance.
     federated_primary = models.BooleanField(default=False, editable=False)
 
-    key = models.OneToOneField(APIKey,
-                               on_delete=models.CASCADE,
-                               related_name="asset_key"
-                               )
+    # key = models.OneToOneField(APIKey,
+    #                            on_delete=models.CASCADE,
+    #                            related_name="asset_key"
+    #                            )
 
     def save(self, force_insert=False, force_update=False, using=None, update_fields=None):
         if self.federated_primary:
-            try :
+            try:
                 primary = Asset.objects.get(federated_primary=True)
                 if primary != self:
                     raise Exception("Federated primary already exist")
@@ -45,11 +46,8 @@ class Wallet(models.Model):
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
     name = models.CharField(max_length=100, blank=True, null=True)
 
-    key = models.OneToOneField(APIKey,
-                               on_delete=models.CASCADE,
-                               blank=True, null=True,
-                               related_name="wallet_key"
-                               )
+    private_rsa_key = models.CharField(max_length=2048, editable=False)
+    public_rsa_key = models.CharField(max_length=512, editable=False)
 
     ip = models.GenericIPAddressField(verbose_name="Ip source", default='0.0.0.0')
 
@@ -84,7 +82,6 @@ class CheckoutStripe(models.Model):
     )
     status = models.CharField(max_length=1, choices=STATUT_CHOICES, default=NON, verbose_name="Statut de la commande")
 
-
     def is_valid(self):
         if self.status == self.VALID:
             # Déja validé, on renvoie None
@@ -107,7 +104,8 @@ class Transaction(models.Model):
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
     ip = models.GenericIPAddressField(verbose_name="Ip source")
 
-    checkoupt_stripe = models.ForeignKey(CheckoutStripe, on_delete=models.PROTECT, related_name='checkout_stripe', blank=True, null=True)
+    checkoupt_stripe = models.ForeignKey(CheckoutStripe, on_delete=models.PROTECT, related_name='checkout_stripe',
+                                         blank=True, null=True)
     primary_card_uuid = models.UUIDField(default=uuid4, editable=False, blank=True, null=True)
     card_uuid = models.UUIDField(default=uuid4, editable=False, blank=True, null=True)
 
@@ -131,6 +129,7 @@ class Transaction(models.Model):
     class Meta:
         ordering = ['-date']
 
+
 @receiver(pre_save, sender=Transaction)
 def where_we_do_the_thing(sender, instance, **kwargs):
     token_receiver, created_r = Token.objects.get_or_create(wallet=instance.receiver, asset=instance.asset)
@@ -139,7 +138,7 @@ def where_we_do_the_thing(sender, instance, **kwargs):
         assert instance.sender == instance.receiver
         assert instance.asset.federated_primary == True
         token_receiver.value += instance.amount
-    else :
+    else:
         token_sender, created_s = Token.objects.get_or_create(wallet=instance.sender, asset=instance.asset)
         token_sender.value -= instance.amount
         token_sender.save()
@@ -154,8 +153,8 @@ class Configuration(SingletonModel):
     # Wallet used to create money
     primary_wallet = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='primary')
 
-    def primary_key(self):
-        return self.primary_wallet.key
+    # def primary_key(self):
+    #     return self.primary_wallet.key
 
     def get_stripe_api(self):
         if settings.STRIPE_TEST:
@@ -176,6 +175,12 @@ class FedowUser(AbstractUser):
 
     wallet = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='user', blank=True, null=True)
 
+    key = models.OneToOneField(APIKey,
+                               on_delete=models.CASCADE,
+                               blank=True, null=True,
+                               related_name="wallet_key"
+                               )
+
 
 class Place(models.Model):
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
@@ -191,7 +196,7 @@ class Place(models.Model):
     cashless_server_url = models.URLField(blank=True, null=True, editable=False)
     cashless_server_key = models.CharField(max_length=100, blank=True, null=True, editable=False)
 
-    admin = models.ManyToManyField(FedowUser, related_name='places')
+    admin = models.ManyToManyField(FedowUser, related_name='admin_places')
 
     logo = JPEGField(upload_to='images/',
                      validators=[
@@ -240,3 +245,18 @@ class Card(models.Model):
     number = models.CharField(max_length=8, editable=False, db_index=True)
     user = models.ForeignKey(FedowUser, on_delete=models.PROTECT, related_name='cards', blank=True, null=True)
     origin = models.ForeignKey(Origin, on_delete=models.PROTECT, related_name='cards', blank=True, null=True)
+
+
+def get_or_create_user(email):
+    User = get_user_model()
+    try:
+        user = User.objects.get(email=email.lower())
+        created = False
+        return user, created
+    except User.DoesNotExist:
+        user = User.objects.create(
+            email=email.lower(),
+            username=email.lower()
+        )
+        created = True
+        return user, created

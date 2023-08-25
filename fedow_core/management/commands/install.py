@@ -1,10 +1,22 @@
 import os
 
+from django.conf import settings
 from django.core.management import call_command
 from rest_framework_api_key.models import APIKey
 
 from fedow_core.models import Configuration, Wallet, Asset
 from django.core.management.base import BaseCommand, CommandError
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.exceptions import InvalidSignature
+import logging
+
+from fedow_core.utils import rsa_generator
+
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
@@ -23,14 +35,15 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f'Configuration and master wallet already exists : {config.name}'),
                               ending='\n')
         except Exception as e:
+            # Génération d'une paire de clés RSA
+            public_pem, private_pem = rsa_generator()
 
             instance_name = os.environ.get('DOMAIN', 'fedow.tibillet.localhost')
-
-            primary_key, key = APIKey.objects.create_key(name=instance_name)
             primary_wallet = Wallet.objects.create(
                 name="Primary",
                 ip="127.0.0.1",
-                key=primary_key,
+                private_rsa_key = private_pem,
+                public_rsa_key = public_pem,
             )
 
             config = Configuration(
