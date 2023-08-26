@@ -174,7 +174,7 @@ class FedowUser(AbstractUser):
     wallet = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='user', blank=True, null=True)
 
     key = models.OneToOneField(APIKey,
-                               on_delete=models.CASCADE,
+                               on_delete=models.SET_NULL,
                                blank=True, null=True,
                                related_name="fedow_user"
                                )

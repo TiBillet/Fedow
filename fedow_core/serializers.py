@@ -42,13 +42,13 @@ class HandshakeValidator(serializers.Serializer):
 
     def validate_cashless_rsa_pub_key(self, value) -> rsa.RSAPublicKey:
         # Valide uniquement le format avec la biblothèque cryptography
-        pub_key = validate_format_rsa_pub_key(value)
-        if not pub_key:
+        self.pub_key = validate_format_rsa_pub_key(value)
+        if not self.pub_key:
             logger.error(f"{timezone.localtime()} Public rsa key invalid")
             raise serializers.ValidationError("Public rsa key invalid")
 
         # Public key, but not paired with signature (see validate)
-        return pub_key
+        return value
 
 
     def validate_cashless_ip(self, value):
@@ -60,7 +60,7 @@ class HandshakeValidator(serializers.Serializer):
 
     def validate(self, attrs: OrderedDict) -> OrderedDict:
         request = self.context.get('request')
-        public_key = attrs.get('cashless_rsa_pub_key')
+        public_key = self.pub_key
         signed_message = dict_to_b64(request.data.dict())
         signature = request.META.get('HTTP_SIGNATURE')
         if not verify_signature(public_key, signed_message, signature):

@@ -13,7 +13,8 @@ from rest_framework.test import APIClient
 
 from fedow_core.models import Configuration, Card, Place, FedowUser
 from fedow_core.serializers import WalletCreateSerializer
-from fedow_core.utils import utf8_b64_to_dict, rsa_generator, dict_to_b64, sign_message, get_private_key
+from fedow_core.utils import utf8_b64_to_dict, rsa_generator, dict_to_b64, sign_message, get_private_key, b64_to_dict, \
+    validate_format_rsa_pub_key, fernet_decrypt
 from fedow_core.views import HelloWorld
 
 
@@ -145,29 +146,29 @@ class ModelsTest(TestCase):
                                     },
                                     format='json')
 
-        import ipdb; ipdb.set_trace()
-        place.refresh_from_db()
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
 
-        """
         # Decodage du dictionnaire encodé en b64 qui contient la clé du wallet du lieu nouvellement créé
         # et le lien url onboard stripe
-        decoded_data = json.loads(base64.b64decode(response.content).decode('utf-8'))
+        place.refresh_from_db()
+        decoded_data =  b64_to_dict(response.content)
         self.assertIsInstance(decoded_data, dict)
-
         # Vérification que la clé est bien celui du wallet du lieu
-        key = decoded_data.get('key')
-        self.assertTrue(APIKey.objects.is_valid(key))
-        api_key = APIKey.objects.get_from_key(key)
-        self.assertEqual(api_key.name, f'{self.place.name}')
-        self.assertEqual(self.place.wallet.key, api_key)
+        admin_key = APIKey.objects.get_from_key(decoded_data.get('admin_key'))
+        self.assertIn(admin_key.fedow_user, place.admins.all())
 
         # Check si tout a bien été entré en base de donnée
-        self.assertEqual(self.place.cashless_server_url, data.get('url'))
-        self.assertEqual(self.place.cashless_server_ip, data.get('ip'))
-        self.assertEqual(self.place.cashless_server_key, data.get('apikey'))
-        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
-        
-        """
+        self.assertEqual(place.cashless_server_url, data.get('cashless_url'))
+        self.assertEqual(place.cashless_server_ip, data.get('cashless_ip'))
+
+        self.assertEqual(
+            validate_format_rsa_pub_key(place.cashless_rsa_pub_key),
+            validate_format_rsa_pub_key(data.get('cashless_rsa_pub_key'))
+        )
+
+        self.assertEqual(fernet_decrypt(place.cashless_admin_apikey), data.get('cashless_admin_apikey'))
+
+
     def xtest_card_create(self):
         # Create card
         self.card = Card.objects.create(

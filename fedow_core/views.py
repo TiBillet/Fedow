@@ -107,15 +107,13 @@ class PlaceAPI(viewsets.ViewSet):
             validated_data = validator.validated_data
 
             place: Place = validated_data.get('fedow_place_uuid')
-
-
-            place.cashless_server_ip = validated_data.get('cashless_server_ip')
-            place.cashless_server_url = validated_data.get('cashless_server_url')
+            place.cashless_server_ip = validated_data.get('cashless_ip')
+            place.cashless_server_url = validated_data.get('cashless_url')
             place.cashless_rsa_pub_key = validated_data.get('cashless_rsa_pub_key')
             place.cashless_admin_apikey = fernet_encrypt(validated_data.get('cashless_admin_apikey'))
 
-
             # Create the definitive key for the admin user
+            admin_user.key.delete()
             api_key, key = APIKey.objects.create_key(name=f"{admin_user.email}:{place.name}")
             admin_user.key = api_key
             admin_user.save()
@@ -125,12 +123,11 @@ class PlaceAPI(viewsets.ViewSet):
             url_onboard = create_account_link_for_onboard(place)
             data = {
                 "url_onboard": url_onboard,
-                "key": key
+                "admin_key": key,
+                "wallet_rsa_public_key": place.wallet.public_rsa_key,
             }
 
             data_encoded = dict_to_b64_utf8(data)
-            import ipdb; ipdb.set_trace()
-
             return Response(data_encoded, status=status.HTTP_202_ACCEPTED)
         return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)
 

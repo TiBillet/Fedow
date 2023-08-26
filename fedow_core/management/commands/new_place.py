@@ -84,6 +84,7 @@ class Command(BaseCommand):
 
         )
         place.admins.add(user)
+        place.save()
 
         json_key_to_cashless = {
             "domain": configuration.domain,
