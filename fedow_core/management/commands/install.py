@@ -36,7 +36,7 @@ class Command(BaseCommand):
                               ending='\n')
         except Exception as e:
             # Génération d'une paire de clés RSA
-            public_pem, private_pem = rsa_generator()
+            private_pem, public_pem = rsa_generator()
 
             instance_name = os.environ.get('DOMAIN', 'fedow.tibillet.localhost')
             primary_wallet = Wallet.objects.create(

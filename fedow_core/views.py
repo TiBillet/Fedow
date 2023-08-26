@@ -2,6 +2,8 @@ import base64
 import json
 
 import stripe
+from cryptography.fernet import Fernet
+from django.conf import settings
 from django.core.validators import URLValidator
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -12,15 +14,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_api_key.models import APIKey
 from rest_framework_api_key.permissions import HasAPIKey
-
 from fedow_core.models import Transaction, Place, Configuration, Asset, CheckoutStripe, Token, Wallet
-from fedow_core.serializers import TransactionSerializer, PlaceSerializer, WalletCreateSerializer, ConnectPlaceCashless
+from fedow_core.serializers import TransactionSerializer, PlaceSerializer, WalletCreateSerializer, HandshakeValidator
 from rest_framework.pagination import PageNumberPagination
 
+from fedow_core.utils import get_request_ip, fernet_encrypt, fernet_decrypt, dict_to_b64_utf8
+
 import logging
-
-from fedow_core.utils import b64decode, get_request_ip
-
 logger = logging.getLogger(__name__)
 
 
@@ -98,32 +98,38 @@ class PlaceAPI(viewsets.ViewSet):
         pass
 
     def create(self, request):
+        # HANDSHAKE with cashless server
         # Request only work if came from Cashless server
         # with the right API key gived at the manual creation of new place
-        validator = ConnectPlaceCashless(data=request.data, context={'request': request})
+        validator = HandshakeValidator(data=request.data, context={'request': request})
         if validator.is_valid():
-            place: Place = validator.validated_data['uuid']
+            admin_user = validator.data.get('user')
+            validated_data = validator.validated_data
 
-            # on renseigne les infos du serveur cashless
-            place.cashless_server_ip = validator.validated_data['ip']
-            place.cashless_server_url = validator.validated_data['url']
-            place.cashless_server_key = validator.validated_data['apikey']
+            place: Place = validated_data.get('fedow_place_uuid')
 
-            # Create the definitive key for the cashless server
-            api_key, key = APIKey.objects.create_key(name=place.name)
-            place.wallet.key = api_key
-            place.wallet.save()
+
+            place.cashless_server_ip = validated_data.get('cashless_server_ip')
+            place.cashless_server_url = validated_data.get('cashless_server_url')
+            place.cashless_rsa_pub_key = validated_data.get('cashless_rsa_pub_key')
+            place.cashless_admin_apikey = fernet_encrypt(validated_data.get('cashless_admin_apikey'))
+
+
+            # Create the definitive key for the admin user
+            api_key, key = APIKey.objects.create_key(name=f"{admin_user.email}:{place.name}")
+            admin_user.key = api_key
+            admin_user.save()
             place.save()
 
             # Creation du lien Onboard Stripe
             url_onboard = create_account_link_for_onboard(place)
-
             data = {
                 "url_onboard": url_onboard,
                 "key": key
             }
 
-            data_encoded = base64.b64encode(json.dumps(data).encode('utf-8')).decode('utf-8')
+            data_encoded = dict_to_b64_utf8(data)
+            import ipdb; ipdb.set_trace()
 
             return Response(data_encoded, status=status.HTTP_202_ACCEPTED)
         return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)

@@ -51,8 +51,6 @@ class Wallet(models.Model):
 
     ip = models.GenericIPAddressField(verbose_name="Ip source", default='0.0.0.0')
 
-    # user = RelatedName FedowUser
-
 
 class Token(models.Model):
     # One token per user per currency
@@ -178,7 +176,7 @@ class FedowUser(AbstractUser):
     key = models.OneToOneField(APIKey,
                                on_delete=models.CASCADE,
                                blank=True, null=True,
-                               related_name="wallet_key"
+                               related_name="fedow_user"
                                )
 
 
@@ -194,9 +192,12 @@ class Place(models.Model):
 
     cashless_server_ip = models.GenericIPAddressField(blank=True, null=True, editable=False)
     cashless_server_url = models.URLField(blank=True, null=True, editable=False)
-    cashless_server_key = models.CharField(max_length=100, blank=True, null=True, editable=False)
+    cashless_rsa_pub_key = models.CharField(max_length=512, blank=True, null=True, editable=False,
+                                            help_text="Public rsa Key of cashless server for signature.")
+    cashless_admin_apikey = models.CharField(max_length=256, blank=True, null=True, editable=False,
+                                             help_text="Encrypted API key of cashless server admin.")
 
-    admin = models.ManyToManyField(FedowUser, related_name='admin_places')
+    admins = models.ManyToManyField(FedowUser, related_name='admin_places')
 
     logo = JPEGField(upload_to='images/',
                      validators=[

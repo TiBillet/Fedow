@@ -7,7 +7,7 @@ from django.utils.text import slugify
 from rest_framework_api_key.models import APIKey
 
 from fedow_core.models import Asset, Place, Wallet, Configuration, get_or_create_user
-from fedow_core.utils import rsa_generator
+from fedow_core.utils import rsa_generator, dict_to_b64_utf8
 
 """
 Pense bête :
@@ -32,7 +32,7 @@ def add_arguments(self, parser):
 
 
 class Command(BaseCommand):
-    help = 'Creation of a new place. First we test the name. Return a key to enter inside the TiBillet Cashless'
+    help = 'Creation of a new place. Need --name and --email'
 
     def add_arguments(self, parser):
         # Positional arguments
@@ -48,7 +48,14 @@ class Command(BaseCommand):
 
         place_name = options['name']
         email = options['email']
-        user, created = get_or_create_user(email)
+
+        user, user_created = get_or_create_user(email)
+        api_key, key = APIKey.objects.create_key(name=f"temp_{place_name}")
+        user.key = api_key
+        user.save()
+
+        if not user_created :
+            raise CommandError('User name already exist')
 
         self.stdout.write(f"", ending='\n')
 
@@ -63,8 +70,7 @@ class Command(BaseCommand):
             f"To finalise the creation, please enter this key in your cashless interface",
             ending='\n')
 
-        api_key, key = APIKey.objects.create_key(name=f"temp_{place_name}")
-        pub, priv = rsa_generator()
+        priv, pub = rsa_generator()
         # Create wallet
         wallet = Wallet.objects.create(
             private_rsa_key=priv,
@@ -77,17 +83,17 @@ class Command(BaseCommand):
             wallet=wallet,
 
         )
-        place.admin.add(user)
+        place.admins.add(user)
 
         json_key_to_cashless = {
             "domain": configuration.domain,
             "uuid": f"{place.uuid}",
             "temp_key": key,
         }
-        encoded_data = base64.b64encode(json.dumps(json_key_to_cashless).encode('utf-8')).decode('utf-8')
+        utf8_encoded_data = dict_to_b64_utf8(json_key_to_cashless)
 
         # TODO: Envoyer la clé par email
         self.stdout.write(self.style.SUCCESS(
             f"New place succesfully created. Please enter this string in your TiBillet admin panel."), ending='\n')
         self.stdout.write(f"", ending='\n')
-        self.stdout.write(f"{encoded_data}", ending='\n')
+        self.stdout.write(f"{utf8_encoded_data}", ending='\n')

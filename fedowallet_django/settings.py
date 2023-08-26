@@ -12,25 +12,29 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import os
 from dotenv import load_dotenv
 from pathlib import Path
+
 load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get('SECRET_KEY')
-CRYPTOGRAPHY_KEY = os.environ.get('CRYPTOGRAPHY_KEY')
-CRYPTOGRAPHY_SALT = os.environ.get('CRYPTOGRAPHY_SALT')
+if len(SECRET_KEY) != 50:
+    raise ValueError('SECRET_KEY must be 50 characters long. run "./manage.py generate_secret_key"')
+
+FERNET_KEY = os.environ.get('FERNET_KEY')
+if len(FERNET_KEY) != 44:
+    raise ValueError('FERNET_KEY must be 32bit Fernet key. run "./manage.py generate_fernet"')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 ALLOWED_HOSTS = []
 if DEBUG:
     ALLOWED_HOSTS.append('*')
-ALLOWED_HOSTS.append(os.environ.get('DOMAIN','https://fedow.betabillet.tech/'))
+ALLOWED_HOSTS.append(os.environ.get('DOMAIN', 'https://fedow.tibillet.ovh/'))
 
 # Application definition
 
@@ -98,7 +102,6 @@ DATABASES = {
     }
 }
 
-
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
 
@@ -123,7 +126,6 @@ REST_FRAMEWORK = {
     ]
 }
 
-
 # Internationalization
 # https://docs.djangoproject.com/en/4.2/topics/i18n/
 
@@ -134,7 +136,6 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 
 USE_TZ = True
-
 
 # Static filesSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
