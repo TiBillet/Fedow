@@ -12,11 +12,11 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from django.conf import settings
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
-
-def dict_to_b64(dico: dict ) -> bytes:
+def dict_to_b64(dico: dict) -> bytes:
     dict_to_json = json.dumps(dico)
     json_to_bytes = dict_to_json.encode('utf-8')
     bytes_to_b64 = base64.urlsafe_b64encode(json_to_bytes)
@@ -36,7 +36,6 @@ def b64_to_dict(b64: bytes) -> dict:
 
 def utf8_b64_to_dict(b64_string: str) -> dict:
     return b64_to_dict(b64_string.encode('utf-8'))
-
 
 
 def get_request_ip(request) -> str:
@@ -64,15 +63,18 @@ def kdf_generator() -> PBKDF2HMAC:
     )
     return kdf
 
+
 def fernet_encrypt(message: str) -> str:
     message = message.encode('utf-8')
     encryptor = Fernet(settings.FERNET_KEY)
     return encryptor.encrypt(message).decode('utf-8')
 
+
 def fernet_decrypt(message: str) -> str:
     message = message.encode('utf-8')
     decryptor = Fernet(settings.FERNET_KEY)
     return decryptor.decrypt(message).decode('utf-8')
+
 
 ### RSA CRYPTOGRAPHY ##
 

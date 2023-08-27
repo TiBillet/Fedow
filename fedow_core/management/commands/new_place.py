@@ -6,7 +6,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils.text import slugify
 from rest_framework_api_key.models import APIKey
 
-from fedow_core.models import Asset, Place, Wallet, Configuration, get_or_create_user
+from fedow_core.models import Asset, Place, Wallet, Configuration, get_or_create_user, OrganizationAPIKey
 from fedow_core.utils import rsa_generator, dict_to_b64_utf8
 
 """
@@ -50,9 +50,6 @@ class Command(BaseCommand):
         email = options['email']
 
         user, user_created = get_or_create_user(email)
-        api_key, key = APIKey.objects.create_key(name=f"temp_{place_name}")
-        user.key = api_key
-        user.save()
 
         if not user_created :
             raise CommandError('User name already exist')
@@ -85,6 +82,12 @@ class Command(BaseCommand):
         )
         place.admins.add(user)
         place.save()
+
+        api_key, key = OrganizationAPIKey.objects.create_key(
+            name=f"temp_{place_name}:{user.email}",
+            place=place,
+            user=user,
+        )
 
         json_key_to_cashless = {
             "domain": configuration.domain,

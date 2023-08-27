@@ -14,9 +14,9 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_api_key.models import APIKey
-from rest_framework_api_key.permissions import HasAPIKey
-from fedow_core.models import Transaction, Place, Configuration, Asset, CheckoutStripe, Token, Wallet, FedowUser
-from fedow_core.permissions import UserApiWalletSigned
+from fedow_core.models import Transaction, Place, Configuration, Asset, CheckoutStripe, Token, Wallet, FedowUser, \
+    OrganizationAPIKey
+from fedow_core.permissions import HasKeyAndSignedData, HasAPIKey
 from fedow_core.serializers import TransactionSerializer, PlaceSerializer, WalletCreateSerializer, HandshakeValidator
 from rest_framework.pagination import PageNumberPagination
 
@@ -27,6 +27,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def get_api_place_user(request) -> tuple:
+    key = request.META["HTTP_AUTHORIZATION"].split()[1]
+    api_key = OrganizationAPIKey.objects.get_from_key(key)
+    return api_key, api_key.place, api_key.user
 
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 100
@@ -45,7 +49,7 @@ class TestApiKey(viewsets.ViewSet):
     def get_permissions(self):
         permission_classes = [HasAPIKey]
         if self.action in ['create']:
-            permission_classes = [UserApiWalletSigned]
+            permission_classes = [HasKeyAndSignedData]
         return [permission() for permission in permission_classes]
 
 class HelloWorld(viewsets.ViewSet):
@@ -109,7 +113,6 @@ class PlaceAPI(viewsets.ViewSet):
         # with the right API key gived at the manual creation of new place
         validator = HandshakeValidator(data=request.data, context={'request': request})
         if validator.is_valid():
-            admin_user = validator.data.get('user')
             validated_data = validator.validated_data
 
             place: Place = validated_data.get('fedow_place_uuid')
@@ -117,13 +120,18 @@ class PlaceAPI(viewsets.ViewSet):
             place.cashless_server_url = validated_data.get('cashless_url')
             place.cashless_rsa_pub_key = validated_data.get('cashless_rsa_pub_key')
             place.cashless_admin_apikey = fernet_encrypt(validated_data.get('cashless_admin_apikey'))
+            place.save()
 
             # Create the definitive key for the admin user
-            admin_user.key.delete()
-            api_key, key = APIKey.objects.create_key(name=f"{admin_user.email}:{place.name}")
-            admin_user.key = api_key
-            admin_user.save()
-            place.save()
+            api_key, place_fk, user = get_api_place_user(request)
+            api_key.delete()
+            assert (place_fk == place, "Place not match with the API key")
+
+            api_key, key = OrganizationAPIKey.objects.create_key(
+                name=f"{place.name}:{user.email}",
+                place=place,
+                user=user,
+            )
 
             # Creation du lien Onboard Stripe
             url_onboard = create_account_link_for_onboard(place)

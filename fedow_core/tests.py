@@ -1,5 +1,3 @@
-import base64
-import json
 from datetime import datetime
 from io import StringIO
 from uuid import uuid4
@@ -10,10 +8,8 @@ from django.test import TestCase
 from rest_framework import viewsets, status
 from rest_framework.permissions import AllowAny
 from rest_framework_api_key.models import APIKey
-from rest_framework.test import APIClient
 
-from fedow_core.models import Configuration, Card, Place, FedowUser, Wallet
-from fedow_core.serializers import WalletCreateSerializer
+from fedow_core.models import Card, Place, FedowUser, OrganizationAPIKey
 from fedow_core.utils import utf8_b64_to_dict, rsa_generator, dict_to_b64, sign_message, get_private_key, b64_to_dict, \
     validate_format_rsa_pub_key, fernet_decrypt, verify_signature
 from fedow_core.views import HelloWorld
@@ -51,14 +47,13 @@ class APITestHelloWorld(TestCase):
         response = self.client.get('/helloworld_apikey/')
         self.assertEqual(response.status_code, 403)
 
-        # Avec une clé api
+        # Avec une fausse clé api
         response = self.client.get('/helloworld_apikey/',
                                    headers={'Authorization': f'Api-Key {self.key}'}
                                    )
 
         logger.warning(f"durée requete avec APIKey : {datetime.now() - start}")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data, {'message': 'Hello world ApiKey!'})
+        self.assertEqual(response.status_code, 403)
 
     def test_api_and_signed_message(self):
         out = StringIO()
@@ -69,10 +64,12 @@ class APITestHelloWorld(TestCase):
 
         decoded_data = utf8_b64_to_dict(out.getvalue().split('\n')[-2])
         key = decoded_data.get('temp_key')
+        api_key = OrganizationAPIKey.objects.get_from_key(key)
         place = Place.objects.get(pk=decoded_data.get('uuid'))
         wallet = place.wallet
         user = get_user_model().objects.get(email='admin@admin.admin')
-        self.assertEqual(user.key, APIKey.objects.get_from_key(key))
+        self.assertEqual(user, api_key.user)
+        self.assertEqual(place, api_key.place)
 
         start = datetime.now()
 
@@ -167,15 +164,7 @@ class ModelsTest(TestCase):
         decoded_data = utf8_b64_to_dict(self.last_line)
         self.place_uuid = decoded_data.get('uuid')
 
-        # Données pour simuler un cashless.
-        self.cashless_rsa_key, pub_rsa_key = rsa_generator()
-        cashless_admin_api_key, cashless_admin_key = APIKey.objects.create_key(name="cashless_admin")
-        self.data_cashless = {
-            'cashless_ip': '127.0.0.1',
-            'cashless_url': 'https://cashless.tibillet.localhost',
-            'cashless_rsa_pub_key': pub_rsa_key,
-            'cashless_admin_apikey': cashless_admin_key,
-        }
+
 
     def test_place_and_admin_created_(self):
         User: FedowUser = get_user_model()
@@ -191,22 +180,31 @@ class ModelsTest(TestCase):
         self.assertIn(place, admin.admin_places.all())
         self.assertIn(admin, place.admins.all())
 
-        api_key_from_decoded_data = APIKey.objects.get_from_key(decoded_data.get('temp_key'))
-        self.assertEqual(api_key_from_decoded_data, admin.key)
-        self.assertIn('temp_', admin.key.name)
+        api_key_from_decoded_data = OrganizationAPIKey.objects.get_from_key(decoded_data.get('temp_key'))
+        self.assertEqual(api_key_from_decoded_data.user, admin)
+        self.assertIn('temp_', api_key_from_decoded_data.name)
 
-    def xtest_integryty_validator(self):
-        # TODO: vérifier l'intégrité du code global et lancer les tests avant le gunicorn en prod
-        pass
 
     def test_simulate_cashless_handshake(self):
-        # Simulation de l'objet handshake créé par le cashless
-        place = Place.objects.get(pk=self.place_uuid)
-        data = self.data_cashless.copy()
-        data['fedow_place_uuid'] = f'{place.uuid}'
-
-        private_key = get_private_key(self.cashless_rsa_key)
-        signature: bytes = sign_message(message=dict_to_b64(data), private_key=private_key)
+        # Données pour simuler un cashless.
+        cashless_private_rsa_key, cashless_pub_rsa_key = rsa_generator()
+        # Simulation d'une clé générée par le serveur cashless
+        cashless_admin_api_key, cashless_admin_key = APIKey.objects.create_key(name="cashless_admin")
+        data = {
+            'cashless_ip': '127.0.0.1',
+            'cashless_url': 'https://cashless.tibillet.localhost',
+            'cashless_rsa_pub_key': cashless_pub_rsa_key,
+            'cashless_admin_apikey': cashless_admin_key,
+        }
+        # Ajout de l'uuid place et de la clé API "temp" récupérée dans la string
+        # encodée par la création manuelle de new_place
+        decoded_data = utf8_b64_to_dict(self.last_line)
+        temp_key = decoded_data.get('temp_key')
+        data['fedow_place_uuid'] = decoded_data.get('uuid')
+        place = Place.objects.get(pk=data['fedow_place_uuid'])
+        self.assertIsInstance(place, Place)
+        # Le serveur cashless signe ses requetes avec sa clé privée :
+        signature: bytes = sign_message(message=dict_to_b64(data), private_key=get_private_key(cashless_private_rsa_key))
 
         # Test with bad key
         response = self.client.post('/place/', data,
@@ -215,7 +213,7 @@ class ModelsTest(TestCase):
                                         'Signature': signature,
                                     }, format='json')
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
         # Place exist mais pas encore eu de handshake
         self.assertIsNone(place.cashless_server_url)
@@ -224,11 +222,9 @@ class ModelsTest(TestCase):
         self.assertIsNone(place.cashless_admin_apikey)
 
         # Test with good keycashless_server_ip
-        decoded_data = utf8_b64_to_dict(self.last_line)
-        admin_temp_key = decoded_data.get('temp_key')
         response = self.client.post('/place/', data,
                                     headers={
-                                        'Authorization': f'Api-Key {admin_temp_key}',
+                                        'Authorization': f'Api-Key {temp_key}',
                                         'Signature': signature,
                                     },
                                     format='json')
@@ -241,8 +237,8 @@ class ModelsTest(TestCase):
         decoded_data = b64_to_dict(response.content)
         self.assertIsInstance(decoded_data, dict)
         # Vérification que la clé est bien celui du wallet du lieu
-        admin_key = APIKey.objects.get_from_key(decoded_data.get('admin_key'))
-        self.assertIn(admin_key.fedow_user, place.admins.all())
+        admin_key = OrganizationAPIKey.objects.get_from_key(decoded_data.get('admin_key'))
+        self.assertIn(admin_key.user, place.admins.all())
 
         # Check si tout a bien été entré en base de donnée
         self.assertEqual(place.cashless_server_url, data.get('cashless_url'))

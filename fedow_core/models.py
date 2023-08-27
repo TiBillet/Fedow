@@ -4,7 +4,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
-from rest_framework_api_key.models import APIKey
+from rest_framework_api_key.models import AbstractAPIKey
 from django.contrib.auth.models import AbstractUser
 from solo.models import SingletonModel
 from django.db import models
@@ -184,11 +184,11 @@ class FedowUser(AbstractUser):
 
     wallet = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='user', blank=True, null=True)
 
-    key = models.OneToOneField(APIKey,
-                               on_delete=models.SET_NULL,
-                               blank=True, null=True,
-                               related_name="fedow_user"
-                               )
+    # key = models.OneToOneField(APIKey,
+    #                            on_delete=models.SET_NULL,
+    #                            blank=True, null=True,
+    #                            related_name="fedow_user"
+    #                            )
 
 
 class Place(models.Model):
@@ -229,6 +229,8 @@ class Place(models.Model):
     def logo_variations(self):
         return self.logo.variations
 
+    def cashless_public_key(self) -> rsa.RSAPublicKey:
+        return validate_format_rsa_pub_key(self.cashless_rsa_pub_key)
 
 class Origin(models.Model):
     place = models.ForeignKey(Place, on_delete=models.PROTECT, related_name='origins')
@@ -272,3 +274,25 @@ def get_or_create_user(email):
         )
         created = True
         return user, created
+
+
+
+class OrganizationAPIKey(AbstractAPIKey):
+    place = models.ForeignKey(
+        Place,
+        on_delete=models.CASCADE,
+        related_name="api_keys",
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="api_keys",
+    )
+
+
+    class Meta:  # noqa
+        ordering = ("-created",)
+        verbose_name = "API key"
+        verbose_name_plural = "API keys"
+        unique_together = [['place', 'user']]

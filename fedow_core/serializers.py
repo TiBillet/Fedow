@@ -5,8 +5,8 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_api_key.models import APIKey
-from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction
-from fedow_core.utils import get_request_ip, validate_format_rsa_pub_key, dict_to_b64, verify_signature
+from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction, OrganizationAPIKey
+from fedow_core.utils import get_request_ip, validate_format_rsa_pub_key, dict_to_b64, verify_signature, rsa_generator
 import logging
 
 logger = logging.getLogger(__name__)
@@ -70,17 +70,11 @@ class HandshakeValidator(serializers.Serializer):
         # Check if key is the temp given by the manual creation.
         # and if the user associated is admin of the place
         key = request.META["HTTP_AUTHORIZATION"].split()[1]
-        api_key = APIKey.objects.get_from_key(key)
-
-        # ApiKey is an admin user key ?
-        user: FedowUser | None = getattr(api_key, 'fedow_user', None)
-        if not user :
-            logger.error(f"{timezone.localtime()} ERROR HANDSHAKE no user associated with api key - {request.data}")
-            raise serializers.ValidationError("Unauthorized")
-        self.user = user
+        api_key = OrganizationAPIKey.objects.get_from_key(key)
+        user = api_key.user
 
         place: Place = attrs.get('fedow_place_uuid')
-        if user not in place.admins.all():
+        if user not in place.admins.all() and place != api_key.place :
             logger.error(f"{timezone.localtime()} ERROR HANDSHAKE user not in place admins - {request.data}")
             raise serializers.ValidationError("Unauthorized")
 
@@ -88,14 +82,13 @@ class HandshakeValidator(serializers.Serializer):
             logger.error(f"{timezone.localtime()} ERROR ApiKey not temp_ : {request.data}")
             raise serializers.ValidationError("Unauthorized")
 
-        # On ajoute l'user à
         return attrs
 
-    def to_representation(self, instance):
-        # Add apikey user to representation
-        representation = super().to_representation(instance)
-        representation['user'] = self.user
-        return representation
+    # def to_representation(self, instance):
+    #     # Add apikey user to representation
+    #     representation = super().to_representation(instance)
+    #     representation['user'] = self.user
+    #     return representation
 
 
 
@@ -141,14 +134,13 @@ class WalletCreateSerializer(serializers.Serializer):
         self.card.user = self.user
         self.card.save()
 
-        # Api key generation
-        api_key, self.key = APIKey.objects.create_key(name=self.user.email[:50])
-
+        private_pem, public_pem = rsa_generator()
         # Create wallet
         self.wallet = Wallet.objects.create(
-            key=api_key,
             ip=ip,
-            user=self.user
+            user=self.user,
+            private_pem=private_pem,
+            public_pem=public_pem,
         )
 
         return attrs
