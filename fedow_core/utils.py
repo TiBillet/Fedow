@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 
-def dict_to_b64(dico: dict) -> bytes:
+def dict_to_b64(dico: dict ) -> bytes:
     dict_to_json = json.dumps(dico)
     json_to_bytes = dict_to_json.encode('utf-8')
     bytes_to_b64 = base64.urlsafe_b64encode(json_to_bytes)

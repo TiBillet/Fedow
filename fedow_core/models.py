@@ -1,4 +1,5 @@
 import stripe
+from cryptography.hazmat.primitives.asymmetric import rsa
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models.signals import pre_save
@@ -11,6 +12,10 @@ from uuid import uuid4
 from stdimage import JPEGField
 from stdimage.validators import MaxSizeValidator, MinSizeValidator
 
+from fedow_core.utils import validate_format_rsa_pub_key, get_private_key
+
+import logging
+logger = logging.getLogger(__name__)
 
 class Asset(models.Model):
     # One asset per currency
@@ -46,10 +51,16 @@ class Wallet(models.Model):
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
     name = models.CharField(max_length=100, blank=True, null=True)
 
-    private_rsa_key = models.CharField(max_length=2048, editable=False)
-    public_rsa_key = models.CharField(max_length=512, editable=False)
+    private_pem = models.CharField(max_length=2048, editable=False)
+    public_pem = models.CharField(max_length=512, editable=False)
 
     ip = models.GenericIPAddressField(verbose_name="Ip source", default='0.0.0.0')
+
+    def public_key(self) -> rsa.RSAPublicKey:
+        return validate_format_rsa_pub_key(self.public_pem)
+
+    def private_key(self) -> rsa.RSAPrivateKey:
+        return get_private_key(self.private_pem)
 
 
 class Token(models.Model):

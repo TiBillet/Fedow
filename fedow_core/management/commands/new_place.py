@@ -73,8 +73,8 @@ class Command(BaseCommand):
         priv, pub = rsa_generator()
         # Create wallet
         wallet = Wallet.objects.create(
-            private_rsa_key=priv,
-            public_rsa_key=pub,
+            private_pem=priv,
+            public_pem=pub,
             name=place_name,
         )
 

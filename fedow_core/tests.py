@@ -1,5 +1,6 @@
 import base64
 import json
+from datetime import datetime
 from io import StringIO
 from uuid import uuid4
 
@@ -11,25 +12,29 @@ from rest_framework.permissions import AllowAny
 from rest_framework_api_key.models import APIKey
 from rest_framework.test import APIClient
 
-from fedow_core.models import Configuration, Card, Place, FedowUser
+from fedow_core.models import Configuration, Card, Place, FedowUser, Wallet
 from fedow_core.serializers import WalletCreateSerializer
 from fedow_core.utils import utf8_b64_to_dict, rsa_generator, dict_to_b64, sign_message, get_private_key, b64_to_dict, \
-    validate_format_rsa_pub_key, fernet_decrypt
+    validate_format_rsa_pub_key, fernet_decrypt, verify_signature
 from fedow_core.views import HelloWorld
 
+import logging
+logger = logging.getLogger(__name__)
 
 # Create your tests here.
 
 
 class APITestHelloWorld(TestCase):
     def setUp(self):
+        call_command('install', '--test')
         api_key, self.key = APIKey.objects.create_key(name="test_helloworld")
 
-    #     Animal.objects.create(name="lion", sound="roar")
-    #     Animal.objects.create(name="cat", sound="meow")
-
     def test_helloworld(self):
+        start = datetime.now()
+
         response = self.client.get('/helloworld/')
+        logger.warning(f"durée requete sans APIKey : {datetime.now() - start}")
+
         assert response.status_code == 200
         assert response.data == {'message': 'Hello world!'}
         assert issubclass(HelloWorld, viewsets.ViewSet)
@@ -39,22 +44,104 @@ class APITestHelloWorld(TestCase):
         assert len(permissions) == 1
         assert isinstance(hello_world.get_permissions()[0], AllowAny)
 
-    def test_hasapi_key_helloworld_403(self):
+    def test_hasapi_key_helloworld(self):
+        # Sans clé api
+        start = datetime.now()
+
         response = self.client.get('/helloworld_apikey/')
         self.assertEqual(response.status_code, 403)
 
-    def test_hasapi_key_helloworld(self):
+        # Avec une clé api
         response = self.client.get('/helloworld_apikey/',
                                    headers={'Authorization': f'Api-Key {self.key}'}
                                    )
 
+        logger.warning(f"durée requete avec APIKey : {datetime.now() - start}")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data, {'message': 'Hello world!'})
+        self.assertEqual(response.data, {'message': 'Hello world ApiKey!'})
+
+    def test_api_and_signed_message(self):
+        out = StringIO()
+        call_command('new_place',
+                     '--name', 'Billetistan',
+                     '--email', f'admin@admin.admin',
+                     stdout=out)
+
+        decoded_data = utf8_b64_to_dict(out.getvalue().split('\n')[-2])
+        key = decoded_data.get('temp_key')
+        place = Place.objects.get(pk=decoded_data.get('uuid'))
+        wallet = place.wallet
+        user = get_user_model().objects.get(email='admin@admin.admin')
+        self.assertEqual(user.key, APIKey.objects.get_from_key(key))
+
+        start = datetime.now()
+
+        message = {
+            'sender': f'{wallet.uuid}',
+            'receiver': f'{wallet.uuid}',
+            'amount': '1500',
+        }
+        signature = sign_message(dict_to_b64(message), wallet.private_key())
+        public_key = wallet.public_key()
+        enc_message = dict_to_b64(message)
+        string_signature = signature.decode('utf-8')
+
+        logger.warning(f"durée signature : {datetime.now() - start}")
+        start = datetime.now()
+
+        self.assertTrue(verify_signature(public_key, enc_message, string_signature))
+
+        logger.warning(f"durée verif signature : {datetime.now() - start}")
+        start = datetime.now()
+
+        # APi + Wallet + Good Signature
+        response = self.client.post('/helloworld_apikey/', message,
+                                    headers={
+                                        'Authorization': f'Api-Key {key}',
+                                        'Signature': signature,
+                                    }, format='json')
+
+        self.assertEqual(response.status_code, 200)
+        logger.warning(f"durée requete avec signature et api et wallet : {datetime.now() - start}")
+
+        # Sans signature
+        response = self.client.post('/helloworld_apikey/', message,
+                                    headers={
+                                        'Authorization': f'Api-Key {key}',
+                                    }, format='json')
+        self.assertEqual(response.status_code, 403)
+
+        # sans API
+        response = self.client.post('/helloworld_apikey/', message,
+                                    headers={
+                                        'Signature': signature,
+                                    }, format='json')
+        self.assertEqual(response.status_code, 403)
+
+        # sans wallet
+        message_no_wallet = {
+            'receiver': f'{wallet.uuid}',
+            'amount': 1500,
+        }
+        response = self.client.post('/helloworld_apikey/', message_no_wallet,
+                                    headers={
+                                        'Authorization': f'Api-Key {key}',
+                                        'Signature': signature,
+                                    }, format='json')
+        self.assertEqual(response.status_code, 403)
+
+        # APi + Wallet + Bad Signature
+        response = self.client.post('/helloworld_apikey/', message,
+                                    headers={
+                                        'Authorization': f'Api-Key {key}',
+                                        'Signature': b'bad signature',
+                                    }, format='json')
+        self.assertEqual(response.status_code, 403)
 
 
 class ModelsTest(TestCase):
     def setUp(self):
-        call_command('install')
+        call_command('install', '--test')
 
         User: FedowUser = get_user_model()
 
@@ -151,7 +238,7 @@ class ModelsTest(TestCase):
         # Decodage du dictionnaire encodé en b64 qui contient la clé du wallet du lieu nouvellement créé
         # et le lien url onboard stripe
         place.refresh_from_db()
-        decoded_data =  b64_to_dict(response.content)
+        decoded_data = b64_to_dict(response.content)
         self.assertIsInstance(decoded_data, dict)
         # Vérification que la clé est bien celui du wallet du lieu
         admin_key = APIKey.objects.get_from_key(decoded_data.get('admin_key'))
@@ -167,7 +254,6 @@ class ModelsTest(TestCase):
         )
 
         self.assertEqual(fernet_decrypt(place.cashless_admin_apikey), data.get('cashless_admin_apikey'))
-
 
     def xtest_card_create(self):
         # Create card

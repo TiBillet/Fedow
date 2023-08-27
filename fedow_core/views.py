@@ -5,6 +5,7 @@ import stripe
 from cryptography.fernet import Fernet
 from django.conf import settings
 from django.core.validators import URLValidator
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import viewsets, status
@@ -14,13 +15,16 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_api_key.models import APIKey
 from rest_framework_api_key.permissions import HasAPIKey
-from fedow_core.models import Transaction, Place, Configuration, Asset, CheckoutStripe, Token, Wallet
+from fedow_core.models import Transaction, Place, Configuration, Asset, CheckoutStripe, Token, Wallet, FedowUser
+from fedow_core.permissions import UserApiWalletSigned
 from fedow_core.serializers import TransactionSerializer, PlaceSerializer, WalletCreateSerializer, HandshakeValidator
 from rest_framework.pagination import PageNumberPagination
 
-from fedow_core.utils import get_request_ip, fernet_encrypt, fernet_decrypt, dict_to_b64_utf8
+from fedow_core.utils import get_request_ip, fernet_encrypt, fernet_decrypt, dict_to_b64_utf8, dict_to_b64, \
+    validate_format_rsa_pub_key, verify_signature
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,19 +36,17 @@ class StandardResultsSetPagination(PageNumberPagination):
 
 # Create your views here.
 class TestApiKey(viewsets.ViewSet):
-    """
-    GET /helloworld_apikey/ : Hello, world!
-    """
-
     def list(self, request):
-        key = request.META["HTTP_AUTHORIZATION"].split()[1]
-        api_key = APIKey.objects.get_from_key(key)
-        return Response({'message': 'Hello world!'})
+        return Response({'message': 'Hello world ApiKey!'})
+
+    def create(self, request):
+        return Response({'message': 'Hello world Signature!'})
 
     def get_permissions(self):
         permission_classes = [HasAPIKey]
+        if self.action in ['create']:
+            permission_classes = [UserApiWalletSigned]
         return [permission() for permission in permission_classes]
-
 
 class HelloWorld(viewsets.ViewSet):
     """
@@ -58,6 +60,10 @@ class HelloWorld(viewsets.ViewSet):
         permission_classes = [AllowAny]
         return [permission() for permission in permission_classes]
 
+
+
+
+### REST API ###
 
 class WalletAPI(viewsets.ViewSet):
     """
@@ -124,7 +130,7 @@ class PlaceAPI(viewsets.ViewSet):
             data = {
                 "url_onboard": url_onboard,
                 "admin_key": key,
-                "wallet_rsa_public_key": place.wallet.public_rsa_key,
+                "wallet_rsa_public_key": place.wallet.public_pem,
             }
 
             data_encoded = dict_to_b64_utf8(data)
@@ -165,11 +171,39 @@ def create_account_link_for_onboard(place: Place):
     return url_onboard
 
 
+def HasAPIKeyAndWalletSigned(request, wallet: Wallet) -> bool | Http404:
+    """
+    Check if the API key and wallet are signed correctly.
+
+    Args:
+        request: The HTTP request object.
+        wallet: The wallet object.
+
+    Returns:
+        True if the API key and wallet are signed correctly.
+
+    Raises:
+        Http404: If the API key or wallet are not signed correctly.
+    """
+    api_key = APIKey.objects.get_from_key(request.META["HTTP_AUTHORIZATION"].split()[1])
+    user: FedowUser = api_key.fedow_user
+    place: Place = wallet.place
+
+    public_key = validate_format_rsa_pub_key(wallet.public_pem)
+    signature = request.META.get('HTTP_SIGNATURE')
+    signed_message = dict_to_b64(request.data)
+
+    if place.admins.filter(id=user.id).exists() and verify_signature(public_key, signed_message, signature):
+        return True
+    raise Http404
+
+
 @permission_classes([HasAPIKey])
 class Stripe_federated_charge(APIView):
     def post(self, request):
         # Verifier que la clé API soit celle du django Tenant
         api_key = APIKey.objects.get_from_key(request.META["HTTP_AUTHORIZATION"].split()[1])
+        request.user = api_key.fedow_user
         config = Configuration.get_solo()
 
         # TODO: vérifier l'article paiement pour recharge fédéré
