@@ -2,6 +2,7 @@ import stripe
 from cryptography.hazmat.primitives.asymmetric import rsa
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db.models import UniqueConstraint, Q
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
 from rest_framework_api_key.models import AbstractAPIKey
@@ -15,7 +16,9 @@ from stdimage.validators import MaxSizeValidator, MinSizeValidator
 from fedow_core.utils import validate_format_rsa_pub_key, get_private_key
 
 import logging
+
 logger = logging.getLogger(__name__)
+
 
 class Asset(models.Model):
     # One asset per currency
@@ -24,26 +27,27 @@ class Asset(models.Model):
     currency_code = models.CharField(max_length=3, unique=True)
 
     # Primary and federated asset send to cashless on new connection
-    # One by instance.
-    federated_primary = models.BooleanField(default=False, editable=False)
+    # On token of this asset is equivalent to 1 euro
+    # A Stripe Chekcout must be associated to the transaction creation money
+    federated_primary = models.BooleanField(default=False, editable=False, help_text="Asset primaire équivalent euro.")
 
-    # key = models.OneToOneField(APIKey,
-    #                            on_delete=models.CASCADE,
-    #                            related_name="asset_key"
-    #                            )
+    # def save(self, force_insert=False, force_update=False, using=None, update_fields=None):
+    #     if self.federated_primary:
+    #         try:
+    #             primary = Asset.objects.get(federated_primary=True)
+    #             if primary != self:
+    #                 raise Exception("Federated primary already exist")
+    #         except Asset.DoesNotExist:
+    #             pass
+    #         except Exception as e:
+    #             raise Exception(f"Federated primary error : {e}")
+    #
+    #     super().save(force_insert, force_update, using, update_fields)
 
-    def save(self, force_insert=False, force_update=False, using=None, update_fields=None):
-        if self.federated_primary:
-            try:
-                primary = Asset.objects.get(federated_primary=True)
-                if primary != self:
-                    raise Exception("Federated primary already exist")
-            except Asset.DoesNotExist:
-                pass
-            except Exception as e:
-                raise Exception(f"Federated primary error : {e}")
+    class Meta:
+        # Only one can be true :
+        constraints = [UniqueConstraint(fields=["federated_primary"], condition=Q(federated_primary=True), name="unique_federated_primary_asset")]
 
-        super().save(force_insert, force_update, using, update_fields)
 
 
 class Wallet(models.Model):
@@ -66,7 +70,7 @@ class Wallet(models.Model):
 class Token(models.Model):
     # One token per user per currency
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
-    value = models.DecimalField(max_digits=20, decimal_places=2)
+    value = models.IntegerField(default=0, help_text="Valeur, en centimes.")
     wallet = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name='tokens')
     asset = models.ForeignKey(Asset, on_delete=models.PROTECT, related_name='tokens')
 
@@ -140,20 +144,14 @@ class Transaction(models.Model):
 
 
 @receiver(pre_save, sender=Transaction)
-def where_we_do_the_thing(sender, instance, **kwargs):
-    token_receiver, created_r = Token.objects.get_or_create(wallet=instance.receiver, asset=instance.asset)
+def inspector(sender, instance, **kwargs):
+    token_receiver, created_r = Token.objects.get(wallet=instance.receiver, asset=instance.asset)
 
     if instance.action == Transaction.CREATION:
-        assert instance.sender == instance.receiver
-        assert instance.asset.federated_primary == True
-        token_receiver.value += instance.amount
-    else:
-        token_sender, created_s = Token.objects.get_or_create(wallet=instance.sender, asset=instance.asset)
-        token_sender.value -= instance.amount
-        token_sender.save()
-        token_receiver.value += instance.amount
-
-    token_receiver.save()
+        assert instance.sender == instance.receiver, "Sender and receiver must be the same for creation money."
+        assert instance.asset.federated_primary == True, "Asset must be federated primary for creation money."
+        if instance.asset.federated_primary:
+            assert instance.checkoupt_stripe != None, "Checkout stripe must be set for creation money."
 
 
 class Configuration(SingletonModel):
@@ -232,6 +230,7 @@ class Place(models.Model):
     def cashless_public_key(self) -> rsa.RSAPublicKey:
         return validate_format_rsa_pub_key(self.cashless_rsa_pub_key)
 
+
 class Origin(models.Model):
     place = models.ForeignKey(Place, on_delete=models.PROTECT, related_name='origins')
     generation = models.IntegerField()
@@ -276,7 +275,6 @@ def get_or_create_user(email):
         return user, created
 
 
-
 class OrganizationAPIKey(AbstractAPIKey):
     place = models.ForeignKey(
         Place,
@@ -290,8 +288,7 @@ class OrganizationAPIKey(AbstractAPIKey):
         related_name="api_keys",
     )
 
-
-    class Meta:  # noqa
+    class Meta:
         ordering = ("-created",)
         verbose_name = "API key"
         verbose_name_plural = "API keys"

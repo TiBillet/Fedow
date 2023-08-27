@@ -66,6 +66,13 @@ class APITestHelloWorld(TestCase):
         key = decoded_data.get('temp_key')
         api_key = OrganizationAPIKey.objects.get_from_key(key)
         place = Place.objects.get(pk=decoded_data.get('uuid'))
+
+        # On simule une paire de clé généré par le serveur cashless
+        private_cashless_pem, public_cashless_pem = rsa_generator()
+        private_cashless_rsa = get_private_key(private_cashless_pem)
+        place.cashless_rsa_pub_key = public_cashless_pem
+        place.save()
+
         wallet = place.wallet
         user = get_user_model().objects.get(email='admin@admin.admin')
         self.assertEqual(user, api_key.user)
@@ -78,8 +85,8 @@ class APITestHelloWorld(TestCase):
             'receiver': f'{wallet.uuid}',
             'amount': '1500',
         }
-        signature = sign_message(dict_to_b64(message), wallet.private_key())
-        public_key = wallet.public_key()
+        signature = sign_message(dict_to_b64(message), private_cashless_rsa)
+        public_key = place.cashless_public_key()
         enc_message = dict_to_b64(message)
         string_signature = signature.decode('utf-8')
 

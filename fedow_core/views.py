@@ -16,8 +16,9 @@ from rest_framework.views import APIView
 from rest_framework_api_key.models import APIKey
 from fedow_core.models import Transaction, Place, Configuration, Asset, CheckoutStripe, Token, Wallet, FedowUser, \
     OrganizationAPIKey
-from fedow_core.permissions import HasKeyAndSignedData, HasAPIKey
-from fedow_core.serializers import TransactionSerializer, PlaceSerializer, WalletCreateSerializer, HandshakeValidator
+from fedow_core.permissions import HasKeyAndCashlessSignature, HasAPIKey
+from fedow_core.serializers import TransactionSerializer, PlaceSerializer, WalletCreateSerializer, HandshakeValidator, \
+    NewTransactionValidator
 from rest_framework.pagination import PageNumberPagination
 
 from fedow_core.utils import get_request_ip, fernet_encrypt, fernet_decrypt, dict_to_b64_utf8, dict_to_b64, \
@@ -44,12 +45,13 @@ class TestApiKey(viewsets.ViewSet):
         return Response({'message': 'Hello world ApiKey!'})
 
     def create(self, request):
+        # On test ici la permission : HasKeyAndCashlessSignature
         return Response({'message': 'Hello world Signature!'})
 
     def get_permissions(self):
         permission_classes = [HasAPIKey]
         if self.action in ['create']:
-            permission_classes = [HasKeyAndSignedData]
+            permission_classes = [HasKeyAndCashlessSignature]
         return [permission() for permission in permission_classes]
 
 class HelloWorld(viewsets.ViewSet):
@@ -125,7 +127,7 @@ class PlaceAPI(viewsets.ViewSet):
             # Create the definitive key for the admin user
             api_key, place_fk, user = get_api_place_user(request)
             api_key.delete()
-            assert (place_fk == place, "Place not match with the API key")
+            assert place_fk == place, "Place not match with the API key"
 
             api_key, key = OrganizationAPIKey.objects.create_key(
                 name=f"{place.name}:{user.email}",
@@ -301,12 +303,12 @@ class TransactionAPI(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
-        serializer = TransactionSerializer(data=request.data)
+        serializer = NewTransactionValidator(data=request.data, context={'request': request})
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get_permissions(self):
-        permission_classes = [HasAPIKey]
+        permission_classes = [HasKeyAndCashlessSignature]
         return [permission() for permission in permission_classes]

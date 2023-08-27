@@ -1,4 +1,4 @@
-import base64, json, os
+import base64, json
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization

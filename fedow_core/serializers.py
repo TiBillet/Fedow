@@ -5,7 +5,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_api_key.models import APIKey
-from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction, OrganizationAPIKey
+from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction, OrganizationAPIKey, Asset, Token
 from fedow_core.utils import get_request_ip, validate_format_rsa_pub_key, dict_to_b64, verify_signature, rsa_generator
 import logging
 
@@ -33,7 +33,7 @@ class HandshakeValidator(serializers.Serializer):
     cashless_admin_apikey = serializers.CharField(max_length=41, min_length=41)
 
     def validate_fedow_place_uuid(self, value) -> Place:
-        #TODO: Si place à déja été configuré, on renvoie un 400
+        # TODO: Si place à déja été configuré, on renvoie un 400
         # if place.cashless_server_ip or place.cashless_server_url or place.cashless_server_key:
         #     logger.error(f"{timezone.localtime()} Place already configured {self.context.get('request').data}")
         #     raise serializers.ValidationError("Place already configured")
@@ -49,7 +49,6 @@ class HandshakeValidator(serializers.Serializer):
 
         # Public key, but not paired with signature (see validate)
         return value
-
 
     def validate_cashless_ip(self, value):
         request = self.context.get('request')
@@ -74,7 +73,7 @@ class HandshakeValidator(serializers.Serializer):
         user = api_key.user
 
         place: Place = attrs.get('fedow_place_uuid')
-        if user not in place.admins.all() and place != api_key.place :
+        if user not in place.admins.all() and place != api_key.place:
             logger.error(f"{timezone.localtime()} ERROR HANDSHAKE user not in place admins - {request.data}")
             raise serializers.ValidationError("Unauthorized")
 
@@ -89,7 +88,6 @@ class HandshakeValidator(serializers.Serializer):
     #     representation = super().to_representation(instance)
     #     representation['user'] = self.user
     #     return representation
-
 
 
 class PlaceSerializer(serializers.ModelSerializer):
@@ -146,6 +144,44 @@ class WalletCreateSerializer(serializers.Serializer):
         return attrs
 
 
+class NewTransactionValidator(serializers.Serializer):
+    sender = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
+    receiver = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
+    asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all())
+    amount = serializers.IntegerField()
+
+    def receiver_or_sender_are_place_wallet(self, request) -> bool:
+        # Place from key are one of the two wallets ?
+        key = request.META["HTTP_AUTHORIZATION"].split()[1]
+        api_key = OrganizationAPIKey.objects.get_from_key(key)
+        place: Place = api_key.place
+        if place.wallet == self.sender or place.wallet == self.receiver:
+            return True
+        return False
+
+    def sender_value_enough(self, token_sender: Token, amount: int) -> bool:
+        # Check if sender wallet have enough value
+        if token_sender.value < amount:
+            return False
+        return True
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        if not self.receiver_or_sender_are_place_wallet(request):
+            logger.error(f"{timezone.localtime()} ERROR sender nor receiver are Unauthorized - {request}")
+            raise serializers.ValidationError("Unauthorized")
+
+
+        # Check if sender wallet have enough value
+        token_sender, created = Token.objects.get_or_create(
+            wallet=attrs.get('sender'), asset=attrs.get('asset'))
+        if not self.sender_value_enough(token_sender, attrs.get('amount')):
+            logger.error(f"{timezone.localtime()} ERROR sender not enough value - {request}")
+            raise serializers.ValidationError("Sender not enough value")
+
+        return attrs
+
+
 class TransactionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Transaction
@@ -153,7 +189,6 @@ class TransactionSerializer(serializers.ModelSerializer):
             "uuid",
             "sender",
             "receiver",
-            "token",
             "date",
             "amount",
             "comment",
