@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_api_key.models import APIKey
 from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction, OrganizationAPIKey, Asset, Token
-from fedow_core.utils import get_request_ip, validate_format_rsa_pub_key, dict_to_b64, verify_signature, rsa_generator
+from fedow_core.utils import get_request_ip, get_public_key, dict_to_b64, verify_signature, rsa_generator
 import logging
 
 logger = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ class HandshakeValidator(serializers.Serializer):
 
     def validate_cashless_rsa_pub_key(self, value) -> rsa.RSAPublicKey:
         # Valide uniquement le format avec la biblothèque cryptography
-        self.pub_key = validate_format_rsa_pub_key(value)
+        self.pub_key = get_public_key(value)
         if not self.pub_key:
             logger.error(f"{timezone.localtime()} Public rsa key invalid")
             raise serializers.ValidationError("Public rsa key invalid")
@@ -143,39 +143,43 @@ class WalletCreateSerializer(serializers.Serializer):
 
         return attrs
 
+    def to_representation(self, instance):
+        # Add apikey user to representation
+        representation = super().to_representation(instance)
+        representation['wallet'] = f"{self.wallet.uuid}"
+        return representation
 
 class NewTransactionValidator(serializers.Serializer):
+    amount = serializers.IntegerField()
     sender = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
     receiver = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
     asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all())
-    amount = serializers.IntegerField()
 
-    def receiver_or_sender_are_place_wallet(self, request) -> bool:
+    def validate_amount(self, value):
+        # Positive amount only
+        if value <= 0:
+            raise serializers.ValidationError("Amount must be positive")
+        return value
+
+    def is_place_wallet(self) -> bool:
         # Place from key are one of the two wallets ?
-        key = request.META["HTTP_AUTHORIZATION"].split()[1]
+        key = self.context['request'].META["HTTP_AUTHORIZATION"].split()[1]
         api_key = OrganizationAPIKey.objects.get_from_key(key)
         place: Place = api_key.place
-        if place.wallet == self.sender or place.wallet == self.receiver:
-            return True
-        return False
-
-    def sender_value_enough(self, token_sender: Token, amount: int) -> bool:
-        # Check if sender wallet have enough value
-        if token_sender.value < amount:
-            return False
-        return True
+        return place.wallet == self.sender or place.wallet == self.receiver
 
     def validate(self, attrs):
         request = self.context.get('request')
-        if not self.receiver_or_sender_are_place_wallet(request):
+        if not self.is_place_wallet:
             logger.error(f"{timezone.localtime()} ERROR sender nor receiver are Unauthorized - {request}")
             raise serializers.ValidationError("Unauthorized")
 
+        try:
+            token_sender = Token.objects.get(wallet=attrs.get('sender'), asset=attrs.get('asset'))
+        except Token.DoesNotExist:
+            raise serializers.ValidationError("Sender token does not exist")
 
-        # Check if sender wallet have enough value
-        token_sender, created = Token.objects.get_or_create(
-            wallet=attrs.get('sender'), asset=attrs.get('asset'))
-        if not self.sender_value_enough(token_sender, attrs.get('amount')):
+        if token_sender.value < attrs.get('amount'):
             logger.error(f"{timezone.localtime()} ERROR sender not enough value - {request}")
             raise serializers.ValidationError("Sender not enough value")
 

@@ -41,7 +41,6 @@ class Command(BaseCommand):
             instance_name = os.environ.get('DOMAIN', 'fedow.tibillet.localhost')
             primary_wallet = Wallet.objects.create(
                 name="Primary",
-                ip="127.0.0.1",
                 private_pem = private_pem,
                 public_pem = public_pem,
             )

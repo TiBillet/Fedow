@@ -201,6 +201,15 @@ coverage html
 ```
 
 ## Documentation
+ 
+### Délégation d'autorité.
+
+Un mécanisme de délégation d'autorité est disponible sur les *Wallets*.
+Un Wallet peut être prélevé automatiquement pour des abonnements, des paiments sans contacts sur des points de ventes Tiillet certifiés ou pour le mécanisme de la monnaie fondante.
+
+On alors retrouve un système similaire aux "Smart Contract" de la blockchain Ethereum.
+
+### Intégration aux outils TiBillet
 
 This project is a part of the TiBillet Cooperative tools.
 

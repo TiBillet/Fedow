@@ -22,7 +22,7 @@ from fedow_core.serializers import TransactionSerializer, PlaceSerializer, Walle
 from rest_framework.pagination import PageNumberPagination
 
 from fedow_core.utils import get_request_ip, fernet_encrypt, fernet_decrypt, dict_to_b64_utf8, dict_to_b64, \
-    validate_format_rsa_pub_key, verify_signature
+    get_public_key, verify_signature
 
 import logging
 
@@ -86,14 +86,13 @@ class WalletAPI(viewsets.ViewSet):
     #     return Response(serializer.data)
 
     def create(self, request):
-        serializer = WalletCreateSerializer(data=request.data)
+        serializer = WalletCreateSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get_permissions(self):
-        permission_classes = [HasAPIKey]
+        permission_classes = [AllowAny]
         return [permission() for permission in permission_classes]
 
 
@@ -199,7 +198,7 @@ def HasAPIKeyAndWalletSigned(request, wallet: Wallet) -> bool | Http404:
     user: FedowUser = api_key.fedow_user
     place: Place = wallet.place
 
-    public_key = validate_format_rsa_pub_key(wallet.public_pem)
+    public_key = get_public_key(wallet.public_pem)
     signature = request.META.get('HTTP_SIGNATURE')
     signed_message = dict_to_b64(request.data)
 

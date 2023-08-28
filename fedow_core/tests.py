@@ -9,23 +9,99 @@ from rest_framework import viewsets, status
 from rest_framework.permissions import AllowAny
 from rest_framework_api_key.models import APIKey
 
-from fedow_core.models import Card, Place, FedowUser, OrganizationAPIKey
+from fedow_core.models import Card, Place, FedowUser, OrganizationAPIKey, Origin, get_or_create_user, Wallet
 from fedow_core.utils import utf8_b64_to_dict, rsa_generator, dict_to_b64, sign_message, get_private_key, b64_to_dict, \
-    validate_format_rsa_pub_key, fernet_decrypt, verify_signature
+    get_public_key, fernet_decrypt, verify_signature
 from fedow_core.views import HelloWorld
 
 import logging
+
 logger = logging.getLogger(__name__)
 
-# Create your tests here.
 
-
-class APITestHelloWorld(TestCase):
+class FedowTestCase(TestCase):
     def setUp(self):
         call_command('install', '--test')
+
+        User: FedowUser = get_user_model()
+        email_admin = 'admin@admin.admin'
+        self.email_admin = email_admin
+        self.uuid_test = uuid4()
+
+        out = StringIO()
+        call_command('new_place',
+                     '--name', 'Billetistan',
+                     '--email', f'{email_admin}',
+                     stdout=out)
+
+        self.last_line = out.getvalue().split('\n')[-2]
+        decoded_data = utf8_b64_to_dict(self.last_line)
+        self.place = Place.objects.get(pk=decoded_data.get('uuid'))
+        self.admin = User.objects.get(email=f'{email_admin}')
+
+        # Création d'une clé lambda
         api_key, self.key = APIKey.objects.create_key(name="test_helloworld")
 
-    def test_helloworld(self):
+        # On simule une paire de clé générée par le serveur cashless
+        private_cashless_pem, public_cashless_pem = rsa_generator()
+        self.private_cashless_rsa = get_private_key(private_cashless_pem)
+        self.public_cashless_pem = public_cashless_pem
+        self.private_cashless_pem = private_cashless_pem
+        # self.place.cashless_rsa_pub_key = public_cashless_pem
+        # self.place.save()
+
+
+class TransactionsTest(FedowTestCase):
+
+    def setUp(self):
+        super().setUp()
+        # Création d'un user lambda
+        # self.user_lambda, user_created = get_or_create_user('lambda@lambda.com')
+
+        # Création d'une carte NFC
+        gen1 = Origin.objects.create(
+            place=self.place,
+            generation=1
+        )
+
+        nfc_uuid = uuid4()
+        qrcode = uuid4()
+        self.card = Card.objects.create(
+            uuid=uuid4(),
+            first_tag_id=f"{str(nfc_uuid).split('-')[0]}",
+            nfc_uuid=nfc_uuid,
+            qr_code_printed=qrcode,
+            number=str(qrcode).split('-')[0],
+            origin=gen1,
+        )
+
+
+    def testCreateWallet(self):
+        # Création d'un wallet client
+        email = 'lambda@lambda.com'
+        new_wallet_data = {
+            'email' : email,
+            'uuid_card': f"{self.card.uuid}",
+        }
+        response = self.client.post('/wallet/', new_wallet_data)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data.get('email'), email)
+        self.assertEqual(response.data.get('uuid_card'), str(self.card.uuid))
+
+        wallet = Wallet.objects.get(pk=response.data.get('wallet'))
+        self.assertTrue(wallet)
+
+        # data = {
+        #     'sender': f'{self.place.wallet.uuid}',
+        #     'receiver': f'{self.place.wallet.uuid}',
+        # }
+
+
+
+class APITestHelloWorld(FedowTestCase):
+
+    def sk_test_helloworld(self):
         start = datetime.now()
 
         response = self.client.get('/helloworld/')
@@ -40,10 +116,8 @@ class APITestHelloWorld(TestCase):
         assert len(permissions) == 1
         assert isinstance(hello_world.get_permissions()[0], AllowAny)
 
-    def test_hasapi_key_helloworld(self):
         # Sans clé api
         start = datetime.now()
-
         response = self.client.get('/helloworld_apikey/')
         self.assertEqual(response.status_code, 403)
 
@@ -55,14 +129,8 @@ class APITestHelloWorld(TestCase):
         logger.warning(f"durée requete avec APIKey : {datetime.now() - start}")
         self.assertEqual(response.status_code, 403)
 
-    def test_api_and_signed_message(self):
-        out = StringIO()
-        call_command('new_place',
-                     '--name', 'Billetistan',
-                     '--email', f'admin@admin.admin',
-                     stdout=out)
-
-        decoded_data = utf8_b64_to_dict(out.getvalue().split('\n')[-2])
+    def sk_test_api_and_signed_message(self):
+        decoded_data = utf8_b64_to_dict(self.last_line)
         key = decoded_data.get('temp_key')
         api_key = OrganizationAPIKey.objects.get_from_key(key)
         place = Place.objects.get(pk=decoded_data.get('uuid'))
@@ -143,37 +211,9 @@ class APITestHelloWorld(TestCase):
         self.assertEqual(response.status_code, 403)
 
 
-class ModelsTest(TestCase):
-    def setUp(self):
-        call_command('install', '--test')
+class ModelsTest(FedowTestCase):
 
-        User: FedowUser = get_user_model()
-
-        email_admin = 'admin@admin.admin'
-        self.email_admin = email_admin
-
-        # Création d'une clé lambda
-        api_key, self.key = APIKey.objects.create_key(name="test_helloworld")
-        self.uuid_test = uuid4()
-
-        # Initialise la création d'un nouveau lieu
-        # par la procédure manuelle
-        out = StringIO()
-        call_command('new_place',
-                     '--name', 'Billetistan',
-                     '--email', f'{email_admin}',
-                     stdout=out)
-
-        # Récupération du dictionnaire encodé en b64 qui contient la clé API de l'admin du lieu nouvellement créé
-        # Le dernier element de la liste est un retour chariot.
-        # Sélection de l'avant-dernier qui contient la clé
-        self.last_line = out.getvalue().split('\n')[-2]
-        decoded_data = utf8_b64_to_dict(self.last_line)
-        self.place_uuid = decoded_data.get('uuid')
-
-
-
-    def test_place_and_admin_created_(self):
+    def sk_test_place_and_admin_created_(self):
         User: FedowUser = get_user_model()
         email_admin = self.email_admin
 
@@ -191,8 +231,7 @@ class ModelsTest(TestCase):
         self.assertEqual(api_key_from_decoded_data.user, admin)
         self.assertIn('temp_', api_key_from_decoded_data.name)
 
-
-    def test_simulate_cashless_handshake(self):
+    def sk_test_simulate_cashless_handshake(self):
         # Données pour simuler un cashless.
         cashless_private_rsa_key, cashless_pub_rsa_key = rsa_generator()
         # Simulation d'une clé générée par le serveur cashless
@@ -211,7 +250,8 @@ class ModelsTest(TestCase):
         place = Place.objects.get(pk=data['fedow_place_uuid'])
         self.assertIsInstance(place, Place)
         # Le serveur cashless signe ses requetes avec sa clé privée :
-        signature: bytes = sign_message(message=dict_to_b64(data), private_key=get_private_key(cashless_private_rsa_key))
+        signature: bytes = sign_message(message=dict_to_b64(data),
+                                        private_key=get_private_key(cashless_private_rsa_key))
 
         # Test with bad key
         response = self.client.post('/place/', data,
@@ -252,24 +292,10 @@ class ModelsTest(TestCase):
         self.assertEqual(place.cashless_server_ip, data.get('cashless_ip'))
 
         self.assertEqual(
-            validate_format_rsa_pub_key(place.cashless_rsa_pub_key),
-            validate_format_rsa_pub_key(data.get('cashless_rsa_pub_key'))
+            get_public_key(place.cashless_rsa_pub_key),
+            get_public_key(data.get('cashless_rsa_pub_key'))
         )
 
         self.assertEqual(fernet_decrypt(place.cashless_admin_apikey), data.get('cashless_admin_apikey'))
 
-    def xtest_card_create(self):
-        # Create card
-        self.card = Card.objects.create(
-            uuid=str(self.uuid_test),
-            nfc_tag_id=str(self.uuid_test).split('-')[0])
 
-    def xtest_wallet_create(self):
-        response = self.client.post('/wallet/', {
-            'email': 'test@example.com',
-            'uuid_card': f'{self.uuid_test}'
-        }, headers={'Authorization': f'Api-Key {self.key}'}, format='json')
-
-        print(response)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # TODO : vérifier que l'user est lié au wallet

@@ -13,7 +13,7 @@ from uuid import uuid4
 from stdimage import JPEGField
 from stdimage.validators import MaxSizeValidator, MinSizeValidator
 
-from fedow_core.utils import validate_format_rsa_pub_key, get_private_key
+from fedow_core.utils import get_public_key, get_private_key
 
 import logging
 
@@ -58,10 +58,26 @@ class Wallet(models.Model):
     private_pem = models.CharField(max_length=2048, editable=False)
     public_pem = models.CharField(max_length=512, editable=False)
 
+    # Déléguation d'autorité à un autre wallet
+    # qui permet de prélever sur ce wallet vers/depuis le sien.
+    # La symmetrie n'est pas obligatoire.
+    authority_delegation = models.ManyToManyField('self', related_name='delegations', symmetrical=False, blank=True)
+
     ip = models.GenericIPAddressField(verbose_name="Ip source", default='0.0.0.0')
 
+    def is_primary(self):
+        if getattr(self, 'primary', None) :
+            if self.primary == Configuration.get_solo():
+                return True
+        return False
+
+    def is_place(self):
+        if getattr(self, 'place', None) :
+            return True
+        return False
+
     def public_key(self) -> rsa.RSAPublicKey:
-        return validate_format_rsa_pub_key(self.public_pem)
+        return get_public_key(self.public_pem)
 
     def private_key(self) -> rsa.RSAPrivateKey:
         return get_private_key(self.private_pem)
@@ -70,7 +86,7 @@ class Wallet(models.Model):
 class Token(models.Model):
     # One token per user per currency
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
-    value = models.IntegerField(default=0, help_text="Valeur, en centimes.")
+    value = models.PositiveIntegerField(default=0, help_text="Valeur, en centimes.")
     wallet = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name='tokens')
     asset = models.ForeignKey(Asset, on_delete=models.PROTECT, related_name='tokens')
 
@@ -228,7 +244,7 @@ class Place(models.Model):
         return self.logo.variations
 
     def cashless_public_key(self) -> rsa.RSAPublicKey:
-        return validate_format_rsa_pub_key(self.cashless_rsa_pub_key)
+        return get_public_key(self.cashless_rsa_pub_key)
 
 
 class Origin(models.Model):
@@ -254,7 +270,8 @@ class Origin(models.Model):
 class Card(models.Model):
     uuid = models.UUIDField(primary_key=True, editable=False, db_index=True)
     first_tag_id = models.CharField(max_length=8, editable=False, db_index=True)
-    nfc_tag_id = models.CharField(max_length=8, editable=False, db_index=True)
+    nfc_uuid = models.UUIDField(editable=False)
+    qr_code_printed = models.UUIDField(editable=False)
     number = models.CharField(max_length=8, editable=False, db_index=True)
     user = models.ForeignKey(FedowUser, on_delete=models.PROTECT, related_name='cards', blank=True, null=True)
     origin = models.ForeignKey(Origin, on_delete=models.PROTECT, related_name='cards', blank=True, null=True)

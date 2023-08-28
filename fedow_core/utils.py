@@ -40,18 +40,19 @@ def utf8_b64_to_dict(b64_string: str) -> dict:
 
 def get_request_ip(request) -> str:
     # logger.info(request.META)
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    x_real_ip = request.META.get('HTTP_X_REAL_IP')
+    if request:
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        x_real_ip = request.META.get('HTTP_X_REAL_IP')
 
-    if x_forwarded_for:
-        ip = x_forwarded_for.split(',')[0]
-    elif x_real_ip:
-        ip = x_real_ip
-    else:
-        ip = request.META.get('REMOTE_ADDR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        elif x_real_ip:
+            ip = x_real_ip
+        else:
+            ip = request.META.get('REMOTE_ADDR')
 
-    return ip
-
+        return ip
+    return "0.0.0.0"
 
 ### FERNET CRYPTOGRAPHY ##
 def kdf_generator() -> PBKDF2HMAC:
@@ -102,15 +103,22 @@ def rsa_generator() -> tuple[str, str]:
     return private_pem.decode('utf-8'), public_pem.decode('utf-8')
 
 
-def get_private_key(private_pem: str) -> rsa.RSAPrivateKey:
-    private_key = serialization.load_pem_private_key(
-        private_pem.encode('utf-8'),
-        password=settings.SECRET_KEY.encode('utf-8'),
-    )
-    return private_key
+def get_private_key(private_pem: str) -> rsa.RSAPrivateKey | bool:
+    try:
+        private_key = serialization.load_pem_private_key(
+            private_pem.encode('utf-8'),
+            password=settings.SECRET_KEY.encode('utf-8'),
+        )
+        if not isinstance(private_key, rsa.RSAPrivateKey):
+            return False
+        return private_key
+
+    except Exception as e:
+        logger.error(f"Erreur de validation get_private_key : {e}")
+        return False
 
 
-def validate_format_rsa_pub_key(public_key_pem: str) -> rsa.RSAPublicKey | bool:
+def get_public_key(public_key_pem: str) -> rsa.RSAPublicKey | bool:
     try:
         # Charger la clé publique au format PEM
         public_key = serialization.load_pem_public_key(public_key_pem.encode('utf-8'), backend=default_backend())
@@ -121,7 +129,7 @@ def validate_format_rsa_pub_key(public_key_pem: str) -> rsa.RSAPublicKey | bool:
         return public_key
 
     except Exception as e:
-        logger.error(f"Erreur de validation : {e}")
+        logger.error(f"Erreur de validation get_public_key : {e}")
         return False
 
 
