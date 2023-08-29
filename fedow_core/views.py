@@ -16,7 +16,7 @@ from rest_framework.views import APIView
 from rest_framework_api_key.models import APIKey
 from fedow_core.models import Transaction, Place, Configuration, Asset, CheckoutStripe, Token, Wallet, FedowUser, \
     OrganizationAPIKey
-from fedow_core.permissions import HasKeyAndCashlessSignature, HasAPIKey
+from fedow_core.permissions import HasKeyAndCashlessSignature, HasAPIKey, IsStripe
 from fedow_core.serializers import TransactionSerializer, PlaceSerializer, WalletCreateSerializer, HandshakeValidator, \
     NewTransactionValidator
 from rest_framework.pagination import PageNumberPagination
@@ -207,19 +207,25 @@ def HasAPIKeyAndWalletSigned(request, wallet: Wallet) -> bool | Http404:
     raise Http404
 
 
-@permission_classes([HasAPIKey])
-class Stripe_federated_charge(APIView):
+@permission_classes([IsStripe])
+class WebhookStripe(APIView):
     def post(self, request):
-        # Verifier que la clé API soit celle du django Tenant
-        api_key = APIKey.objects.get_from_key(request.META["HTTP_AUTHORIZATION"].split()[1])
-        request.user = api_key.fedow_user
+        # Help STRIPE : https://stripe.com/docs/webhooks/quickstart
         config = Configuration.get_solo()
+        stripe.api_key = config.get_stripe_api()
+        payload = request.data
+        if payload.get('type') == "checkout.session.completed":
+            checkout_session_id_stripe=payload['data']['object']['id']
+            checkout, created = CheckoutStripe.objects.get_or_create(
+                checkout_session_id_stripe=checkout_session_id_stripe)
+            logger.info(f"checkout_session_id_stripe : {checkout.checkout_session_id_stripe}")
+            logger.warning(f"checkout_session_id_stripe : {checkout.checkout_session_id_stripe}")
 
-        # TODO: vérifier l'article paiement pour recharge fédéré
+        """
         # import ipdb; ipdb.set_trace()
+        # On stocke en db les checkouts Stripe,
+        # ils participent aux hash de signature des transactions
 
-        checkout, created = CheckoutStripe.objects.get_or_create(
-            checkout_session_id_stripe=request.data.get('checkout_session_id_stripe'))
         if checkout.is_valid():
             # Création de monnaie : On incrémente le wallet primaire
             prime_wallet = config.primary_wallet,
@@ -233,10 +239,9 @@ class Stripe_federated_charge(APIView):
                 asset=prime_asset,
                 action=Transaction.CREATION,
             )
+        """
 
-            # primary_stripe_token, created = Token.objects.get_or_create(
-            # )
-            # federated_stripe = Asset.objects.get(federated_primary=True)
+        return Response("OK", status=status.HTTP_200_OK)
 
 
 @permission_classes([HasAPIKey])

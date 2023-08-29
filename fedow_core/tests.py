@@ -1,7 +1,7 @@
 from datetime import datetime
 from io import StringIO
 from uuid import uuid4
-
+import stripe
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase
@@ -9,7 +9,8 @@ from rest_framework import viewsets, status
 from rest_framework.permissions import AllowAny
 from rest_framework_api_key.models import APIKey
 
-from fedow_core.models import Card, Place, FedowUser, OrganizationAPIKey, Origin, get_or_create_user, Wallet
+from fedow_core.models import Card, Place, FedowUser, OrganizationAPIKey, Origin, get_or_create_user, Wallet, \
+    Configuration
 from fedow_core.utils import utf8_b64_to_dict, rsa_generator, dict_to_b64, sign_message, get_private_key, b64_to_dict, \
     get_public_key, fernet_decrypt, verify_signature
 from fedow_core.views import HelloWorld
@@ -55,9 +56,6 @@ class TransactionsTest(FedowTestCase):
 
     def setUp(self):
         super().setUp()
-        # Création d'un user lambda
-        # self.user_lambda, user_created = get_or_create_user('lambda@lambda.com')
-
         # Création d'une carte NFC
         gen1 = Origin.objects.create(
             place=self.place,
@@ -76,8 +74,9 @@ class TransactionsTest(FedowTestCase):
         )
 
 
-    def testCreateWallet(self):
-        # Création d'un wallet client
+    def testWallet(self):
+        ### Création d'un wallet client
+        User: FedowUser = get_user_model()
         email = 'lambda@lambda.com'
         new_wallet_data = {
             'email' : email,
@@ -90,12 +89,20 @@ class TransactionsTest(FedowTestCase):
         self.assertEqual(response.data.get('uuid_card'), str(self.card.uuid))
 
         wallet = Wallet.objects.get(pk=response.data.get('wallet'))
+        user = User.objects.get(email=email)
         self.assertTrue(wallet)
+        self.assertEqual(user.wallet, wallet)
 
-        # data = {
-        #     'sender': f'{self.place.wallet.uuid}',
-        #     'receiver': f'{self.place.wallet.uuid}',
-        # }
+        ### RECHARGE AVEC ASSET PRINCIPAL STRIPE
+        ## Creation de monnaie. Reception d'un webhook stripe
+        config = Configuration.get_solo()
+        primary_wallet = config.primary_wallet
+
+
+        data = {
+            'sender': f'{self.place.wallet.uuid}',
+            'receiver': f'{self.place.wallet.uuid}',
+        }
 
 
 

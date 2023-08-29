@@ -1,12 +1,50 @@
+import json
+import os
 import typing
+from datetime import datetime
 
 from django.http import HttpRequest
+from rest_framework.permissions import AllowAny
 from rest_framework_api_key.models import APIKey
 from rest_framework_api_key.permissions import BaseHasAPIKey
+from stripe.error import SignatureVerificationError
 
-from fedow_core.models import Wallet, OrganizationAPIKey
+from fedow_core.models import Wallet, OrganizationAPIKey, Configuration
 from fedow_core.utils import verify_signature, dict_to_b64
+import stripe
+import logging
 
+logger = logging.getLogger(__name__)
+
+class IsStripe(AllowAny):
+    def valid_signature(self, request: HttpRequest) -> str | bool:
+        start = datetime.now()
+        # stripe.api_key = config.get_stripe_api()
+        stripe_endpoint_secret = Configuration.get_solo().get_stripe_endpoint_secret()
+        signature = request.headers.get('stripe-signature')
+        signed_payload = request.body.decode('utf-8')
+
+        # if request.data.get('type') == "checkout.session.completed":
+        #     import ipdb; ipdb.set_trace()
+            # checkout_session_id_stripe=request.data['data']['object']['id']
+            # checkout_session = stripe.checkout.Session.retrieve(checkout_session_id_stripe)
+
+        try:
+            signed_stripe_event = stripe.Webhook.construct_event(
+                signed_payload, signature, stripe_endpoint_secret
+            )
+            request.signed_payload=True
+            request.signed_stripe_event = signed_stripe_event
+            logger.debug(f"Stripe webhook valid_signature : {datetime.now() - start}")
+            return True
+        except SignatureVerificationError as e:
+            logger.error(f"Stripe webhook SignatureVerificationError : {e}")
+        except Exception as e :
+            logger.error(f"Stripe webhook valid_signature error : {e}")
+        return False
+
+    def has_permission(self, request, view):
+        return self.valid_signature(request)
 
 class HasAPIKey(BaseHasAPIKey):
     model = OrganizationAPIKey

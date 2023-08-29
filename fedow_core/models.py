@@ -1,3 +1,5 @@
+import os
+
 import stripe
 from cryptography.hazmat.primitives.asymmetric import rsa
 from django.conf import settings
@@ -13,41 +15,127 @@ from uuid import uuid4
 from stdimage import JPEGField
 from stdimage.validators import MaxSizeValidator, MinSizeValidator
 
-from fedow_core.utils import get_public_key, get_private_key
+from fedow_core.utils import get_public_key, get_private_key, fernet_decrypt, fernet_encrypt
 
 import logging
 
 logger = logging.getLogger(__name__)
 
 
+### STRIPE
+
+
+class CheckoutStripe(models.Model):
+    # Si recharge, alors un paiement stripe doit être lié
+    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
+    checkout_session_id_stripe = models.CharField(max_length=80, unique=True)
+    asset = models.ForeignKey('Asset', on_delete=models.PROTECT,
+                              related_name='checkout_stripe')
+    OPEN, PENDING, EXPIRE, PAID, VALID, NOTSYNC, CANCELED = 'O', 'W', 'E', 'P', 'V', 'S', 'C'
+    STATUT_CHOICES = (
+        (OPEN, 'A vérifier'),
+        (PENDING, 'En attente de paiement'),
+        (EXPIRE, 'Expiré'),
+        (PAID, 'Payée'),
+        (VALID, 'Payée et validée'),  # envoyé sur serveur cashless
+        (NOTSYNC, 'Payée mais problème de synchro cashless'),  # envoyé sur serveur cashless qui retourne une erreur
+        (CANCELED, 'Annulée'),
+    )
+    status = models.CharField(max_length=1, choices=STATUT_CHOICES, default=OPEN, verbose_name="Statut de la commande")
+
+    def create_change_payment_link(self, asset):
+        pass
+
+    def is_valid(self):
+        if self.status == self.VALID:
+            # Déja validé, on renvoie None
+            return None
+
+        stripe.api_key = Configuration.get_solo().get_stripe_api()
+        checkout_session = stripe.checkout.Session.retrieve(
+            self.checkout_session_id_stripe,
+            # stripe_account=config.get_stripe_connect_account()
+        )
+        if checkout_session.payment_status == "paid":
+            self.status = self.PAID
+            self.save()
+            return True
+
+        return False
+
+
+## BLOCKCHAIN PART
+
 class Asset(models.Model):
     # One asset per currency
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
     name = models.CharField(max_length=100, unique=True)
     currency_code = models.CharField(max_length=3, unique=True)
-
+    img = JPEGField(upload_to='assets/',
+                    validators=[
+                        MinSizeValidator(480, 480),
+                        MaxSizeValidator(1920, 1920)
+                    ],
+                    variations={
+                        'med': (480, 480),
+                        'thumbnail': (150, 150),
+                        'crop': (150, 150, True),
+                    },
+                    delete_orphans=True,
+                    verbose_name='logo',
+                    blank=True, null=True,
+                    )
     # Primary and federated asset send to cashless on new connection
     # On token of this asset is equivalent to 1 euro
     # A Stripe Chekcout must be associated to the transaction creation money
     federated_primary = models.BooleanField(default=False, editable=False, help_text="Asset primaire équivalent euro.")
+    id_price_stripe = models.CharField(max_length=30)
 
-    # def save(self, force_insert=False, force_update=False, using=None, update_fields=None):
-    #     if self.federated_primary:
-    #         try:
-    #             primary = Asset.objects.get(federated_primary=True)
-    #             if primary != self:
-    #                 raise Exception("Federated primary already exist")
-    #         except Asset.DoesNotExist:
-    #             pass
-    #         except Exception as e:
-    #             raise Exception(f"Federated primary error : {e}")
-    #
-    #     super().save(force_insert, force_update, using, update_fields)
+    def get_id_price_stripe(self,
+                            force=False,
+                            stripe_key=None,
+                            ):
+
+        if self.id_price_stripe and not force:
+            return self.id_price_stripe
+
+        if stripe_key == None:
+            stripe_key = Configuration.get_solo().get_stripe_api()
+        stripe.api_key = stripe_key
+
+        # noinspection PyUnresolvedReferences
+        images = []
+        if self.img:
+            images = [f"https://{os.environ.get('DOMAIN')}{self.img.med.url}", ]
+
+        product = stripe.Product.create(
+            name=f"Recharge {self.name}",
+            images=images
+        )
+
+        data_stripe = {
+            'nickname': f"{self.name}",
+            "billing_scheme": "per_unit",
+            "currency": "eur",
+            "tax_behavior": "inclusive",
+            "custom_unit_amount": {
+                "enabled": "true",
+            },
+            "metadata": {
+                "asset": f'{self.name}',
+                "asset_uuid": f'{self.uuid}',
+                "currency_code": f'{self.currency_code}',
+            },
+            "product": product.id,
+        }
+        price = stripe.Price.create(**data_stripe)
+        self.id_price_stripe = price.id
+        self.save()
 
     class Meta:
         # Only one can be true :
-        constraints = [UniqueConstraint(fields=["federated_primary"], condition=Q(federated_primary=True), name="unique_federated_primary_asset")]
-
+        constraints = [UniqueConstraint(fields=["federated_primary"], condition=Q(federated_primary=True),
+                                        name="unique_federated_primary_asset")]
 
 
 class Wallet(models.Model):
@@ -66,13 +154,13 @@ class Wallet(models.Model):
     ip = models.GenericIPAddressField(verbose_name="Ip source", default='0.0.0.0')
 
     def is_primary(self):
-        if getattr(self, 'primary', None) :
+        if getattr(self, 'primary', None):
             if self.primary == Configuration.get_solo():
                 return True
         return False
 
     def is_place(self):
-        if getattr(self, 'place', None) :
+        if getattr(self, 'place', None):
             return True
         return False
 
@@ -94,45 +182,11 @@ class Token(models.Model):
         unique_together = [['wallet', 'asset']]
 
 
-class CheckoutStripe(models.Model):
-    # Si recharge, alors un paiement stripe doit être lié
-    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
-    checkout_session_id_stripe = models.CharField(max_length=80, unique=True)
-
-    NON, OPEN, PENDING, EXPIRE, PAID, VALID, NOTSYNC, CANCELED = 'N', 'O', 'W', 'E', 'P', 'V', 'S', 'C'
-    STATUT_CHOICES = (
-        (OPEN, 'A vérifier'),
-        (PENDING, 'En attente de paiement'),
-        (EXPIRE, 'Expiré'),
-        (PAID, 'Payée'),
-        (VALID, 'Payée et validée'),  # envoyé sur serveur cashless
-        (NOTSYNC, 'Payée mais problème de synchro cashless'),  # envoyé sur serveur cashless qui retourne une erreur
-        (CANCELED, 'Annulée'),
-    )
-    status = models.CharField(max_length=1, choices=STATUT_CHOICES, default=NON, verbose_name="Statut de la commande")
-
-    def is_valid(self):
-        if self.status == self.VALID:
-            # Déja validé, on renvoie None
-            return None
-
-        stripe.api_key = Configuration.get_solo().get_stripe_api()
-        checkout_session = stripe.checkout.Session.retrieve(
-            self.checkout_session_id_stripe,
-            # stripe_account=config.get_stripe_connect_account()
-        )
-        if checkout_session.payment_status == "paid":
-            self.status = self.PAID
-            self.save()
-            return True
-
-        return False
-
-
 class Transaction(models.Model):
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
-    ip = models.GenericIPAddressField(verbose_name="Ip source")
+    hash = models.CharField(max_length=64, unique=True, editable=False)
 
+    ip = models.GenericIPAddressField(verbose_name="Ip source")
     checkoupt_stripe = models.ForeignKey(CheckoutStripe, on_delete=models.PROTECT, related_name='checkout_stripe',
                                          blank=True, null=True)
     primary_card_uuid = models.UUIDField(default=uuid4, editable=False, blank=True, null=True)
@@ -176,6 +230,8 @@ class Configuration(SingletonModel):
     # Wallet used to create money
     primary_wallet = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='primary')
 
+    stripe_endpoint_secret_enc = models.CharField(max_length=100, blank=True, null=True, editable=False)
+
     # def primary_key(self):
     #     return self.primary_wallet.key
 
@@ -184,6 +240,16 @@ class Configuration(SingletonModel):
             return settings.STRIPE_KEY_TEST
         else:
             return settings.STRIPE_KEY
+
+    def set_stripe_endpoint_secret(self, string):
+        self.stripe_endpoint_secret_enc = fernet_encrypt(string)
+        self.save()
+        return True
+
+    def get_stripe_endpoint_secret(self):
+        if settings.STRIPE_TEST:
+            return os.environ.get("STRIPE_ENDPOINT_SECRET_TEST")
+        return fernet_decrypt(self.stripe_endpoint_secret_enc)
 
 
 class FedowUser(AbstractUser):

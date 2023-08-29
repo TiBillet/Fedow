@@ -1,6 +1,7 @@
 import base64
+import json
 from collections import OrderedDict
-
+import hashlib
 from cryptography.hazmat.primitives.asymmetric import rsa
 from django.utils import timezone
 from rest_framework import serializers
@@ -13,12 +14,14 @@ logger = logging.getLogger(__name__)
 
 
 def get_or_create_fedowuser(email):
+    email = email.lower()
     try:
-        user = FedowUser.objects.get(email=email.lower())
+        user = FedowUser.objects.get(email=email)
         created = False
     except FedowUser.DoesNotExist:
         user = FedowUser.objects.create(
-            email=email.lower()
+            email=email,
+            username=email,
         )
         created = True
     return user, created
@@ -128,20 +131,25 @@ class WalletCreateSerializer(serializers.Serializer):
         # Get ip
         ip = get_request_ip(self.context.get('request'))
 
-        # Link card to user
-        self.card.user = self.user
-        self.card.save()
 
         private_pem, public_pem = rsa_generator()
         # Create wallet
         self.wallet = Wallet.objects.create(
             ip=ip,
-            user=self.user,
             private_pem=private_pem,
             public_pem=public_pem,
         )
 
+        # Link card to user
+        self.card.user = self.user
+        self.card.save()
+
+        # Link wallet to user
+        self.user.wallet = self.wallet
+        self.user.save()
+
         return attrs
+
 
     def to_representation(self, instance):
         # Add apikey user to representation
@@ -168,6 +176,10 @@ class NewTransactionValidator(serializers.Serializer):
         place: Place = api_key.place
         return place.wallet == self.sender or place.wallet == self.receiver
 
+    def create_hash(self):
+        encoded_block = json.dumps(self.__dict__, sort_keys = True).encode()
+        return hashlib.sha256(encoded_block).hexdigest()
+
     def validate(self, attrs):
         request = self.context.get('request')
         if not self.is_place_wallet:
@@ -185,6 +197,10 @@ class NewTransactionValidator(serializers.Serializer):
 
         return attrs
 
+    def get_attribute(self, instance):
+        attribute = super().get_attribute(instance)
+        attribute['hash'] = self.create_hash()
+        return attribute
 
 class TransactionSerializer(serializers.ModelSerializer):
     class Meta:

@@ -41,8 +41,8 @@ class Command(BaseCommand):
             instance_name = os.environ.get('DOMAIN', 'fedow.tibillet.localhost')
             primary_wallet = Wallet.objects.create(
                 name="Primary",
-                private_pem = private_pem,
-                public_pem = public_pem,
+                private_pem=private_pem,
+                public_pem=public_pem,
             )
 
             config = Configuration(
@@ -58,8 +58,8 @@ class Command(BaseCommand):
                     call_command("create_asset", 'TiBillet', 'TBI')
                     fed = Asset.objects.get(name='TiBillet')
                     fed.federated_primary = True
+                    fed.id_price_stripe = os.environ.get('PRICE_STRIPE_ID_FED')
                     fed.save()
-                except Exception as e :
+                except Exception as e:
                     self.stdout.write(self.style.ERROR(f'Asset TiBIllet already exist ? {e}'))
-
             self.stdout.write(self.style.SUCCESS(f'Configuration created : {instance_name}'), ending='\n')
