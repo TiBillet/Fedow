@@ -1,3 +1,5 @@
+import hashlib
+import json
 import os
 
 import stripe
@@ -31,37 +33,26 @@ class CheckoutStripe(models.Model):
     checkout_session_id_stripe = models.CharField(max_length=80, unique=True)
     asset = models.ForeignKey('Asset', on_delete=models.PROTECT,
                               related_name='checkout_stripe')
-    OPEN, PENDING, EXPIRE, PAID, VALID, NOTSYNC, CANCELED = 'O', 'W', 'E', 'P', 'V', 'S', 'C'
+    OPEN, EXPIRE, PAID, WALLET_PRIMARY_OK, WALLET_USER_OK, CANCELED = 'O', 'E', 'P', 'W', 'V', 'C'
     STATUT_CHOICES = (
-        (OPEN, 'A vérifier'),
-        (PENDING, 'En attente de paiement'),
+        (OPEN, 'En attente de paiement'),
         (EXPIRE, 'Expiré'),
-        (PAID, 'Payée'),
-        (VALID, 'Payée et validée'),  # envoyé sur serveur cashless
-        (NOTSYNC, 'Payée mais problème de synchro cashless'),  # envoyé sur serveur cashless qui retourne une erreur
+        (PAID, 'Payé'),
+        (WALLET_PRIMARY_OK, 'Wallet primaire chargé'),  # wallet primaire chargé
+        (WALLET_USER_OK, 'Wallet user chargé'),  # wallet chargé
         (CANCELED, 'Annulée'),
     )
     status = models.CharField(max_length=1, choices=STATUT_CHOICES, default=OPEN, verbose_name="Statut de la commande")
 
-    def create_change_payment_link(self, asset):
-        pass
+    # def check_paid(self):
+    #     if self.status in [self.PAID, self.VALID]:
+    #         return self.status
+    #
+    #     stripe.api_key = Configuration.get_solo().get_stripe_api()
+    #     checkout_session = stripe.checkout.Session.retrieve(
+    #         self.checkout_session_id_stripe,
+    #     )
 
-    def is_valid(self):
-        if self.status == self.VALID:
-            # Déja validé, on renvoie None
-            return None
-
-        stripe.api_key = Configuration.get_solo().get_stripe_api()
-        checkout_session = stripe.checkout.Session.retrieve(
-            self.checkout_session_id_stripe,
-            # stripe_account=config.get_stripe_connect_account()
-        )
-        if checkout_session.payment_status == "paid":
-            self.status = self.PAID
-            self.save()
-            return True
-
-        return False
 
 
 ## BLOCKCHAIN PART
@@ -134,7 +125,8 @@ class Asset(models.Model):
 
     class Meta:
         # Only one can be true :
-        constraints = [UniqueConstraint(fields=["federated_primary"], condition=Q(federated_primary=True),
+        constraints = [UniqueConstraint(fields=["federated_primary"],
+                                        condition=Q(federated_primary=True),
                                         name="unique_federated_primary_asset")]
 
 
@@ -196,6 +188,7 @@ class Transaction(models.Model):
     receiver = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name='transactions_received')
     asset = models.ForeignKey(Asset, on_delete=models.PROTECT, related_name='transactions')
 
+    previous_transaction = models.OneToOneField('self', on_delete=models.PROTECT, related_name='next_transaction', null=True)
     date = models.DateTimeField(auto_now_add=True)
     amount = models.DecimalField(max_digits=20, decimal_places=2)
     comment = models.CharField(max_length=100, blank=True)
@@ -209,13 +202,50 @@ class Transaction(models.Model):
     )
     action = models.CharField(max_length=1, choices=TYPE_ACTION, default=SALE, unique=True)
 
+    def dict_for_hash(self):
+        dict_for_hash = {
+            'sender': f"{self.sender.uuid}",
+            'receiver': f"{self.receiver.uuid}",
+            'asset': f"{self.asset.uuid}",
+            'amount': f"{self.amount}",
+            'date': f"{self.date}",
+            'action': f"{self.action}",
+            'checkoupt_stripe': f"{self.checkoupt_stripe.checkout_session_id_stripe}",
+            'previous_asset_transaction_uuid' : f"{self.previous_transaction.uuid}",
+            'previous_asset_transaction_hash' : f"{self.previous_transaction.hash}",
+        }
+        return dict_for_hash
+
+    def _previous_asset_transaction(self):
+        # Return self if it's the first transaction of the asset
+        return Transaction.objects.filter(asset=self.asset).order_by('-date').first() or Transaction()
+
+    def create_hash(self):
+        dict_for_hash = self.dict_for_hash()
+        encoded_block = json.dumps(dict_for_hash, sort_keys = True).encode('utf-8')
+        return hashlib.sha256(encoded_block).hexdigest()
+
+    def verify_hash(self):
+        dict_for_hash = self.dict_for_hash()
+        encoded_block = json.dumps(dict_for_hash, sort_keys = True).encode('utf-8')
+        return hashlib.sha256(encoded_block).hexdigest() == self.hash
+
+    def save(self, *args, **kwargs):
+        if not self.hash:
+            self.previous_transaction = self._previous_asset_transaction()
+            self.hash = self.create_hash()
+            super(Transaction, self).save(*args, **kwargs)
+        else :
+            raise Exception("Transaction hash already set.")
+
     class Meta:
         ordering = ['-date']
 
 
+
 @receiver(pre_save, sender=Transaction)
 def inspector(sender, instance, **kwargs):
-    token_receiver, created_r = Token.objects.get(wallet=instance.receiver, asset=instance.asset)
+    token_receiver = Token.objects.get(wallet=instance.receiver, asset=instance.asset)
 
     if instance.action == Transaction.CREATION:
         assert instance.sender == instance.receiver, "Sender and receiver must be the same for creation money."
@@ -344,7 +374,7 @@ class Card(models.Model):
 
 
 def get_or_create_user(email):
-    User = get_user_model()
+    User: FedowUser = get_user_model()
     try:
         user = User.objects.get(email=email.lower())
         created = False

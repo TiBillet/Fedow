@@ -10,7 +10,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework_api_key.models import APIKey
 
 from fedow_core.models import Card, Place, FedowUser, OrganizationAPIKey, Origin, get_or_create_user, Wallet, \
-    Configuration
+    Configuration, Asset, Token
 from fedow_core.utils import utf8_b64_to_dict, rsa_generator, dict_to_b64, sign_message, get_private_key, b64_to_dict, \
     get_public_key, fernet_decrypt, verify_signature
 from fedow_core.views import HelloWorld
@@ -56,6 +56,7 @@ class TransactionsTest(FedowTestCase):
 
     def setUp(self):
         super().setUp()
+
         # Création d'une carte NFC
         gen1 = Origin.objects.create(
             place=self.place,
@@ -96,15 +97,43 @@ class TransactionsTest(FedowTestCase):
         ### RECHARGE AVEC ASSET PRINCIPAL STRIPE
         ## Creation de monnaie. Reception d'un webhook stripe
         config = Configuration.get_solo()
+        stripe.api_key = config.get_stripe_api()
+
         primary_wallet = config.primary_wallet
 
+        stripe_asset = Asset.objects.get(federated_primary=True)
+        id_price_stripe = stripe_asset.id_price_stripe
 
-        data = {
-            'sender': f'{self.place.wallet.uuid}',
-            'receiver': f'{self.place.wallet.uuid}',
+        primary_token = Token.objects.get_or_create(
+            wallet=primary_wallet,
+            asset=stripe_asset,
+        )
+
+        # Lancer stripe :
+        # stripe listen --forward-to http://127.0.0.1:8000/webhook_stripe/
+        # S'assurer que la clé de signature soit la même que dans le .env
+        line_items = [{
+            "price": f"{id_price_stripe}",
+            "quantity": 1
+        }]
+
+        data_checkout = {
+            'success_url': 'https://127.0.0.1:8000/checkout_stripe/',
+            'cancel_url': 'https://127.0.0.1:8000/checkout_stripe/',
+            'payment_method_types': ["card"],
+            'customer_email': f'{email}',
+            'line_items': line_items,
+            'mode': 'payment',
+            'metadata': {'meta':'coucou'},
+            # 'client_reference_id': f"{user.pk}",
         }
+        checkout_session = stripe.checkout.Session.create(**data_checkout)
 
+        self.assertEqual(checkout_session.status, 'open')
 
+        # stripe.checkout.Session.create(
+        #
+        # )
 
 class APITestHelloWorld(FedowTestCase):
 

@@ -4,6 +4,8 @@ import json
 import stripe
 from cryptography.fernet import Fernet
 from django.conf import settings
+from django.core import signing
+from django.core.signing import Signer
 from django.core.validators import URLValidator
 from django.http import Http404
 from django.shortcuts import get_object_or_404
@@ -22,16 +24,18 @@ from fedow_core.serializers import TransactionSerializer, PlaceSerializer, Walle
 from rest_framework.pagination import PageNumberPagination
 
 from fedow_core.utils import get_request_ip, fernet_encrypt, fernet_decrypt, dict_to_b64_utf8, dict_to_b64, \
-    get_public_key, verify_signature
+    get_public_key, verify_signature, utf8_b64_to_dict
 
 import logging
 
 logger = logging.getLogger(__name__)
 
+
 def get_api_place_user(request) -> tuple:
     key = request.META["HTTP_AUTHORIZATION"].split()[1]
     api_key = OrganizationAPIKey.objects.get_from_key(key)
     return api_key, api_key.place, api_key.user
+
 
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 100
@@ -54,6 +58,7 @@ class TestApiKey(viewsets.ViewSet):
             permission_classes = [HasKeyAndCashlessSignature]
         return [permission() for permission in permission_classes]
 
+
 class HelloWorld(viewsets.ViewSet):
     """
     GET /heloworld/ : Hello, world!
@@ -65,8 +70,6 @@ class HelloWorld(viewsets.ViewSet):
     def get_permissions(self):
         permission_classes = [AllowAny]
         return [permission() for permission in permission_classes]
-
-
 
 
 ### REST API ###
@@ -211,15 +214,53 @@ def HasAPIKeyAndWalletSigned(request, wallet: Wallet) -> bool | Http404:
 class WebhookStripe(APIView):
     def post(self, request):
         # Help STRIPE : https://stripe.com/docs/webhooks/quickstart
-        config = Configuration.get_solo()
-        stripe.api_key = config.get_stripe_api()
         payload = request.data
         if payload.get('type') == "checkout.session.completed":
-            checkout_session_id_stripe=payload['data']['object']['id']
-            checkout, created = CheckoutStripe.objects.get_or_create(
-                checkout_session_id_stripe=checkout_session_id_stripe)
-            logger.info(f"checkout_session_id_stripe : {checkout.checkout_session_id_stripe}")
-            logger.warning(f"checkout_session_id_stripe : {checkout.checkout_session_id_stripe}")
+            # Récupération de l'objet checkout chez Stripe
+            checkout_session_id_stripe = payload['data']['object']['id']
+            config = Configuration.get_solo()
+            stripe.api_key = config.get_stripe_api()
+            checkout = stripe.checkout.Session.retrieve(checkout_session_id_stripe)
+
+
+            # Vérification de la signature Django et des uuid token par la même occasion.
+            signer = Signer()
+            signed_data = utf8_b64_to_dict(signer.unsign(
+                checkout.metadata.get('signed_data')
+            ))
+
+            primary_token = Token.objects.get(uuid=signed_data.get('primary_token'))
+            user_token = Token.objects.get(uuid=signed_data.get('user_token'))
+            assert primary_token.asset == user_token.asset, "Asset not match"
+
+            checkout_db = CheckoutStripe.objects.get(
+                checkout_session_id_stripe=checkout_session_id_stripe,
+                asset=primary_token.asset,
+            )
+
+            if checkout.payment_status == 'paid' :
+                # and checkout_db.status == CheckoutStripe.OPEN:
+                # Paiement ok, on enregistre la transaction
+
+                # Create token from scratch
+                token_creation = Transaction.objects.create(
+                    ip=get_request_ip(request),
+                    checkoupt_stripe=checkout_db,
+                    sender=primary_token.wallet,
+                    receiver=primary_token.wallet,
+                    asset=primary_token.asset,
+                    amount=int(checkout.amount_total),
+                    action=Transaction.CREATION,
+                    primary_card_uuid=None,  # Création de monnaie
+                    card_uuid=None,  # Création de monnaie
+                )
+
+                # import ipdb; ipdb.set_trace()
+                # checkout_db.status = CheckoutStripe.WALLET_PRIMARY_OK
+                # checkout_db.save()
+
+            # logger.info(f"checkout_session_id_stripe : {checkout.checkout_session_id_stripe}")
+            # logger.warning(f"checkout_session_id_stripe : {checkout.checkout_session_id_stripe}")
 
         """
         # import ipdb; ipdb.set_trace()

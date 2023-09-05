@@ -25,7 +25,7 @@ PRE_SAVE_TRANSITIONS = {
             CheckoutStripe.PAID: create_transaction,
             '_else_': error_regression,
         },
-        CheckoutStripe.VALID: {
+        CheckoutStripe.PAID: {
             '_all_': error_regression,
         }
     },
