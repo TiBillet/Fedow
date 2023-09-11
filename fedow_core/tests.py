@@ -10,10 +10,11 @@ from rest_framework.permissions import AllowAny
 from rest_framework_api_key.models import APIKey
 
 from fedow_core.models import Card, Place, FedowUser, OrganizationAPIKey, Origin, get_or_create_user, Wallet, \
-    Configuration, Asset, Token
+    Configuration, Asset, Token, CheckoutStripe, Transaction
 from fedow_core.utils import utf8_b64_to_dict, rsa_generator, dict_to_b64, sign_message, get_private_key, b64_to_dict, \
     get_public_key, fernet_decrypt, verify_signature
 from fedow_core.views import HelloWorld
+from django.core.signing import Signer
 
 import logging
 
@@ -76,7 +77,7 @@ class TransactionsTest(FedowTestCase):
 
 
     def testWallet(self):
-        ### Création d'un wallet client
+        ### Création d'un wallet client avec un email et un uuid de carte
         User: FedowUser = get_user_model()
         email = 'lambda@lambda.com'
         new_wallet_data = {
@@ -94,50 +95,87 @@ class TransactionsTest(FedowTestCase):
         self.assertTrue(wallet)
         self.assertEqual(user.wallet, wallet)
 
+    def test_REFILL(self):
         ### RECHARGE AVEC ASSET PRINCIPAL STRIPE
         ## Creation de monnaie. Reception d'un webhook stripe
-        config = Configuration.get_solo()
-        stripe.api_key = config.get_stripe_api()
+        ## A faire a la main en attendant une automatisation du paiement checkout
+        """
+        Lancer stripe :
+        stripe listen --forward-to http://127.0.0.1:8000/webhook_stripe/
+        
+        S'assurer que la clé de signature soit la même que dans le .env
+        Créer un checkout et le payer : 
+        ./manage.py create_test_checkout
+        
+        Vérifier les Transactions et les Assets
+        """
 
-        primary_wallet = config.primary_wallet
+        # Création d'un checkout stripe
+        out = StringIO()
+        call_command('create_test_checkout',
+                     stdout=out)
+        last_line = out.getvalue()
+        # print(last_line)
 
-        stripe_asset = Asset.objects.get(federated_primary=True)
-        id_price_stripe = stripe_asset.id_price_stripe
+        # Récupération du checkout stripe
+        checkout = CheckoutStripe.objects.all().order_by('datetime').last()
 
-        primary_token = Token.objects.get_or_create(
-            wallet=primary_wallet,
-            asset=stripe_asset,
+        # amount_total est entré normalement par l'user sur stripe
+        amount_total = "4200"
+
+        # Récupération des metadonnée envoyées à Stripe
+        signer = Signer()
+        signed_data = utf8_b64_to_dict(signer.unsign(checkout.metadata))
+        primary_token = Token.objects.get(uuid=signed_data.get('primary_token'))
+        user_token = Token.objects.get(uuid=signed_data.get('user_token'))
+        card = Card.objects.get(uuid=signed_data.get('card_uuid'))
+
+        # L'asset est-il le même entre les deux tokens ?
+        self.assertEqual(primary_token.asset, user_token.asset)
+        # L'user du token est-il le même que celui de la carte ?
+        self.assertEqual(card.user, user_token.wallet.user)
+
+        # Création de la transaction de création de token
+        token_creation = Transaction.objects.create(
+            ip='0.0.0.0',
+            checkout_stripe=checkout,
+            sender=primary_token.wallet,
+            receiver=primary_token.wallet,
+            asset=primary_token.asset,
+            amount=int(amount_total),
+            action=Transaction.CREATION,
+            card=card,
+            primary_card_uuid=None,  # Création de monnaie
         )
 
-        # Lancer stripe :
-        # stripe listen --forward-to http://127.0.0.1:8000/webhook_stripe/
-        # S'assurer que la clé de signature soit la même que dans le .env
-        line_items = [{
-            "price": f"{id_price_stripe}",
-            "quantity": 1
-        }]
+        self.assertTrue(token_creation.verify_hash())
+        primary_token.refresh_from_db()
+        self.assertEqual(int(amount_total), primary_token.value)
 
-        data_checkout = {
-            'success_url': 'https://127.0.0.1:8000/checkout_stripe/',
-            'cancel_url': 'https://127.0.0.1:8000/checkout_stripe/',
-            'payment_method_types': ["card"],
-            'customer_email': f'{email}',
-            'line_items': line_items,
-            'mode': 'payment',
-            'metadata': {'meta':'coucou'},
-            # 'client_reference_id': f"{user.pk}",
-        }
-        checkout_session = stripe.checkout.Session.create(**data_checkout)
+        # virement vers le wallet de l'utilisateur
+        virement = Transaction.objects.create(
+            ip='0.0.0.0',
+            checkout_stripe=checkout,
+            sender=primary_token.wallet,
+            receiver=user_token.wallet,
+            asset=primary_token.asset,
+            amount=int(amount_total),
+            action=Transaction.REFILL,
+            card=card,
+            primary_card_uuid=None,  # Création de monnaie
+        )
 
-        self.assertEqual(checkout_session.status, 'open')
+        self.assertTrue(virement.verify_hash())
+        primary_token.refresh_from_db()
+        user_token.refresh_from_db()
+        self.assertEqual(int(amount_total), user_token.value)
+        self.assertEqual(0, primary_token.value)
 
-        # stripe.checkout.Session.create(
-        #
-        # )
 
+"""
 class APITestHelloWorld(FedowTestCase):
 
-    def sk_test_helloworld(self):
+    def test_helloworld(self):
         start = datetime.now()
 
         response = self.client.get('/helloworld/')
@@ -165,7 +203,7 @@ class APITestHelloWorld(FedowTestCase):
         logger.warning(f"durée requete avec APIKey : {datetime.now() - start}")
         self.assertEqual(response.status_code, 403)
 
-    def sk_test_api_and_signed_message(self):
+    def test_api_and_signed_message(self):
         decoded_data = utf8_b64_to_dict(self.last_line)
         key = decoded_data.get('temp_key')
         api_key = OrganizationAPIKey.objects.get_from_key(key)
@@ -249,7 +287,7 @@ class APITestHelloWorld(FedowTestCase):
 
 class ModelsTest(FedowTestCase):
 
-    def sk_test_place_and_admin_created_(self):
+    def test_place_and_admin_created_(self):
         User: FedowUser = get_user_model()
         email_admin = self.email_admin
 
@@ -267,7 +305,7 @@ class ModelsTest(FedowTestCase):
         self.assertEqual(api_key_from_decoded_data.user, admin)
         self.assertIn('temp_', api_key_from_decoded_data.name)
 
-    def sk_test_simulate_cashless_handshake(self):
+    def test_simulate_cashless_handshake(self):
         # Données pour simuler un cashless.
         cashless_private_rsa_key, cashless_pub_rsa_key = rsa_generator()
         # Simulation d'une clé générée par le serveur cashless
@@ -335,3 +373,4 @@ class ModelsTest(FedowTestCase):
         self.assertEqual(fernet_decrypt(place.cashless_admin_apikey), data.get('cashless_admin_apikey'))
 
 
+"""

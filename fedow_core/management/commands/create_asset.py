@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand, CommandError
 from rest_framework_api_key.models import APIKey
 
-from fedow_core.models import Asset
+from fedow_core.models import Asset, Transaction, Configuration
 
 """
 Pense bête :
@@ -54,9 +54,24 @@ class Command(BaseCommand):
         except Asset.DoesNotExist:
             pass
 
-        Asset.objects.create(
+        asset = Asset.objects.create(
             name=asset_name,
             currency_code=currency_code,
+        )
+
+        # Création du premier block
+        config = Configuration.get_solo()
+        primary_wallet = config.primary_wallet
+        first_block = Transaction.objects.create(
+            ip='0.0.0.0',
+            checkout_stripe=None,
+            sender=primary_wallet,
+            receiver=primary_wallet,
+            asset=asset,
+            amount=int(0),
+            action=Transaction.FIRST,
+            card=None,
+            primary_card_uuid=None,
         )
 
         self.stdout.write(self.style.SUCCESS(f"Asset succesfully created."), ending='\n')

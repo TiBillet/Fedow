@@ -9,6 +9,7 @@ from django.contrib.auth import get_user_model
 from django.db.models import UniqueConstraint, Q
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
+from django.utils import timezone
 from rest_framework_api_key.models import AbstractAPIKey
 from django.contrib.auth.models import AbstractUser
 from solo.models import SingletonModel
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 class CheckoutStripe(models.Model):
     # Si recharge, alors un paiement stripe doit être lié
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
+    datetime = models.DateTimeField(auto_now_add=True)
     checkout_session_id_stripe = models.CharField(max_length=80, unique=True)
     asset = models.ForeignKey('Asset', on_delete=models.PROTECT,
                               related_name='checkout_stripe')
@@ -43,15 +45,12 @@ class CheckoutStripe(models.Model):
         (CANCELED, 'Annulée'),
     )
     status = models.CharField(max_length=1, choices=STATUT_CHOICES, default=OPEN, verbose_name="Statut de la commande")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='checkout_stripe')
+    metadata = models.CharField(editable=False, db_index=False, max_length=500)
 
-    # def check_paid(self):
-    #     if self.status in [self.PAID, self.VALID]:
-    #         return self.status
-    #
-    #     stripe.api_key = Configuration.get_solo().get_stripe_api()
-    #     checkout_session = stripe.checkout.Session.retrieve(
-    #         self.checkout_session_id_stripe,
-    #     )
+    def __str__(self):
+        self.user: FedowUser
+        return f"{self.user.email} {self.status}"
 
 
 
@@ -170,6 +169,9 @@ class Token(models.Model):
     wallet = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name='tokens')
     asset = models.ForeignKey(Asset, on_delete=models.PROTECT, related_name='tokens')
 
+    # def __str__(self):
+    #     return f"{self.wallet.name} {self.asset.name} {self.value}"
+
     class Meta:
         unique_together = [['wallet', 'asset']]
 
@@ -179,28 +181,29 @@ class Transaction(models.Model):
     hash = models.CharField(max_length=64, unique=True, editable=False)
 
     ip = models.GenericIPAddressField(verbose_name="Ip source")
-    checkoupt_stripe = models.ForeignKey(CheckoutStripe, on_delete=models.PROTECT, related_name='checkout_stripe',
-                                         blank=True, null=True)
+    checkout_stripe = models.ForeignKey(CheckoutStripe, on_delete=models.PROTECT, related_name='checkout_stripe',
+                                        blank=True, null=True)
     primary_card_uuid = models.UUIDField(default=uuid4, editable=False, blank=True, null=True)
-    card_uuid = models.UUIDField(default=uuid4, editable=False, blank=True, null=True)
 
     sender = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name='transactions_sent')
     receiver = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name='transactions_received')
     asset = models.ForeignKey(Asset, on_delete=models.PROTECT, related_name='transactions')
+    card = models.ForeignKey('Card', on_delete=models.PROTECT, related_name='transactions', blank=True, null=True)
 
-    previous_transaction = models.OneToOneField('self', on_delete=models.PROTECT, related_name='next_transaction', null=True)
-    date = models.DateTimeField(auto_now_add=True)
-    amount = models.DecimalField(max_digits=20, decimal_places=2)
+    previous_transaction = models.ForeignKey('self', on_delete=models.PROTECT, related_name='next_transaction')
+    datetime = models.DateTimeField()
+    amount = models.PositiveIntegerField()
     comment = models.CharField(max_length=100, blank=True)
 
-    SALE, CREATION, REFILL, TRANSFER = 'S', 'C', 'R', 'T'
+    FIRST, SALE, CREATION, REFILL, TRANSFER = 'F', 'S', 'C', 'R', 'T'
     TYPE_ACTION = (
+        (FIRST, "Premier bloc"),
         (SALE, "Vente d'article"),
         (CREATION, 'Creation monétaire'),
         (REFILL, 'Recharge Cashless'),
         (TRANSFER, 'Transfert'),
     )
-    action = models.CharField(max_length=1, choices=TYPE_ACTION, default=SALE, unique=True)
+    action = models.CharField(max_length=1, choices=TYPE_ACTION, default=SALE)
 
     def dict_for_hash(self):
         dict_for_hash = {
@@ -208,50 +211,86 @@ class Transaction(models.Model):
             'receiver': f"{self.receiver.uuid}",
             'asset': f"{self.asset.uuid}",
             'amount': f"{self.amount}",
-            'date': f"{self.date}",
+            'date': f"{self.datetime.isoformat()}",
             'action': f"{self.action}",
-            'checkoupt_stripe': f"{self.checkoupt_stripe.checkout_session_id_stripe}",
-            'previous_asset_transaction_uuid' : f"{self.previous_transaction.uuid}",
-            'previous_asset_transaction_hash' : f"{self.previous_transaction.hash}",
+            'checkoupt_stripe': f"{self._checkout_session_id_stripe()}",
+            'previous_asset_transaction_uuid': f"{self.previous_transaction.uuid}",
+            'previous_asset_transaction_hash': f"{self.previous_transaction.hash}",
         }
         return dict_for_hash
 
+    def _checkout_session_id_stripe(self):
+        if self.checkout_stripe:
+            return self.checkout_stripe.checkout_session_id_stripe
+        return None
+
     def _previous_asset_transaction(self):
         # Return self if it's the first transaction of the asset
-        return Transaction.objects.filter(asset=self.asset).order_by('-date').first() or Transaction()
+        # Order by date. The newest is the last wrote in database.
+        return self.asset.transactions.all().order_by('datetime').last() or self
 
     def create_hash(self):
         dict_for_hash = self.dict_for_hash()
-        encoded_block = json.dumps(dict_for_hash, sort_keys = True).encode('utf-8')
+        encoded_block = json.dumps(dict_for_hash, sort_keys=True).encode('utf-8')
         return hashlib.sha256(encoded_block).hexdigest()
 
     def verify_hash(self):
+        if self.action == Transaction.FIRST:
+            return True
         dict_for_hash = self.dict_for_hash()
-        encoded_block = json.dumps(dict_for_hash, sort_keys = True).encode('utf-8')
+        encoded_block = json.dumps(dict_for_hash, sort_keys=True).encode('utf-8')
         return hashlib.sha256(encoded_block).hexdigest() == self.hash
 
     def save(self, *args, **kwargs):
+        self.datetime = timezone.localtime()
+        token_sender, created = Token.objects.get_or_create(wallet=self.sender, asset=self.asset)
+        token_receiver, created = Token.objects.get_or_create(wallet=self.receiver, asset=self.asset)
+
+        # Validator 0 : First must be unique
+        if self.action == Transaction.FIRST:
+            assert not self.asset.transactions.filter(action=Transaction.FIRST).exists(), "First transaction already exists."
+
+        # Validator 1 : IF CREATION
+        if self.action == Transaction.CREATION:
+            assert self.sender == self.receiver, "Sender and receiver must be the same for creation money."
+            assert self.asset.federated_primary == True, "Asset must be federated primary for creation money."
+            if self.asset.federated_primary:
+                assert self.checkout_stripe != None, "Checkout stripe must be set for creation money."
+
+            # FILL TOKEN WALLET
+            token_receiver.value += self.amount
+            token_receiver.save()
+
+        # Vlidator 2 : IF REFILL
+        if self.action == Transaction.REFILL:
+            assert not self.receiver.is_primary(), "Receiver must be a user wallet"
+            assert not self.receiver.is_place(), "Receiver must be a user wallet"
+            assert self.checkout_stripe != None, "Checkout stripe must be set for refill."
+            assert token_sender.value >= self.amount, "Sender must have enough for refill the user wallet."
+
+            # FILL TOKEN WALLET
+            token_sender.value -= self.amount
+            token_sender.save()
+            token_receiver.value += self.amount
+            token_receiver.save()
+
+        # ALL VALIDATOR PASSED : HASH CREATION
         if not self.hash:
             self.previous_transaction = self._previous_asset_transaction()
             self.hash = self.create_hash()
             super(Transaction, self).save(*args, **kwargs)
-        else :
+        else:
             raise Exception("Transaction hash already set.")
 
     class Meta:
-        ordering = ['-date']
+        ordering = ['-datetime']
 
 
-
+"""
 @receiver(pre_save, sender=Transaction)
 def inspector(sender, instance, **kwargs):
     token_receiver = Token.objects.get(wallet=instance.receiver, asset=instance.asset)
-
-    if instance.action == Transaction.CREATION:
-        assert instance.sender == instance.receiver, "Sender and receiver must be the same for creation money."
-        assert instance.asset.federated_primary == True, "Asset must be federated primary for creation money."
-        if instance.asset.federated_primary:
-            assert instance.checkoupt_stripe != None, "Checkout stripe must be set for creation money."
+"""
 
 
 class Configuration(SingletonModel):

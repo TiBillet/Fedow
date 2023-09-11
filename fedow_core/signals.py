@@ -1,9 +1,9 @@
+"""
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
 
 from fedow_core.models import CheckoutStripe, Transaction
 import logging
-
 logger = logging.getLogger(__name__)
 
 
@@ -12,11 +12,6 @@ def error_regression(old_instance, new_instance):
     pass
 
 
-def create_transaction(old_instance, new_instance):
-    Transaction.objects.create(
-        checkoupt_stripe=new_instance,
-
-    )
 
 
 PRE_SAVE_TRANSITIONS = {
@@ -55,3 +50,5 @@ def pre_save_signal_status(sender, instance, **kwargs):
                     if not callable(trigger_function):
                         raise Exception(f'Fonction {trigger_function} is not callable. Disdonc !?')
                     trigger_function(old_instance, new_instance)
+
+"""

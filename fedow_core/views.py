@@ -17,7 +17,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_api_key.models import APIKey
 from fedow_core.models import Transaction, Place, Configuration, Asset, CheckoutStripe, Token, Wallet, FedowUser, \
-    OrganizationAPIKey
+    OrganizationAPIKey, Card
 from fedow_core.permissions import HasKeyAndCashlessSignature, HasAPIKey, IsStripe
 from fedow_core.serializers import TransactionSerializer, PlaceSerializer, WalletCreateSerializer, HandshakeValidator, \
     NewTransactionValidator
@@ -215,74 +215,89 @@ class WebhookStripe(APIView):
     def post(self, request):
         # Help STRIPE : https://stripe.com/docs/webhooks/quickstart
         payload = request.data
-        if payload.get('type') == "checkout.session.completed":
-            # Récupération de l'objet checkout chez Stripe
-            checkout_session_id_stripe = payload['data']['object']['id']
-            config = Configuration.get_solo()
-            stripe.api_key = config.get_stripe_api()
-            checkout = stripe.checkout.Session.retrieve(checkout_session_id_stripe)
+        if not payload.get('type') == "checkout.session.completed":
+            return Response("Not for me", status=status.HTTP_204_NO_CONTENT)
 
+        # Récupération de l'objet checkout chez Stripe
+        checkout_session_id_stripe = payload['data']['object']['id']
+        config = Configuration.get_solo()
+        stripe.api_key = config.get_stripe_api()
+        checkout = stripe.checkout.Session.retrieve(checkout_session_id_stripe)
 
-            # Vérification de la signature Django et des uuid token par la même occasion.
-            signer = Signer()
-            signed_data = utf8_b64_to_dict(signer.unsign(
-                checkout.metadata.get('signed_data')
-            ))
+        # Vérification de la signature Django et des uuid token par la même occasion.
+        signer = Signer()
+        signed_data = utf8_b64_to_dict(signer.unsign(
+            checkout.metadata.get('signed_data')
+        ))
 
-            primary_token = Token.objects.get(uuid=signed_data.get('primary_token'))
-            user_token = Token.objects.get(uuid=signed_data.get('user_token'))
-            assert primary_token.asset == user_token.asset, "Asset not match"
+        primary_token = Token.objects.get(uuid=signed_data.get('primary_token'))
+        user_token = Token.objects.get(uuid=signed_data.get('user_token'))
+        card = Card.objects.get(uuid=signed_data.get('card_uuid'))
 
-            checkout_db = CheckoutStripe.objects.get(
-                checkout_session_id_stripe=checkout_session_id_stripe,
-                asset=primary_token.asset,
-            )
+        # L'asset est-il le même entre les deux tokens ?
+        if not primary_token.asset == user_token.asset:
+            return Response("Asset not match", status=status.HTTP_409_CONFLICT)
 
-            if checkout.payment_status == 'paid' :
-                # and checkout_db.status == CheckoutStripe.OPEN:
-                # Paiement ok, on enregistre la transaction
+        # L'user du token est-il le même que celui de la carte ?
+        if not card.user == user_token.wallet.user:
+            return Response("User not match", status=status.HTTP_409_CONFLICT)
 
-                # Create token from scratch
-                token_creation = Transaction.objects.create(
-                    ip=get_request_ip(request),
-                    checkoupt_stripe=checkout_db,
-                    sender=primary_token.wallet,
-                    receiver=primary_token.wallet,
-                    asset=primary_token.asset,
-                    amount=int(checkout.amount_total),
-                    action=Transaction.CREATION,
-                    primary_card_uuid=None,  # Création de monnaie
-                    card_uuid=None,  # Création de monnaie
-                )
+        checkout_db = CheckoutStripe.objects.get(
+            checkout_session_id_stripe=checkout_session_id_stripe,
+            asset=primary_token.asset,
+        )
 
-                # import ipdb; ipdb.set_trace()
-                # checkout_db.status = CheckoutStripe.WALLET_PRIMARY_OK
-                # checkout_db.save()
+        if (checkout.payment_status == 'paid'
+                and checkout_db.status == CheckoutStripe.OPEN):
+            # Paiement ok, on enregistre la transaction
 
-            # logger.info(f"checkout_session_id_stripe : {checkout.checkout_session_id_stripe}")
-            # logger.warning(f"checkout_session_id_stripe : {checkout.checkout_session_id_stripe}")
+            # Update checkout status
+            checkout_db.status = CheckoutStripe.PAID
+            checkout_db.save()
 
-        """
-        # import ipdb; ipdb.set_trace()
-        # On stocke en db les checkouts Stripe,
-        # ils participent aux hash de signature des transactions
-
-        if checkout.is_valid():
-            # Création de monnaie : On incrémente le wallet primaire
-            prime_wallet = config.primary_wallet,
-            prime_asset = Asset.objects.get(federated_primary=True)
-
-            Transaction.objects.create(
+            # Create token from scratch
+            token_creation = Transaction.objects.create(
                 ip=get_request_ip(request),
-                checkoupt_stripe=checkout,
-                sender=prime_wallet,
-                receiver=prime_wallet,
-                asset=prime_asset,
+                checkout_stripe=checkout_db,
+                sender=primary_token.wallet,
+                receiver=primary_token.wallet,
+                asset=primary_token.asset,
+                amount=int(checkout.amount_total),
                 action=Transaction.CREATION,
+                card=card,
+                primary_card_uuid=None,  # Création de monnaie
             )
-        """
 
-        return Response("OK", status=status.HTTP_200_OK)
+            if token_creation.verify_hash():
+                checkout_db.status = CheckoutStripe.WALLET_PRIMARY_OK
+                checkout_db.save()
+            else:
+                logger.error(f"Token creation hash not valid : {token_creation.uuid}")
+                raise Exception("Token creation hash not valid")
+
+            # virement vers le wallet de l'utilisateur
+            virement = Transaction.objects.create(
+                ip=get_request_ip(request),
+                checkout_stripe=checkout_db,
+                sender=primary_token.wallet,
+                receiver=user_token.wallet,
+                asset=primary_token.asset,
+                amount=int(checkout.amount_total),
+                action=Transaction.REFILL,
+                card=card,
+                primary_card_uuid=None,  # Création de monnaie
+            )
+
+            if virement.verify_hash():
+                checkout_db.status = CheckoutStripe.WALLET_USER_OK
+                checkout_db.save()
+            else:
+                logger.error(f"Refill after Token creation not valid : {token_creation.uuid}")
+                raise Exception("Token refill hash not valid")
+
+            return Response("OK", status=status.HTTP_200_OK)
+
+        return Response("Non traité", status=status.HTTP_208_ALREADY_REPORTED)
 
 
 @permission_classes([HasAPIKey])
@@ -326,10 +341,12 @@ class Onboard_stripe_return(APIView):
             return Response("Compte stripe non valide", status=status.HTTP_406_NOT_ACCEPTABLE)
 
 
+"""
 @permission_classes([HasAPIKey])
 class Onboard(APIView):
     def get(self, request):
         return Response(f"{create_account_link_for_onboard()}", status=status.HTTP_202_ACCEPTED)
+"""
 
 
 class TransactionAPI(viewsets.ViewSet):
