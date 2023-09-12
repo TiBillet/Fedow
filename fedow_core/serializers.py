@@ -175,7 +175,8 @@ class WalletCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError("Card does not exist")
 
         if self.card.user:
-            raise serializers.ValidationError("Card not available")
+            if self.card.user != self.user:
+                raise serializers.ValidationError("Card already used")
 
         return self.card.uuid
 

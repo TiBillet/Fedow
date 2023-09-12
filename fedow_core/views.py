@@ -422,6 +422,7 @@ class TransactionAPI(viewsets.ViewSet):
     def create(self, request):
         # On récupère place grâce à la permission HasKeyAndCashlessSignature
         serializer = NewTransactionValidator(data=request.data, context={'request': request})
+        #TODO: Créer new transaction depuis carte
         if serializer.is_valid():
             virement = Transaction.objects.create(
                 ip=get_request_ip(request),
