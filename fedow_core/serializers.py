@@ -6,25 +6,12 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_api_key.models import APIKey
-from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction, OrganizationAPIKey, Asset, Token
+from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction, OrganizationAPIKey, Asset, Token, \
+    get_or_create_user
 from fedow_core.utils import get_request_ip, get_public_key, dict_to_b64, verify_signature, rsa_generator
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-def get_or_create_fedowuser(email):
-    email = email.lower()
-    try:
-        user = FedowUser.objects.get(email=email)
-        created = False
-    except FedowUser.DoesNotExist:
-        user = FedowUser.objects.create(
-            email=email,
-            username=email,
-        )
-        created = True
-    return user, created
 
 
 class HandshakeValidator(serializers.Serializer):
@@ -110,10 +97,11 @@ class WalletCreateSerializer(serializers.Serializer):
     uuid_card = serializers.UUIDField()
 
     def validate_email(self, value):
-        self.user, created = get_or_create_fedowuser(email=value)
-        if not created:
-            raise serializers.ValidationError("User already exists")
-
+        ip = None
+        request = self.context.get('request')
+        if request:
+            ip = get_request_ip(request)
+        self.user, created = get_or_create_user(value, ip=ip)
         return self.user.email
 
     def validate_uuid_card(self, value):
@@ -128,34 +116,18 @@ class WalletCreateSerializer(serializers.Serializer):
         return self.card.uuid
 
     def validate(self, attrs):
-        # Get ip
-        ip = get_request_ip(self.context.get('request'))
-
-
-        private_pem, public_pem = rsa_generator()
-        # Create wallet
-        self.wallet = Wallet.objects.create(
-            ip=ip,
-            private_pem=private_pem,
-            public_pem=public_pem,
-        )
-
         # Link card to user
         self.card.user = self.user
         self.card.save()
 
-        # Link wallet to user
-        self.user.wallet = self.wallet
-        self.user.save()
-
         return attrs
-
 
     def to_representation(self, instance):
         # Add apikey user to representation
         representation = super().to_representation(instance)
-        representation['wallet'] = f"{self.wallet.uuid}"
+        representation['wallet'] = f"{self.user.wallet.uuid}"
         return representation
+
 
 class NewTransactionValidator(serializers.Serializer):
     amount = serializers.IntegerField()
@@ -177,7 +149,7 @@ class NewTransactionValidator(serializers.Serializer):
         return place.wallet == self.sender or place.wallet == self.receiver
 
     def create_hash(self):
-        encoded_block = json.dumps(self.__dict__, sort_keys = True).encode()
+        encoded_block = json.dumps(self.__dict__, sort_keys=True).encode()
         return hashlib.sha256(encoded_block).hexdigest()
 
     def validate(self, attrs):
@@ -201,6 +173,7 @@ class NewTransactionValidator(serializers.Serializer):
         attribute = super().get_attribute(instance)
         attribute['hash'] = self.create_hash()
         return attribute
+
 
 class TransactionSerializer(serializers.ModelSerializer):
     class Meta:

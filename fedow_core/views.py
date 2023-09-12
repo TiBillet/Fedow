@@ -95,7 +95,7 @@ class WalletAPI(viewsets.ViewSet):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get_permissions(self):
-        permission_classes = [AllowAny]
+        permission_classes = [HasAPIKey]
         return [permission() for permission in permission_classes]
 
 
@@ -323,7 +323,7 @@ class Onboard_stripe_return(APIView):
             # Stripe est OK
             # Envoie des infos de la monnaie fédéré
 
-            federated_asset = Asset.objects.get(federated_primary=True)
+            federated_asset = Asset.objects.get(stripe_primary=True)
             data = {
                 'uuid': f'{federated_asset.uuid}',
                 'name': federated_asset.name,
@@ -341,12 +341,71 @@ class Onboard_stripe_return(APIView):
             return Response("Compte stripe non valide", status=status.HTTP_406_NOT_ACCEPTABLE)
 
 
-"""
 @permission_classes([HasAPIKey])
-class Onboard(APIView):
-    def get(self, request):
-        return Response(f"{create_account_link_for_onboard()}", status=status.HTTP_202_ACCEPTED)
-"""
+class ChargePrimaryAsset(APIView):
+    def post(self, request):
+        serializer = WalletCreateSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            user: FedowUser = serializer.user
+            card: Card = serializer.card
+            config = Configuration.get_solo()
+            primary_wallet = config.primary_wallet
+
+            stripe_asset = Asset.objects.get(stripe_primary=True)
+            id_price_stripe = stripe_asset.get_id_price_stripe()
+
+            primary_token, created = Token.objects.get_or_create(
+                wallet=primary_wallet,
+                asset=stripe_asset,
+            )
+
+            assert primary_token.is_primary_stripe_token(), "Token is not primary"
+
+            user_token, created = Token.objects.get_or_create(
+                wallet=user.wallet,
+                asset=stripe_asset,
+            )
+
+            # Pour dev : Lancer stripe :
+            # stripe listen --forward-to http://127.0.0.1:8000/webhook_stripe/
+            # S'assurer que la clé de signature soit la même que dans le .env
+            line_items = [{
+                "price": f"{id_price_stripe}",
+                "quantity": 1
+            }]
+
+            metadata = {
+                "primary_token": f"{primary_token.uuid}",
+                "user_token": f"{user_token.uuid}",
+                "card_uuid": f"{card.uuid}",
+            }
+            signer = Signer()
+            signed_data = signer.sign(dict_to_b64_utf8(metadata))
+
+            data_checkout = {
+                'success_url': 'https://127.0.0.1:8000/checkout_stripe/',
+                'cancel_url': 'https://127.0.0.1:8000/checkout_stripe/',
+                'payment_method_types': ["card"],
+                'customer_email': f'{user.email}',
+                'line_items': line_items,
+                'mode': 'payment',
+                'metadata': {
+                    'signed_data': f'{signed_data}',
+                },
+                'client_reference_id': f"{user.pk}",
+            }
+            checkout_session = stripe.checkout.Session.create(**data_checkout)
+
+            # Enregistrement du checkout Stripe dans la base de donnée
+            checkout_db = CheckoutStripe.objects.create(
+                checkout_session_id_stripe=checkout_session.id,
+                asset=user_token.asset,
+                status=CheckoutStripe.OPEN,
+                user=user,
+                metadata=signed_data,
+            )
+
+            return Response(checkout_session.url, status=status.HTTP_202_ACCEPTED)
 
 
 class TransactionAPI(viewsets.ViewSet):

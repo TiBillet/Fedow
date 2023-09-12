@@ -38,6 +38,8 @@ class FedowTestCase(TestCase):
 
         self.last_line = out.getvalue().split('\n')[-2]
         decoded_data = utf8_b64_to_dict(self.last_line)
+        self.temp_key_place = decoded_data.get('temp_key')
+
         self.place = Place.objects.get(pk=decoded_data.get('uuid'))
         self.admin = User.objects.get(email=f'{email_admin}')
 
@@ -76,15 +78,18 @@ class TransactionsTest(FedowTestCase):
         )
 
 
+
     def testWallet(self):
         ### Création d'un wallet client avec un email et un uuid de carte
         User: FedowUser = get_user_model()
         email = 'lambda@lambda.com'
         new_wallet_data = {
-            'email' : email,
+            'email': email,
             'uuid_card': f"{self.card.uuid}",
         }
-        response = self.client.post('/wallet/', new_wallet_data)
+
+        response = self.client.post('/wallet/', new_wallet_data,
+                                    headers={'Authorization': f'Api-Key {self.temp_key_place}'})
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data.get('email'), email)
@@ -102,11 +107,11 @@ class TransactionsTest(FedowTestCase):
         """
         Lancer stripe :
         stripe listen --forward-to http://127.0.0.1:8000/webhook_stripe/
-        
+
         S'assurer que la clé de signature soit la même que dans le .env
-        Créer un checkout et le payer : 
+        Créer un checkout et le payer :
         ./manage.py create_test_checkout
-        
+
         Vérifier les Transactions et les Assets
         """
 
@@ -170,6 +175,35 @@ class TransactionsTest(FedowTestCase):
         user_token.refresh_from_db()
         self.assertEqual(int(amount_total), user_token.value)
         self.assertEqual(0, primary_token.value)
+
+    def testChargeApi(self):
+        ### Création d'un wallet client avec un email et un uuid de carte
+        User: FedowUser = get_user_model()
+        email = 'lambda@lambda.com'
+        new_wallet_data = {
+            'email': email,
+            'uuid_card': f"{self.card.uuid}",
+        }
+
+        response = self.client.post('/charge_primary_asset/', new_wallet_data,
+                                    headers={'Authorization': f'Api-Key {self.temp_key_place}'})
+
+        self.assertEqual(response.status_code, 202)
+        self.assertIn('https://checkout.stripe.com/c/pay/', response.json())
+
+        checkout = CheckoutStripe.objects.all().order_by('datetime').last()
+
+        # Récupération des metadonnée envoyées à Stripe
+        signer = Signer()
+        signed_data = utf8_b64_to_dict(signer.unsign(checkout.metadata))
+        primary_token = Token.objects.get(uuid=signed_data.get('primary_token'))
+        user_token = Token.objects.get(uuid=signed_data.get('user_token'))
+        card = Card.objects.get(uuid=signed_data.get('card_uuid'))
+
+        self.assertEqual(card.uuid, self.card.uuid)
+        self.assertEqual(card.user, user_token.wallet.user)
+        self.assertEqual(primary_token.asset, user_token.asset)
+        self.assertTrue(primary_token.is_primary_stripe_token())
 
 
 """
@@ -371,6 +405,5 @@ class ModelsTest(FedowTestCase):
         )
 
         self.assertEqual(fernet_decrypt(place.cashless_admin_apikey), data.get('cashless_admin_apikey'))
-
 
 """

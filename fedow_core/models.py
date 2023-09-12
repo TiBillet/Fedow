@@ -18,7 +18,7 @@ from uuid import uuid4
 from stdimage import JPEGField
 from stdimage.validators import MaxSizeValidator, MinSizeValidator
 
-from fedow_core.utils import get_public_key, get_private_key, fernet_decrypt, fernet_encrypt
+from fedow_core.utils import get_public_key, get_private_key, fernet_decrypt, fernet_encrypt, rsa_generator
 
 import logging
 
@@ -78,8 +78,9 @@ class Asset(models.Model):
     # Primary and federated asset send to cashless on new connection
     # On token of this asset is equivalent to 1 euro
     # A Stripe Chekcout must be associated to the transaction creation money
-    federated_primary = models.BooleanField(default=False, editable=False, help_text="Asset primaire équivalent euro.")
-    id_price_stripe = models.CharField(max_length=30)
+    stripe_primary = models.BooleanField(default=False, editable=False, help_text="Asset primaire équivalent euro.")
+    id_price_stripe = models.CharField(max_length=30, blank=True, null=True, editable=False)
+
 
     def get_id_price_stripe(self,
                             force=False,
@@ -124,9 +125,9 @@ class Asset(models.Model):
 
     class Meta:
         # Only one can be true :
-        constraints = [UniqueConstraint(fields=["federated_primary"],
-                                        condition=Q(federated_primary=True),
-                                        name="unique_federated_primary_asset")]
+        constraints = [UniqueConstraint(fields=["stripe_primary"],
+                                        condition=Q(stripe_primary=True),
+                                        name="unique_stripe_primary_asset")]
 
 
 class Wallet(models.Model):
@@ -171,6 +172,10 @@ class Token(models.Model):
 
     # def __str__(self):
     #     return f"{self.wallet.name} {self.asset.name} {self.value}"
+    def is_primary_stripe_token(self):
+        if self.asset.stripe_primary and self.wallet.is_primary():
+            return True
+        return False
 
     class Meta:
         unique_together = [['wallet', 'asset']]
@@ -253,8 +258,8 @@ class Transaction(models.Model):
         # Validator 1 : IF CREATION
         if self.action == Transaction.CREATION:
             assert self.sender == self.receiver, "Sender and receiver must be the same for creation money."
-            assert self.asset.federated_primary == True, "Asset must be federated primary for creation money."
-            if self.asset.federated_primary:
+            assert self.asset.stripe_primary == True, "Asset must be federated primary for creation money."
+            if self.asset.stripe_primary:
                 assert self.checkout_stripe != None, "Checkout stripe must be set for creation money."
 
             # FILL TOKEN WALLET
@@ -297,8 +302,8 @@ class Configuration(SingletonModel):
     name = models.CharField(max_length=100)
     domain = models.URLField()
     # Wallet used to create money
-    primary_wallet = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='primary')
 
+    primary_wallet = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='primary')
     stripe_endpoint_secret_enc = models.CharField(max_length=100, blank=True, null=True, editable=False)
 
     # def primary_key(self):
@@ -412,18 +417,31 @@ class Card(models.Model):
     origin = models.ForeignKey(Origin, on_delete=models.PROTECT, related_name='cards', blank=True, null=True)
 
 
-def get_or_create_user(email):
+def get_or_create_user(email, ip=None):
     User: FedowUser = get_user_model()
     try:
         user = User.objects.get(email=email.lower())
         created = False
         return user, created
     except User.DoesNotExist:
+        private_pem, public_pem = rsa_generator()
+
+        if ip == None:
+            ip = '0.0.0.0'
+
+        wallet = Wallet.objects.create(
+            ip=ip,
+            private_pem=private_pem,
+            public_pem=public_pem,
+        )
+
         user = User.objects.create(
             email=email.lower(),
-            username=email.lower()
+            username=email.lower(),
+            wallet=wallet,
         )
         created = True
+
         return user, created
 
 

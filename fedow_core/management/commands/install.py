@@ -41,7 +41,7 @@ class Command(BaseCommand):
 
             instance_name = os.environ.get('DOMAIN', 'fedow.tibillet.localhost')
             primary_wallet = Wallet.objects.create(
-                name="Primary",
+                name="Stripe Primary Wallet",
                 private_pem=private_pem,
                 public_pem=public_pem,
             )
@@ -58,7 +58,7 @@ class Command(BaseCommand):
                 try:
                     call_command("create_asset", 'TiBillet', 'TBI')
                     fed = Asset.objects.get(name='TiBillet')
-                    fed.federated_primary = True
+                    fed.stripe_primary = True
                     fed.id_price_stripe = os.environ.get('PRICE_STRIPE_ID_FED')
                     fed.save()
                 except Exception as e:

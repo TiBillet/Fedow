@@ -32,15 +32,6 @@ class Command(BaseCommand):
         ### Création de l'user
         email = 'lambda@lambda.com'
         user, created = get_or_create_user(email)
-        if not user.wallet:
-            private_pem, public_pem = rsa_generator()
-            user.wallet = Wallet.objects.create(
-                ip='127.0.0.1',
-                private_pem=private_pem,
-                public_pem=public_pem,
-            )
-            user.save()
-
 
         ### Création d'un lieu
         try :
@@ -81,7 +72,7 @@ class Command(BaseCommand):
 
         primary_wallet = config.primary_wallet
 
-        stripe_asset = Asset.objects.get(federated_primary=True)
+        stripe_asset = Asset.objects.get(stripe_primary=True)
         id_price_stripe = stripe_asset.get_id_price_stripe()
 
         primary_token, created = Token.objects.get_or_create(
