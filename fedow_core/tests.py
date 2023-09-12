@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from io import StringIO
 from uuid import uuid4
@@ -5,6 +6,7 @@ import stripe
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase
+from faker import Faker
 from rest_framework import viewsets, status
 from rest_framework.permissions import AllowAny
 from rest_framework_api_key.models import APIKey
@@ -48,9 +50,9 @@ class FedowTestCase(TestCase):
 
         # On simule une paire de clé générée par le serveur cashless
         private_cashless_pem, public_cashless_pem = rsa_generator()
+        self.private_cashless_pem = private_cashless_pem
         self.private_cashless_rsa = get_private_key(private_cashless_pem)
         self.public_cashless_pem = public_cashless_pem
-        self.private_cashless_pem = private_cashless_pem
         # self.place.cashless_rsa_pub_key = public_cashless_pem
         # self.place.save()
 
@@ -65,19 +67,83 @@ class TransactionsTest(FedowTestCase):
             place=self.place,
             generation=1
         )
+        # création de 100 cartes sans user
+        for i in range(100):
+            uuid_nfc = str(uuid4())
+            uuid_qrcode = str(uuid4())
+            Card.objects.create(
+                nfc_uuid=uuid_nfc,
+                first_tag_id=f"{uuid_nfc.split('-')[0]}",
+                qr_code_printed=uuid_qrcode,
+                number=f"{uuid_qrcode.split('-')[0]}",
+                origin=gen1,
+            )
+        self.card = Card.objects.all()[0]
 
-        nfc_uuid = uuid4()
-        qrcode = uuid4()
-        self.card = Card.objects.create(
-            uuid=uuid4(),
-            first_tag_id=f"{str(nfc_uuid).split('-')[0]}",
-            nfc_uuid=nfc_uuid,
-            qr_code_printed=qrcode,
-            number=str(qrcode).split('-')[0],
-            origin=gen1,
-        )
+    def test_list_all_cards(self):
+        response = self.client.get('/card/',
+                                   headers={'Authorization': f'Api-Key {self.temp_key_place}'})
 
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 100)
 
+    def test_create_multiple_card(self):
+        place = self.place
+        # On simule une paire de clé généré par le serveur cashless
+        private_cashless_pem, public_cashless_pem = rsa_generator()
+        private_cashless_rsa = get_private_key(private_cashless_pem)
+        place.cashless_rsa_pub_key = public_cashless_pem
+        place.save()
+
+        # création d'une liste de 100 cartes sans email
+        cards = []
+        for i in range(100):
+            uuid_nfc = str(uuid4())
+            uuid_qrcode = str(uuid4())
+            cards.append({
+                "nfc_uuid": uuid_nfc,
+                "first_tag_id": uuid_nfc.split('-')[0],
+                "qr_code_printed": uuid_qrcode,
+                "number": uuid_qrcode.split('-')[0],
+                "generation": "1",
+            })
+
+        message = {"cards": json.dumps(cards)}
+        signature = sign_message(dict_to_b64(message), private_cashless_rsa)
+
+        response = self.client.post('/card/', data=message,
+                                    headers={
+                                        'Authorization': f'Api-Key {self.temp_key_place}',
+                                        'Signature': signature,
+                                    })
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Card.objects.all().count(), 200)
+
+        # création d'une liste de 100 cartes avec email
+        cards_with_email = []
+        for i in range(100):
+            uuid_nfc = str(uuid4())
+            uuid_qrcode = str(uuid4())
+            cards_with_email.append({
+                "nfc_uuid": uuid_nfc,
+                "first_tag_id": uuid_nfc.split('-')[0],
+                "qr_code_printed": uuid_qrcode,
+                "number": uuid_qrcode.split('-')[0],
+                "generation": "2",
+                "email": f"{Faker().email()}",
+            })
+
+        message = {"cards": json.dumps(cards_with_email)}
+        signature = sign_message(dict_to_b64(message), private_cashless_rsa)
+        response = self.client.post('/card/', data=message,
+                                    headers={
+                                        'Authorization': f'Api-Key {self.temp_key_place}',
+                                        'Signature': signature,
+                                    })
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Card.objects.all().count(), 300)
+        self.assertEqual(Card.objects.filter(user__isnull=False).count(), 100)
 
     def testWallet(self):
         ### Création d'un wallet client avec un email et un uuid de carte
@@ -99,6 +165,35 @@ class TransactionsTest(FedowTestCase):
         user = User.objects.get(email=email)
         self.assertTrue(wallet)
         self.assertEqual(user.wallet, wallet)
+
+    def testChargeApi(self):
+        ### Création d'un wallet client avec un email et un uuid de carte
+        User: FedowUser = get_user_model()
+        email = 'lambda@lambda.com'
+        new_wallet_data = {
+            'email': email,
+            'uuid_card': f"{self.card.uuid}",
+        }
+
+        response = self.client.post('/charge_primary_asset/', new_wallet_data,
+                                    headers={'Authorization': f'Api-Key {self.temp_key_place}'})
+
+        self.assertEqual(response.status_code, 202)
+        self.assertIn('https://checkout.stripe.com/c/pay/', response.json())
+
+        checkout = CheckoutStripe.objects.all().order_by('datetime').last()
+
+        # Récupération des metadonnée envoyées à Stripe
+        signer = Signer()
+        signed_data = utf8_b64_to_dict(signer.unsign(checkout.metadata))
+        primary_token = Token.objects.get(uuid=signed_data.get('primary_token'))
+        user_token = Token.objects.get(uuid=signed_data.get('user_token'))
+        card = Card.objects.get(uuid=signed_data.get('card_uuid'))
+
+        self.assertEqual(card.uuid, self.card.uuid)
+        self.assertEqual(card.user, user_token.wallet.user)
+        self.assertEqual(primary_token.asset, user_token.asset)
+        self.assertTrue(primary_token.is_primary_stripe_token())
 
     def test_REFILL(self):
         ### RECHARGE AVEC ASSET PRINCIPAL STRIPE
@@ -150,7 +245,7 @@ class TransactionsTest(FedowTestCase):
             amount=int(amount_total),
             action=Transaction.CREATION,
             card=card,
-            primary_card_uuid=None,  # Création de monnaie
+            primary_card=None,  # Création de monnaie
         )
 
         self.assertTrue(token_creation.verify_hash())
@@ -167,7 +262,7 @@ class TransactionsTest(FedowTestCase):
             amount=int(amount_total),
             action=Transaction.REFILL,
             card=card,
-            primary_card_uuid=None,  # Création de monnaie
+            primary_card=None,  # Création de monnaie
         )
 
         self.assertTrue(virement.verify_hash())
@@ -176,234 +271,200 @@ class TransactionsTest(FedowTestCase):
         self.assertEqual(int(amount_total), user_token.value)
         self.assertEqual(0, primary_token.value)
 
-    def testChargeApi(self):
-        ### Création d'un wallet client avec un email et un uuid de carte
-        User: FedowUser = get_user_model()
-        email = 'lambda@lambda.com'
-        new_wallet_data = {
-            'email': email,
-            'uuid_card': f"{self.card.uuid}",
-        }
+    class APITestHelloWorld(FedowTestCase):
 
-        response = self.client.post('/charge_primary_asset/', new_wallet_data,
-                                    headers={'Authorization': f'Api-Key {self.temp_key_place}'})
+        def test_helloworld(self):
+            start = datetime.now()
 
-        self.assertEqual(response.status_code, 202)
-        self.assertIn('https://checkout.stripe.com/c/pay/', response.json())
+            response = self.client.get('/helloworld/')
+            logger.warning(f"durée requete sans APIKey : {datetime.now() - start}")
 
-        checkout = CheckoutStripe.objects.all().order_by('datetime').last()
+            assert response.status_code == 200
+            assert response.data == {'message': 'Hello world!'}
+            assert issubclass(HelloWorld, viewsets.ViewSet)
 
-        # Récupération des metadonnée envoyées à Stripe
-        signer = Signer()
-        signed_data = utf8_b64_to_dict(signer.unsign(checkout.metadata))
-        primary_token = Token.objects.get(uuid=signed_data.get('primary_token'))
-        user_token = Token.objects.get(uuid=signed_data.get('user_token'))
-        card = Card.objects.get(uuid=signed_data.get('card_uuid'))
+            hello_world = HelloWorld()
+            permissions = hello_world.get_permissions()
+            assert len(permissions) == 1
+            assert isinstance(hello_world.get_permissions()[0], AllowAny)
 
-        self.assertEqual(card.uuid, self.card.uuid)
-        self.assertEqual(card.user, user_token.wallet.user)
-        self.assertEqual(primary_token.asset, user_token.asset)
-        self.assertTrue(primary_token.is_primary_stripe_token())
+            # Sans clé api
+            start = datetime.now()
+            response = self.client.get('/helloworld_apikey/')
+            self.assertEqual(response.status_code, 403)
 
+            # Avec une fausse clé api
+            response = self.client.get('/helloworld_apikey/',
+                                       headers={'Authorization': f'Api-Key {self.key}'}
+                                       )
 
-"""
-class APITestHelloWorld(FedowTestCase):
+            logger.warning(f"durée requete avec APIKey : {datetime.now() - start}")
+            self.assertEqual(response.status_code, 403)
 
-    def test_helloworld(self):
-        start = datetime.now()
+        def test_api_and_signed_message(self):
+            decoded_data = utf8_b64_to_dict(self.last_line)
+            key = decoded_data.get('temp_key')
+            api_key = OrganizationAPIKey.objects.get_from_key(key)
+            place = Place.objects.get(pk=decoded_data.get('uuid'))
 
-        response = self.client.get('/helloworld/')
-        logger.warning(f"durée requete sans APIKey : {datetime.now() - start}")
+            # On simule une paire de clé généré par le serveur cashless
+            private_cashless_pem, public_cashless_pem = rsa_generator()
+            private_cashless_rsa = get_private_key(private_cashless_pem)
+            place.cashless_rsa_pub_key = public_cashless_pem
+            place.save()
 
-        assert response.status_code == 200
-        assert response.data == {'message': 'Hello world!'}
-        assert issubclass(HelloWorld, viewsets.ViewSet)
+            wallet = place.wallet
+            user = get_user_model().objects.get(email='admin@admin.admin')
+            self.assertEqual(user, api_key.user)
+            self.assertEqual(place, api_key.place)
 
-        hello_world = HelloWorld()
-        permissions = hello_world.get_permissions()
-        assert len(permissions) == 1
-        assert isinstance(hello_world.get_permissions()[0], AllowAny)
+            start = datetime.now()
 
-        # Sans clé api
-        start = datetime.now()
-        response = self.client.get('/helloworld_apikey/')
-        self.assertEqual(response.status_code, 403)
+            message = {
+                'sender': f'{wallet.uuid}',
+                'receiver': f'{wallet.uuid}',
+                'amount': '1500',
+            }
+            signature = sign_message(dict_to_b64(message), private_cashless_rsa)
+            public_key = place.cashless_public_key()
+            enc_message = dict_to_b64(message)
+            string_signature = signature.decode('utf-8')
 
-        # Avec une fausse clé api
-        response = self.client.get('/helloworld_apikey/',
-                                   headers={'Authorization': f'Api-Key {self.key}'}
-                                   )
+            logger.warning(f"durée signature : {datetime.now() - start}")
+            start = datetime.now()
 
-        logger.warning(f"durée requete avec APIKey : {datetime.now() - start}")
-        self.assertEqual(response.status_code, 403)
+            self.assertTrue(verify_signature(public_key, enc_message, string_signature))
 
-    def test_api_and_signed_message(self):
-        decoded_data = utf8_b64_to_dict(self.last_line)
-        key = decoded_data.get('temp_key')
-        api_key = OrganizationAPIKey.objects.get_from_key(key)
-        place = Place.objects.get(pk=decoded_data.get('uuid'))
+            logger.warning(f"durée verif signature : {datetime.now() - start}")
+            start = datetime.now()
 
-        # On simule une paire de clé généré par le serveur cashless
-        private_cashless_pem, public_cashless_pem = rsa_generator()
-        private_cashless_rsa = get_private_key(private_cashless_pem)
-        place.cashless_rsa_pub_key = public_cashless_pem
-        place.save()
+            # APi + Wallet + Good Signature
+            response = self.client.post('/helloworld_apikey/', message,
+                                        headers={
+                                            'Authorization': f'Api-Key {key}',
+                                            'Signature': signature,
+                                        }, format='json')
 
-        wallet = place.wallet
-        user = get_user_model().objects.get(email='admin@admin.admin')
-        self.assertEqual(user, api_key.user)
-        self.assertEqual(place, api_key.place)
+            self.assertEqual(response.status_code, 200)
+            logger.warning(f"durée requete avec signature et api et wallet : {datetime.now() - start}")
 
-        start = datetime.now()
+            # Sans signature
+            response = self.client.post('/helloworld_apikey/', message,
+                                        headers={
+                                            'Authorization': f'Api-Key {key}',
+                                        }, format='json')
+            self.assertEqual(response.status_code, 403)
 
-        message = {
-            'sender': f'{wallet.uuid}',
-            'receiver': f'{wallet.uuid}',
-            'amount': '1500',
-        }
-        signature = sign_message(dict_to_b64(message), private_cashless_rsa)
-        public_key = place.cashless_public_key()
-        enc_message = dict_to_b64(message)
-        string_signature = signature.decode('utf-8')
+            # sans API
+            response = self.client.post('/helloworld_apikey/', message,
+                                        headers={
+                                            'Signature': signature,
+                                        }, format='json')
+            self.assertEqual(response.status_code, 403)
 
-        logger.warning(f"durée signature : {datetime.now() - start}")
-        start = datetime.now()
+            # sans wallet
+            message_no_wallet = {
+                'receiver': f'{wallet.uuid}',
+                'amount': 1500,
+            }
+            response = self.client.post('/helloworld_apikey/', message_no_wallet,
+                                        headers={
+                                            'Authorization': f'Api-Key {key}',
+                                            'Signature': signature,
+                                        }, format='json')
+            self.assertEqual(response.status_code, 403)
 
-        self.assertTrue(verify_signature(public_key, enc_message, string_signature))
+            # APi + Wallet + Bad Signature
+            response = self.client.post('/helloworld_apikey/', message,
+                                        headers={
+                                            'Authorization': f'Api-Key {key}',
+                                            'Signature': b'bad signature',
+                                        }, format='json')
+            self.assertEqual(response.status_code, 403)
 
-        logger.warning(f"durée verif signature : {datetime.now() - start}")
-        start = datetime.now()
+    class ModelsTest(FedowTestCase):
 
-        # APi + Wallet + Good Signature
-        response = self.client.post('/helloworld_apikey/', message,
-                                    headers={
-                                        'Authorization': f'Api-Key {key}',
-                                        'Signature': signature,
-                                    }, format='json')
+        def test_place_and_admin_created_(self):
+            User: FedowUser = get_user_model()
+            email_admin = self.email_admin
 
-        self.assertEqual(response.status_code, 200)
-        logger.warning(f"durée requete avec signature et api et wallet : {datetime.now() - start}")
+            # Vérification que le dictionnaire est bien encodé en b64
+            decoded_data = utf8_b64_to_dict(self.last_line)
+            self.assertIsInstance(decoded_data, dict)
 
-        # Sans signature
-        response = self.client.post('/helloworld_apikey/', message,
-                                    headers={
-                                        'Authorization': f'Api-Key {key}',
-                                    }, format='json')
-        self.assertEqual(response.status_code, 403)
+            # Place exist et admin est admin dans place
+            place = Place.objects.get(pk=decoded_data.get('uuid'))
+            admin = User.objects.get(email=f'{email_admin}')
+            self.assertIn(place, admin.admin_places.all())
+            self.assertIn(admin, place.admins.all())
 
-        # sans API
-        response = self.client.post('/helloworld_apikey/', message,
-                                    headers={
-                                        'Signature': signature,
-                                    }, format='json')
-        self.assertEqual(response.status_code, 403)
+            api_key_from_decoded_data = OrganizationAPIKey.objects.get_from_key(decoded_data.get('temp_key'))
+            self.assertEqual(api_key_from_decoded_data.user, admin)
+            self.assertIn('temp_', api_key_from_decoded_data.name)
 
-        # sans wallet
-        message_no_wallet = {
-            'receiver': f'{wallet.uuid}',
-            'amount': 1500,
-        }
-        response = self.client.post('/helloworld_apikey/', message_no_wallet,
-                                    headers={
-                                        'Authorization': f'Api-Key {key}',
-                                        'Signature': signature,
-                                    }, format='json')
-        self.assertEqual(response.status_code, 403)
+        def test_simulate_cashless_handshake(self):
+            # Données pour simuler un cashless.
+            cashless_private_rsa_key, cashless_pub_rsa_key = rsa_generator()
+            # Simulation d'une clé générée par le serveur cashless
+            cashless_admin_api_key, cashless_admin_key = APIKey.objects.create_key(name="cashless_admin")
+            data = {
+                'cashless_ip': '127.0.0.1',
+                'cashless_url': 'https://cashless.tibillet.localhost',
+                'cashless_rsa_pub_key': cashless_pub_rsa_key,
+                'cashless_admin_apikey': cashless_admin_key,
+            }
+            # Ajout de l'uuid place et de la clé API "temp" récupérée dans la string
+            # encodée par la création manuelle de new_place
+            decoded_data = utf8_b64_to_dict(self.last_line)
+            temp_key = decoded_data.get('temp_key')
+            data['fedow_place_uuid'] = decoded_data.get('uuid')
+            place = Place.objects.get(pk=data['fedow_place_uuid'])
+            self.assertIsInstance(place, Place)
+            # Le serveur cashless signe ses requetes avec sa clé privée :
+            signature: bytes = sign_message(message=dict_to_b64(data),
+                                            private_key=get_private_key(cashless_private_rsa_key))
 
-        # APi + Wallet + Bad Signature
-        response = self.client.post('/helloworld_apikey/', message,
-                                    headers={
-                                        'Authorization': f'Api-Key {key}',
-                                        'Signature': b'bad signature',
-                                    }, format='json')
-        self.assertEqual(response.status_code, 403)
+            # Test with bad key
+            response = self.client.post('/place/', data,
+                                        headers={
+                                            'Authorization': f'Api-Key {self.key}',
+                                            'Signature': signature,
+                                        }, format='json')
 
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-class ModelsTest(FedowTestCase):
+            # Place exist mais pas encore eu de handshake
+            self.assertIsNone(place.cashless_server_url)
+            self.assertIsNone(place.cashless_server_ip)
+            self.assertIsNone(place.cashless_rsa_pub_key)
+            self.assertIsNone(place.cashless_admin_apikey)
 
-    def test_place_and_admin_created_(self):
-        User: FedowUser = get_user_model()
-        email_admin = self.email_admin
+            # Test with good keycashless_server_ip
+            response = self.client.post('/place/', data,
+                                        headers={
+                                            'Authorization': f'Api-Key {temp_key}',
+                                            'Signature': signature,
+                                        },
+                                        format='json')
 
-        # Vérification que le dictionnaire est bien encodé en b64
-        decoded_data = utf8_b64_to_dict(self.last_line)
-        self.assertIsInstance(decoded_data, dict)
+            self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
 
-        # Place exist et admin est admin dans place
-        place = Place.objects.get(pk=decoded_data.get('uuid'))
-        admin = User.objects.get(email=f'{email_admin}')
-        self.assertIn(place, admin.admin_places.all())
-        self.assertIn(admin, place.admins.all())
+            # Decodage du dictionnaire encodé en b64 qui contient la clé du wallet du lieu nouvellement créé
+            # et le lien url onboard stripe
+            place.refresh_from_db()
+            decoded_data = b64_to_dict(response.content)
+            self.assertIsInstance(decoded_data, dict)
+            # Vérification que la clé est bien celui du wallet du lieu
+            admin_key = OrganizationAPIKey.objects.get_from_key(decoded_data.get('admin_key'))
+            self.assertIn(admin_key.user, place.admins.all())
 
-        api_key_from_decoded_data = OrganizationAPIKey.objects.get_from_key(decoded_data.get('temp_key'))
-        self.assertEqual(api_key_from_decoded_data.user, admin)
-        self.assertIn('temp_', api_key_from_decoded_data.name)
+            # Check si tout a bien été entré en base de donnée
+            self.assertEqual(place.cashless_server_url, data.get('cashless_url'))
+            self.assertEqual(place.cashless_server_ip, data.get('cashless_ip'))
 
-    def test_simulate_cashless_handshake(self):
-        # Données pour simuler un cashless.
-        cashless_private_rsa_key, cashless_pub_rsa_key = rsa_generator()
-        # Simulation d'une clé générée par le serveur cashless
-        cashless_admin_api_key, cashless_admin_key = APIKey.objects.create_key(name="cashless_admin")
-        data = {
-            'cashless_ip': '127.0.0.1',
-            'cashless_url': 'https://cashless.tibillet.localhost',
-            'cashless_rsa_pub_key': cashless_pub_rsa_key,
-            'cashless_admin_apikey': cashless_admin_key,
-        }
-        # Ajout de l'uuid place et de la clé API "temp" récupérée dans la string
-        # encodée par la création manuelle de new_place
-        decoded_data = utf8_b64_to_dict(self.last_line)
-        temp_key = decoded_data.get('temp_key')
-        data['fedow_place_uuid'] = decoded_data.get('uuid')
-        place = Place.objects.get(pk=data['fedow_place_uuid'])
-        self.assertIsInstance(place, Place)
-        # Le serveur cashless signe ses requetes avec sa clé privée :
-        signature: bytes = sign_message(message=dict_to_b64(data),
-                                        private_key=get_private_key(cashless_private_rsa_key))
+            self.assertEqual(
+                get_public_key(place.cashless_rsa_pub_key),
+                get_public_key(data.get('cashless_rsa_pub_key'))
+            )
 
-        # Test with bad key
-        response = self.client.post('/place/', data,
-                                    headers={
-                                        'Authorization': f'Api-Key {self.key}',
-                                        'Signature': signature,
-                                    }, format='json')
-
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-        # Place exist mais pas encore eu de handshake
-        self.assertIsNone(place.cashless_server_url)
-        self.assertIsNone(place.cashless_server_ip)
-        self.assertIsNone(place.cashless_rsa_pub_key)
-        self.assertIsNone(place.cashless_admin_apikey)
-
-        # Test with good keycashless_server_ip
-        response = self.client.post('/place/', data,
-                                    headers={
-                                        'Authorization': f'Api-Key {temp_key}',
-                                        'Signature': signature,
-                                    },
-                                    format='json')
-
-        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
-
-        # Decodage du dictionnaire encodé en b64 qui contient la clé du wallet du lieu nouvellement créé
-        # et le lien url onboard stripe
-        place.refresh_from_db()
-        decoded_data = b64_to_dict(response.content)
-        self.assertIsInstance(decoded_data, dict)
-        # Vérification que la clé est bien celui du wallet du lieu
-        admin_key = OrganizationAPIKey.objects.get_from_key(decoded_data.get('admin_key'))
-        self.assertIn(admin_key.user, place.admins.all())
-
-        # Check si tout a bien été entré en base de donnée
-        self.assertEqual(place.cashless_server_url, data.get('cashless_url'))
-        self.assertEqual(place.cashless_server_ip, data.get('cashless_ip'))
-
-        self.assertEqual(
-            get_public_key(place.cashless_rsa_pub_key),
-            get_public_key(data.get('cashless_rsa_pub_key'))
-        )
-
-        self.assertEqual(fernet_decrypt(place.cashless_admin_apikey), data.get('cashless_admin_apikey'))
-
-"""
+            self.assertEqual(fernet_decrypt(place.cashless_admin_apikey), data.get('cashless_admin_apikey'))

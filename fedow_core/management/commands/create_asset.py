@@ -71,7 +71,7 @@ class Command(BaseCommand):
             amount=int(0),
             action=Transaction.FIRST,
             card=None,
-            primary_card_uuid=None,
+            primary_card=None,
         )
 
         self.stdout.write(self.style.SUCCESS(f"Asset succesfully created."), ending='\n')

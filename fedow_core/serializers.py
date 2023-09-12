@@ -2,12 +2,14 @@ import base64
 import json
 from collections import OrderedDict
 import hashlib
+import re
+
 from cryptography.hazmat.primitives.asymmetric import rsa
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_api_key.models import APIKey
 from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction, OrganizationAPIKey, Asset, Token, \
-    get_or_create_user
+    get_or_create_user, Origin
 from fedow_core.utils import get_request_ip, get_public_key, dict_to_b64, verify_signature, rsa_generator
 import logging
 
@@ -80,6 +82,68 @@ class HandshakeValidator(serializers.Serializer):
     #     return representation
 
 
+class CheckCardSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Card
+        fields = (
+            'qr_code_printed',
+            'number'
+            # 'user',
+            # 'origin',
+            # 'primary',
+            # 'date',
+        )
+
+
+class CreateCardSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=False)
+    generation = serializers.IntegerField()
+    first_tag_id = serializers.CharField()
+    nfc_uuid = serializers.UUIDField()
+    qr_code_printed = serializers.UUIDField()
+    number = serializers.CharField()
+
+    def validate_first_tag_id(self, value):
+        first_tag_regex = r"^[0-9a-fA-F]{8}\b"
+        if not re.match(first_tag_regex, value):
+            raise serializers.ValidationError("First tag id invalid")
+        return value
+
+    def validate_number(self, value):
+        first_tag_regex = r"^[0-9a-fA-F]{8}\b"
+        if not re.match(first_tag_regex, value):
+            raise serializers.ValidationError("First tag id invalid")
+        return value
+
+    def validate_email(self, value):
+        self.user, created = get_or_create_user(value)
+        return self.user.email
+
+    def validate_generation(self, value):
+        # Récupération de la place grâce a la permission HasKeyAndCashlessSignature
+        request = self.context.get('request')
+        self.place: Place = request.place
+        if not self.place:
+            raise serializers.ValidationError("Place not found")
+
+        self.origin, created = Origin.objects.get_or_create(place=self.place, generation=value)
+        return self.origin.generation
+
+    def validate(self, attrs):
+        user = getattr(self,'user', None)
+        self.card = Card.objects.create(
+            first_tag_id=attrs.get('first_tag_id'),
+            nfc_uuid=attrs.get('nfc_uuid'),
+
+            qr_code_printed=attrs.get('qr_code_printed'),
+            number=attrs.get('number'),
+
+            user=user,
+            origin=self.origin,
+        )
+        return attrs
+
+
 class PlaceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Place
@@ -135,44 +199,44 @@ class NewTransactionValidator(serializers.Serializer):
     receiver = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
     asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all())
 
+    # primary_card = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all())
+    # user_card = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all())
+
     def validate_amount(self, value):
         # Positive amount only
         if value <= 0:
             raise serializers.ValidationError("Amount must be positive")
         return value
 
-    def is_place_wallet(self) -> bool:
-        # Place from key are one of the two wallets ?
-        key = self.context['request'].META["HTTP_AUTHORIZATION"].split()[1]
-        api_key = OrganizationAPIKey.objects.get_from_key(key)
-        place: Place = api_key.place
-        return place.wallet == self.sender or place.wallet == self.receiver
-
-    def create_hash(self):
-        encoded_block = json.dumps(self.__dict__, sort_keys=True).encode()
-        return hashlib.sha256(encoded_block).hexdigest()
-
     def validate(self, attrs):
+        # Récupération de la place grâce a la permission HasKeyAndCashlessSignature
         request = self.context.get('request')
-        if not self.is_place_wallet:
+        place: Place = request.place
+
+        if not place.wallet == self.sender and not place.wallet == self.receiver:
+            # Place must be sender or receiver
             logger.error(f"{timezone.localtime()} ERROR sender nor receiver are Unauthorized - {request}")
             raise serializers.ValidationError("Unauthorized")
 
         try:
-            token_sender = Token.objects.get(wallet=attrs.get('sender'), asset=attrs.get('asset'))
+            self.token_sender = Token.objects.get(wallet=attrs.get('sender'), asset=attrs.get('asset'))
         except Token.DoesNotExist:
             raise serializers.ValidationError("Sender token does not exist")
 
-        if token_sender.value < attrs.get('amount'):
+        try:
+            self.token_receiver = Token.objects.get(wallet=attrs.get('receiver'), asset=attrs.get('asset'))
+        except Token.DoesNotExist:
+            raise serializers.ValidationError("Receiver token does not exist")
+
+        if self.token_sender.value < attrs.get('amount'):
             logger.error(f"{timezone.localtime()} ERROR sender not enough value - {request}")
             raise serializers.ValidationError("Sender not enough value")
 
         return attrs
 
-    def get_attribute(self, instance):
-        attribute = super().get_attribute(instance)
-        attribute['hash'] = self.create_hash()
-        return attribute
+    # def get_attribute(self, instance):
+    #     attribute = super().get_attribute(instance)
+    #     return attribute
 
 
 class TransactionSerializer(serializers.ModelSerializer):

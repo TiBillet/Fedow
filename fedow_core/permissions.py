@@ -16,6 +16,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class IsStripe(AllowAny):
     def valid_signature(self, request: HttpRequest) -> str | bool:
         start = datetime.now()
@@ -26,31 +27,34 @@ class IsStripe(AllowAny):
 
         # if request.data.get('type') == "checkout.session.completed":
         #     import ipdb; ipdb.set_trace()
-            # checkout_session_id_stripe=request.data['data']['object']['id']
-            # checkout_session = stripe.checkout.Session.retrieve(checkout_session_id_stripe)
+        # checkout_session_id_stripe=request.data['data']['object']['id']
+        # checkout_session = stripe.checkout.Session.retrieve(checkout_session_id_stripe)
 
         try:
             signed_stripe_event = stripe.Webhook.construct_event(
                 signed_payload, signature, stripe_endpoint_secret
             )
-            request.signed_payload=True
+            request.signed_payload = True
             request.signed_stripe_event = signed_stripe_event
             logger.debug(f"Stripe webhook valid_signature : {datetime.now() - start}")
             return True
         except SignatureVerificationError as e:
             logger.error(f"Stripe webhook SignatureVerificationError : {e}")
-        except Exception as e :
+        except Exception as e:
             logger.error(f"Stripe webhook valid_signature error : {e}")
         return False
 
     def has_permission(self, request, view):
         return self.valid_signature(request)
 
+
 class HasAPIKey(BaseHasAPIKey):
     model = OrganizationAPIKey
 
+
 class HasKeyAndCashlessSignature(BaseHasAPIKey):
     model = OrganizationAPIKey
+
     def get_signature(self, request: HttpRequest) -> str | bool:
         signature = request.META.get("HTTP_SIGNATURE")
         return signature
@@ -64,13 +68,15 @@ class HasKeyAndCashlessSignature(BaseHasAPIKey):
 
     def has_permission(self, request: HttpRequest, view: typing.Any) -> bool:
         key = self.get_key(request)
-        if key :
+        if key:
             api_key = self.model.objects.get_from_key(key)
             signature = self.get_signature(request)
 
             if signature and api_key:
                 message = dict_to_b64(request.data)
-                public_key = api_key.place.cashless_public_key()
-                if verify_signature(public_key, message, signature):
-                   return super().has_permission(request, view)
+                cashless_public_key = api_key.place.cashless_public_key()
+                if cashless_public_key:
+                    if verify_signature(cashless_public_key, message, signature):
+                        request.place = api_key.place
+                        return super().has_permission(request, view)
         return False

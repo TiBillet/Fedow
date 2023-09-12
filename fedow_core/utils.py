@@ -130,7 +130,7 @@ def get_public_key(public_key_pem: str) -> rsa.RSAPublicKey | bool:
 
     except Exception as e:
         logger.error(f"Erreur de validation get_public_key : {e}")
-        return False
+        raise e
 
 
 def sign_message(message: bytes = None, private_key=None) -> bytes:

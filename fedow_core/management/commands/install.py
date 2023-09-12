@@ -63,4 +63,5 @@ class Command(BaseCommand):
                     fed.save()
                 except Exception as e:
                     self.stdout.write(self.style.ERROR(f'Asset TiBIllet already exist ? {e}'))
+                    raise CommandError(f'Asset TiBIllet already exist ? {e}')
             self.stdout.write(self.style.SUCCESS(f'Configuration created : {instance_name}'), ending='\n')

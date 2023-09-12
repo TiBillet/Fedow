@@ -20,7 +20,7 @@ from fedow_core.models import Transaction, Place, Configuration, Asset, Checkout
     OrganizationAPIKey, Card
 from fedow_core.permissions import HasKeyAndCashlessSignature, HasAPIKey, IsStripe
 from fedow_core.serializers import TransactionSerializer, PlaceSerializer, WalletCreateSerializer, HandshakeValidator, \
-    NewTransactionValidator
+    NewTransactionValidator, CheckCardSerializer, CreateCardSerializer
 from rest_framework.pagination import PageNumberPagination
 
 from fedow_core.utils import get_request_ip, fernet_encrypt, fernet_decrypt, dict_to_b64_utf8, dict_to_b64, \
@@ -73,6 +73,29 @@ class HelloWorld(viewsets.ViewSet):
 
 
 ### REST API ###
+
+class CardAPI(viewsets.ViewSet):
+
+    def list(self, request):
+        serializer = CheckCardSerializer(Card.objects.all(), many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def retrieve(self, request, pk=None):
+        # Utilisé par les serveurs cashless comme un check card
+        serializer = CheckCardSerializer(Card.objects.get(first_tag_id=pk))
+        return Response(serializer.data)
+
+    def create(self, request):
+        serializer = CreateCardSerializer(data=json.loads(request.data.get('cards')), context={'request': request}, many=True)
+        if serializer.is_valid():
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def get_permissions(self):
+        permission_classes = [HasKeyAndCashlessSignature]
+        if self.action in ['list']:
+            permission_classes = [HasAPIKey]
+        return [permission() for permission in permission_classes]
 
 class WalletAPI(viewsets.ViewSet):
     """
@@ -183,33 +206,6 @@ def create_account_link_for_onboard(place: Place):
     return url_onboard
 
 
-def HasAPIKeyAndWalletSigned(request, wallet: Wallet) -> bool | Http404:
-    """
-    Check if the API key and wallet are signed correctly.
-
-    Args:
-        request: The HTTP request object.
-        wallet: The wallet object.
-
-    Returns:
-        True if the API key and wallet are signed correctly.
-
-    Raises:
-        Http404: If the API key or wallet are not signed correctly.
-    """
-    api_key = APIKey.objects.get_from_key(request.META["HTTP_AUTHORIZATION"].split()[1])
-    user: FedowUser = api_key.fedow_user
-    place: Place = wallet.place
-
-    public_key = get_public_key(wallet.public_pem)
-    signature = request.META.get('HTTP_SIGNATURE')
-    signed_message = dict_to_b64(request.data)
-
-    if place.admins.filter(id=user.id).exists() and verify_signature(public_key, signed_message, signature):
-        return True
-    raise Http404
-
-
 @permission_classes([IsStripe])
 class WebhookStripe(APIView):
     def post(self, request):
@@ -265,7 +261,7 @@ class WebhookStripe(APIView):
                 amount=int(checkout.amount_total),
                 action=Transaction.CREATION,
                 card=card,
-                primary_card_uuid=None,  # Création de monnaie
+                primary_card=None,  # Création de monnaie
             )
 
             if token_creation.verify_hash():
@@ -285,7 +281,7 @@ class WebhookStripe(APIView):
                 amount=int(checkout.amount_total),
                 action=Transaction.REFILL,
                 card=card,
-                primary_card_uuid=None,  # Création de monnaie
+                primary_card=None,  # Création de monnaie
             )
 
             if virement.verify_hash():
@@ -424,12 +420,25 @@ class TransactionAPI(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
+        # On récupère place grâce à la permission HasKeyAndCashlessSignature
         serializer = NewTransactionValidator(data=request.data, context={'request': request})
         if serializer.is_valid():
-            serializer.save()
+            virement = Transaction.objects.create(
+                ip=get_request_ip(request),
+                checkout_stripe=None,
+                sender=serializer.validated_data['sender'],
+                receiver=serializer.validated_data['receiver'],
+                asset=serializer.validated_data['asset'],
+                amount=int(serializer.validated_data['amount']),
+                action=Transaction.SALE,
+                card=serializer.validated_data['card'],
+                primary_card=serializer.validated_data['primary_card'],  # Création de monnaie
+            )
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get_permissions(self):
+        # Cette permission rajoute place dans request si la signature est validé
+        # place: Place = request.place
         permission_classes = [HasKeyAndCashlessSignature]
         return [permission() for permission in permission_classes]

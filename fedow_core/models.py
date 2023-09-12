@@ -188,12 +188,13 @@ class Transaction(models.Model):
     ip = models.GenericIPAddressField(verbose_name="Ip source")
     checkout_stripe = models.ForeignKey(CheckoutStripe, on_delete=models.PROTECT, related_name='checkout_stripe',
                                         blank=True, null=True)
-    primary_card_uuid = models.UUIDField(default=uuid4, editable=False, blank=True, null=True)
 
     sender = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name='transactions_sent')
     receiver = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name='transactions_received')
     asset = models.ForeignKey(Asset, on_delete=models.PROTECT, related_name='transactions')
+
     card = models.ForeignKey('Card', on_delete=models.PROTECT, related_name='transactions', blank=True, null=True)
+    primary_card = models.ForeignKey('Card', on_delete=models.PROTECT, related_name='associated_primarycard_transactions', blank=True, null=True)
 
     previous_transaction = models.ForeignKey('self', on_delete=models.PROTECT, related_name='next_transaction')
     datetime = models.DateTimeField()
@@ -384,8 +385,10 @@ class Place(models.Model):
         return self.logo.variations
 
     def cashless_public_key(self) -> rsa.RSAPublicKey:
-        return get_public_key(self.cashless_rsa_pub_key)
-
+        if self.cashless_rsa_pub_key:
+            return get_public_key(self.cashless_rsa_pub_key)
+        else :
+            raise Exception("Cashless public key empty.")
 
 class Origin(models.Model):
     place = models.ForeignKey(Place, on_delete=models.PROTECT, related_name='origins')
@@ -408,13 +411,17 @@ class Origin(models.Model):
 
 
 class Card(models.Model):
-    uuid = models.UUIDField(primary_key=True, editable=False, db_index=True)
+    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
+
     first_tag_id = models.CharField(max_length=8, editable=False, db_index=True)
     nfc_uuid = models.UUIDField(editable=False)
+
     qr_code_printed = models.UUIDField(editable=False)
     number = models.CharField(max_length=8, editable=False, db_index=True)
+
     user = models.ForeignKey(FedowUser, on_delete=models.PROTECT, related_name='cards', blank=True, null=True)
     origin = models.ForeignKey(Origin, on_delete=models.PROTECT, related_name='cards', blank=True, null=True)
+
 
 
 def get_or_create_user(email, ip=None):
