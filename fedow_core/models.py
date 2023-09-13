@@ -53,7 +53,6 @@ class CheckoutStripe(models.Model):
         return f"{self.user.email} {self.status}"
 
 
-
 ## BLOCKCHAIN PART
 
 class Asset(models.Model):
@@ -75,12 +74,23 @@ class Asset(models.Model):
                     verbose_name='logo',
                     blank=True, null=True,
                     )
+
+    origin = models.OneToOneField('Wallet', on_delete=models.PROTECT,
+                               related_name='primary_asset',
+                               help_text="Lieu ou configuration d'origine",
+                               editable=False,
+                               )
+
     # Primary and federated asset send to cashless on new connection
     # On token of this asset is equivalent to 1 euro
     # A Stripe Chekcout must be associated to the transaction creation money
-    stripe_primary = models.BooleanField(default=False, editable=False, help_text="Asset primaire équivalent euro.")
     id_price_stripe = models.CharField(max_length=30, blank=True, null=True, editable=False)
 
+    def is_stripe_primary(self):
+        if (self.origin == Configuration.get_solo().primary_wallet
+                and self.id_price_stripe != None):
+            return True
+        return False
 
     def get_id_price_stripe(self,
                             force=False,
@@ -123,11 +133,11 @@ class Asset(models.Model):
         self.id_price_stripe = price.id
         self.save()
 
-    class Meta:
+    # class Meta:
         # Only one can be true :
-        constraints = [UniqueConstraint(fields=["stripe_primary"],
-                                        condition=Q(stripe_primary=True),
-                                        name="unique_stripe_primary_asset")]
+        # constraints = [UniqueConstraint(fields=["stripe_primary"],
+        #                                 condition=Q(stripe_primary=True),
+        #                                 name="unique_stripe_primary_asset")]
 
 
 class Wallet(models.Model):
@@ -138,14 +148,17 @@ class Wallet(models.Model):
     private_pem = models.CharField(max_length=2048, editable=False)
     public_pem = models.CharField(max_length=512, editable=False)
 
-    # Déléguation d'autorité à un autre wallet
-    # qui permet de prélever sur ce wallet vers/depuis le sien.
-    # La symmetrie n'est pas obligatoire.
-    authority_delegation = models.ManyToManyField('self', related_name='delegations', symmetrical=False, blank=True)
-
     ip = models.GenericIPAddressField(verbose_name="Ip source", default='0.0.0.0')
 
+    def get_authority_delegation(self, card=None):
+        card: Card = card
+        if self.user == card.user :
+            place_origin = card.origin.place
+            return place_origin.wallet_federated_with()
+        return []
+
     def is_primary(self):
+        # primary is the related name of the Wallet Configuration foreign key
         if getattr(self, 'primary', None):
             if self.primary == Configuration.get_solo():
                 return True
@@ -162,6 +175,9 @@ class Wallet(models.Model):
     def private_key(self) -> rsa.RSAPrivateKey:
         return get_private_key(self.private_pem)
 
+    def __str__(self):
+        return f"{[(token.asset.name, token.value) for token in self.tokens.all()]}"
+
 
 class Token(models.Model):
     # One token per user per currency
@@ -173,9 +189,12 @@ class Token(models.Model):
     # def __str__(self):
     #     return f"{self.wallet.name} {self.asset.name} {self.value}"
     def is_primary_stripe_token(self):
-        if self.asset.stripe_primary and self.wallet.is_primary():
+        if self.asset.is_stripe_primary() and self.wallet.is_primary():
             return True
         return False
+
+    def __str__(self):
+        return f"{self.asset.name} {self.value}"
 
     class Meta:
         unique_together = [['wallet', 'asset']]
@@ -194,7 +213,8 @@ class Transaction(models.Model):
     asset = models.ForeignKey(Asset, on_delete=models.PROTECT, related_name='transactions')
 
     card = models.ForeignKey('Card', on_delete=models.PROTECT, related_name='transactions', blank=True, null=True)
-    primary_card = models.ForeignKey('Card', on_delete=models.PROTECT, related_name='associated_primarycard_transactions', blank=True, null=True)
+    primary_card = models.ForeignKey('Card', on_delete=models.PROTECT,
+                                     related_name='associated_primarycard_transactions', blank=True, null=True)
 
     previous_transaction = models.ForeignKey('self', on_delete=models.PROTECT, related_name='next_transaction')
     datetime = models.DateTimeField()
@@ -254,25 +274,47 @@ class Transaction(models.Model):
 
         # Validator 0 : First must be unique
         if self.action == Transaction.FIRST:
-            assert not self.asset.transactions.filter(action=Transaction.FIRST).exists(), "First transaction already exists."
-
+            assert not self.asset.transactions.filter(
+                action=Transaction.FIRST).exists(), "First transaction already exists."
         # Validator 1 : IF CREATION
-        if self.action == Transaction.CREATION:
+        elif self.action == Transaction.CREATION:
             assert self.sender == self.receiver, "Sender and receiver must be the same for creation money."
-            assert self.asset.stripe_primary == True, "Asset must be federated primary for creation money."
-            if self.asset.stripe_primary:
-                assert self.checkout_stripe != None, "Checkout stripe must be set for creation money."
+            assert self.asset.is_stripe_primary(), "Asset must be federated primary for creation money."
+            assert self.checkout_stripe != None, "Checkout stripe must be set for creation money."
 
             # FILL TOKEN WALLET
             token_receiver.value += self.amount
             token_receiver.save()
+        else :
+            if not token_sender.value >= self.amount:
+                raise ValueError("amount too high")
 
-        # Vlidator 2 : IF REFILL
+        # Validator 2 : IF REFILL
         if self.action == Transaction.REFILL:
             assert not self.receiver.is_primary(), "Receiver must be a user wallet"
+            assert self.receiver.user, "Receiver must be a user wallet"
             assert not self.receiver.is_place(), "Receiver must be a user wallet"
             assert self.checkout_stripe != None, "Checkout stripe must be set for refill."
-            assert token_sender.value >= self.amount, "Sender must have enough for refill the user wallet."
+
+            # FILL TOKEN WALLET
+            token_sender.value -= self.amount
+            token_sender.save()
+            token_receiver.value += self.amount
+            token_receiver.save()
+
+        # Validator 3 : IF SALE
+        if self.action == Transaction.SALE:
+            assert self.receiver.is_place(), "Receiver must be a place wallet"
+            assert self.receiver.place, "Receiver must be a place wallet"
+            assert not self.receiver.is_primary(), "Receiver must be a place wallet"
+            assert not self.sender.is_place(), "Sender must be a user wallet"
+            assert self.sender.user, "Sender must be a user wallet"
+            assert not self.sender.is_primary(), "Sender must be a user wallet"
+
+            assert self.card, "Card must be set for sale."
+            assert self.primary_card, "Primary card must be set for sale."
+            assert self.primary_card in self.receiver.place.primary_cards_cashless.all(), \
+                "Primary card must be set for sale and admin on place"
 
             # FILL TOKEN WALLET
             token_sender.value -= self.amount
@@ -298,6 +340,9 @@ def inspector(sender, instance, **kwargs):
     token_receiver = Token.objects.get(wallet=instance.receiver, asset=instance.asset)
 """
 
+class Federation(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    places = models.ManyToManyField('Place', related_name='federations')
 
 class Configuration(SingletonModel):
     name = models.CharField(max_length=100)
@@ -364,6 +409,7 @@ class Place(models.Model):
                                              help_text="Encrypted API key of cashless server admin.")
 
     admins = models.ManyToManyField(FedowUser, related_name='admin_places')
+    primary_cards_cashless = models.ManyToManyField('Card', related_name='primary_cards_cashless')
 
     logo = JPEGField(upload_to='images/',
                      validators=[
@@ -381,14 +427,28 @@ class Place(models.Model):
                      blank=True, null=True,
                      )
 
+    def federated_with(self):
+        places = []
+        for federation in self.federations.all():
+            for place in federation.places.all():
+                places.append(place)
+        return places
+
+    def wallet_federated_with(self):
+        wallets = []
+        for place in self.federated_with():
+            wallets.append(place.wallet)
+        return wallets
+
     def logo_variations(self):
         return self.logo.variations
 
     def cashless_public_key(self) -> rsa.RSAPublicKey:
         if self.cashless_rsa_pub_key:
             return get_public_key(self.cashless_rsa_pub_key)
-        else :
+        else:
             raise Exception("Cashless public key empty.")
+
 
 class Origin(models.Model):
     place = models.ForeignKey(Place, on_delete=models.PROTECT, related_name='origins')
@@ -421,7 +481,6 @@ class Card(models.Model):
 
     user = models.ForeignKey(FedowUser, on_delete=models.PROTECT, related_name='cards', blank=True, null=True)
     origin = models.ForeignKey(Origin, on_delete=models.PROTECT, related_name='cards', blank=True, null=True)
-
 
 
 def get_or_create_user(email, ip=None):

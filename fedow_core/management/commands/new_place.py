@@ -6,7 +6,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils.text import slugify
 from rest_framework_api_key.models import APIKey
 
-from fedow_core.models import Asset, Place, Wallet, Configuration, get_or_create_user, OrganizationAPIKey
+from fedow_core.models import Asset, Place, Wallet, Configuration, get_or_create_user, OrganizationAPIKey, Federation
 from fedow_core.utils import rsa_generator, dict_to_b64_utf8
 
 """
@@ -38,6 +38,7 @@ class Command(BaseCommand):
         # Positional arguments
         parser.add_argument('--name', type=str)
         parser.add_argument('--email', type=str)
+        parser.add_argument('--federation', type=str)
 
     def handle(self, *args, **options):
         configuration = Configuration.get_solo()
@@ -48,6 +49,10 @@ class Command(BaseCommand):
 
         place_name = options['name']
         email = options['email']
+        if not options['federation']:
+            federation = Federation.objects.get(name="Fedow Primary Federation")
+        else :
+            federation = Federation.objects.get(uuid=options['federation'])
 
         user, user_created = get_or_create_user(email)
 
@@ -78,10 +83,11 @@ class Command(BaseCommand):
         place = Place.objects.create(
             name=place_name,
             wallet=wallet,
-
         )
+
         place.admins.add(user)
         place.save()
+        federation.places.add(place)
 
         api_key, key = OrganizationAPIKey.objects.create_key(
             name=f"temp_{place_name}:{user.email}",

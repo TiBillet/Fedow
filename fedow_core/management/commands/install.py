@@ -4,7 +4,7 @@ from django.conf import settings
 from django.core.management import call_command
 from rest_framework_api_key.models import APIKey
 
-from fedow_core.models import Configuration, Wallet, Asset
+from fedow_core.models import Configuration, Wallet, Asset, Federation
 from django.core.management.base import BaseCommand, CommandError
 
 from cryptography.hazmat.primitives import serialization
@@ -17,7 +17,6 @@ import logging
 from fedow_core.utils import rsa_generator
 
 logger = logging.getLogger(__name__)
-
 
 
 class Command(BaseCommand):
@@ -41,7 +40,7 @@ class Command(BaseCommand):
 
             instance_name = os.environ.get('DOMAIN', 'fedow.tibillet.localhost')
             primary_wallet = Wallet.objects.create(
-                name="Stripe Primary Wallet",
+                name="Primary Wallet",
                 private_pem=private_pem,
                 public_pem=public_pem,
             )
@@ -54,14 +53,18 @@ class Command(BaseCommand):
 
             config.save()
 
-            if options['test']:
-                try:
-                    call_command("create_asset", 'TiBillet', 'TBI')
-                    fed = Asset.objects.get(name='TiBillet')
-                    fed.stripe_primary = True
-                    fed.id_price_stripe = os.environ.get('PRICE_STRIPE_ID_FED')
-                    fed.save()
-                except Exception as e:
-                    self.stdout.write(self.style.ERROR(f'Asset TiBIllet already exist ? {e}'))
-                    raise CommandError(f'Asset TiBIllet already exist ? {e}')
-            self.stdout.write(self.style.SUCCESS(f'Configuration created : {instance_name}'), ending='\n')
+            call_command("create_asset",
+                         '--name', 'Fedow',
+                         '--currency_code', 'FED',
+                         '--origin', f'{primary_wallet.uuid}')
+
+            fed_asset = Asset.objects.get(name='Fedow')
+            assert fed_asset.origin == config.primary_wallet, "Fedow origin is not primary wallet"
+            fed_asset.id_price_stripe = os.environ.get('PRICE_STRIPE_ID_FED', fed_asset.get_id_price_stripe(force=True))
+            fed_asset.save()
+
+            primary_federation = Federation.objects.create(name="Fedow Primary Federation")
+
+            self.stdout.write(
+                self.style.SUCCESS(f'Configuration, primary asset, wallet and token created : {instance_name}'),
+                ending='\n')

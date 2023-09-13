@@ -307,7 +307,9 @@ class Onboard_stripe_return(APIView):
         if place.wallet.key != api_key:
             return Response("Unauthorized", status=status.HTTP_401_UNAUTHORIZED)
 
-        stripe.api_key = Configuration.get_solo().get_stripe_api()
+        config = Configuration.get_solo()
+        stripe.api_key = config.get_stripe_api()
+
         info_stripe = stripe.Account.retrieve(decoded_data.get('id_acc_connect'))
         details_submitted = info_stripe.details_submitted
         if details_submitted:
@@ -319,11 +321,14 @@ class Onboard_stripe_return(APIView):
             # Stripe est OK
             # Envoie des infos de la monnaie fédéré
 
-            federated_asset = Asset.objects.get(stripe_primary=True)
+            primary_wallet = config.primary_wallet
+            primary_stripe_asset = primary_wallet.primary_asset
+            assert primary_stripe_asset.is_stripe_primary(), "Asset is not primary"
+
             data = {
-                'uuid': f'{federated_asset.uuid}',
-                'name': federated_asset.name,
-                'currency_code': federated_asset.currency_code,
+                'uuid': f'{primary_stripe_asset.uuid}',
+                'name': primary_stripe_asset.name,
+                'currency_code': primary_stripe_asset.currency_code,
             }
 
             data_encoded = base64.b64encode(json.dumps(data).encode('utf-8')).decode('utf-8')
@@ -346,8 +351,7 @@ class ChargePrimaryAsset(APIView):
             card: Card = serializer.card
             config = Configuration.get_solo()
             primary_wallet = config.primary_wallet
-
-            stripe_asset = Asset.objects.get(stripe_primary=True)
+            stripe_asset = primary_wallet.primary_asset
             id_price_stripe = stripe_asset.get_id_price_stripe()
 
             primary_token, created = Token.objects.get_or_create(
@@ -355,7 +359,8 @@ class ChargePrimaryAsset(APIView):
                 asset=stripe_asset,
             )
 
-            assert primary_token.is_primary_stripe_token(), "Token is not primary"
+            if not primary_token.is_primary_stripe_token():
+                return Response('Token non primaire', status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
             user_token, created = Token.objects.get_or_create(
                 wallet=user.wallet,
@@ -420,25 +425,21 @@ class TransactionAPI(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
-        if request.data.get('primary_card') and request.data.get('user_card') :
-            serializer = NewTransactionFromCardToPlaceValidator(data=request.data, context={'request': request})
-        else :
-            serializer = NewTransactionWallet2WalletValidator(data=request.data, context={'request': request})
-
-        #TODO: Créer new transaction depuis carte
+        # serializer = NewTransactionWallet2WalletValidator(data=request.data, context={'request': request})
+        serializer = NewTransactionFromCardToPlaceValidator(data=request.data, context={'request': request})
         if serializer.is_valid():
             virement = Transaction.objects.create(
                 ip=get_request_ip(request),
                 checkout_stripe=None,
-                sender=serializer.validated_data['sender'],
-                receiver=serializer.validated_data['receiver'],
+                sender=serializer.sender,
+                receiver=serializer.receiver,
                 asset=serializer.validated_data['asset'],
                 amount=int(serializer.validated_data['amount']),
                 action=Transaction.SALE,
-                card=serializer.validated_data['card'],
-                primary_card=serializer.validated_data['primary_card'],  # Création de monnaie
+                primary_card=serializer.validated_data['primary_card'],
+                card=serializer.validated_data['user_card'],
             )
-            return Response(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get_permissions(self):

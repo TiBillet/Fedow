@@ -5,7 +5,7 @@ from uuid import uuid4
 import stripe
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, tag
 from faker import Faker
 from rest_framework import viewsets, status
 from rest_framework.permissions import AllowAny
@@ -53,8 +53,9 @@ class FedowTestCase(TestCase):
         self.private_cashless_pem = private_cashless_pem
         self.private_cashless_rsa = get_private_key(private_cashless_pem)
         self.public_cashless_pem = public_cashless_pem
-        # self.place.cashless_rsa_pub_key = public_cashless_pem
-        # self.place.save()
+
+        self.place.cashless_rsa_pub_key = public_cashless_pem
+        self.place.save()
 
 
 class TransactionsTest(FedowTestCase):
@@ -272,6 +273,70 @@ class TransactionsTest(FedowTestCase):
         self.assertEqual(int(amount_total), user_token.value)
         self.assertEqual(0, primary_token.value)
 
+    @tag("only")
+    def test_transaction_from_card_to_place(self):
+        charge42 = self.test_REFILL()
+        last_transaction = Transaction.objects.order_by('datetime').last()
+        self.assertTrue(last_transaction.verify_hash())
+        card = last_transaction.card
+        user = card.user
+        user_wallet = user.wallet
+
+        place_wallet = self.place.wallet
+        config = Configuration.get_solo()
+        primary_asset = config.primary_wallet.primary_asset
+        self.assertEqual(Token.objects.get(wallet=user_wallet, asset=primary_asset).value, 4200)
+
+        try:
+            virement = Transaction.objects.create(
+                ip='0.0.0.0',
+                checkout_stripe=None,
+                sender=user_wallet,
+                receiver=place_wallet,
+                asset=primary_asset,
+                amount=int("9999"),
+                action=Transaction.SALE,
+                card=card,
+                primary_card=None,  # Création de monnaie
+            )
+        except Exception as e:
+            self.assertIsInstance(e, ValueError)
+            self.assertEqual(str(e), "amount too high")
+
+        # création d'une carte primaire
+        admin_place_user, created = get_or_create_user('admin@admin.admin')
+        primary_card = Card.objects.all()[10]
+        primary_card.user = admin_place_user
+        primary_card.save()
+
+        self.place.primary_cards_cashless.add(primary_card)
+        self.place.save()
+
+        message = {
+            "amount": "1000",
+            "asset": f"{primary_asset.uuid}",
+            "primary_card": f"{primary_card.uuid}",
+            "user_card": f"{card.uuid}",
+        }
+
+        private_cashless_rsa = get_private_key(self.private_cashless_pem)
+        signature = sign_message(dict_to_b64(message), private_cashless_rsa)
+        # creation de la requete nouvelle transaction par carte :
+        response = self.client.post('/transaction/', message,
+                                    headers={
+                                        'Authorization': f'Api-Key {self.temp_key_place}',
+                                        'Signature': signature,
+                                    })
+
+        self.assertEqual(response.status_code, 201)
+        self.place.wallet.refresh_from_db()
+        card.user.wallet.refresh_from_db()
+        self.assertEqual(Token.objects.get(wallet=self.place.wallet, asset=primary_asset).value, 1000)
+        self.assertEqual(Token.objects.get(wallet=card.user.wallet, asset=primary_asset).value, 3200)
+        last_transaction = Transaction.objects.order_by('datetime').last()
+        self.assertTrue(last_transaction.verify_hash())
+
+
 class APITestHelloWorld(FedowTestCase):
 
     def test_helloworld(self):
@@ -382,6 +447,7 @@ class APITestHelloWorld(FedowTestCase):
                                         'Signature': b'bad signature',
                                     }, format='json')
         self.assertEqual(response.status_code, 403)
+
 
 class ModelsTest(FedowTestCase):
 

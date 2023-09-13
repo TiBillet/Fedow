@@ -71,18 +71,18 @@ class Command(BaseCommand):
 
 
         primary_wallet = config.primary_wallet
-
-        stripe_asset = Asset.objects.get(stripe_primary=True)
-        id_price_stripe = stripe_asset.get_id_price_stripe()
+        primary_stripe_asset = primary_wallet.primary_asset
+        id_price_stripe = primary_stripe_asset.get_id_price_stripe()
+        assert primary_stripe_asset.is_stripe_primary(), "Asset is not primary"
 
         primary_token, created = Token.objects.get_or_create(
             wallet=primary_wallet,
-            asset=stripe_asset,
+            asset=primary_stripe_asset,
         )
 
         user_token, created = Token.objects.get_or_create(
             wallet=user.wallet,
-            asset=stripe_asset,
+            asset=primary_stripe_asset,
         )
 
         # Lancer stripe :

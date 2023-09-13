@@ -222,9 +222,11 @@ class NewTransactionFromCardToPlaceValidator(serializers.Serializer):
         request = self.context.get('request')
         place: Place = request.place
         receiver: Wallet = place.wallet
-        sender: Wallet = attrs.get('user_card').user.wallet
+        card: Card = attrs.get('user_card')
+        sender: Wallet = card.user.wallet
 
-        if not receiver in sender.authority_delegation.all():
+        # Si le lieu du wallet est dans la délégation d'autorité du wallet de la carte
+        if not receiver in sender.get_authority_delegation(card=card):
             # Place must be in card user wallet authority delegation
             raise serializers.ValidationError("Unauthorized")
 
@@ -273,7 +275,7 @@ class NewTransactionWallet2WalletValidator(serializers.Serializer):
             raise serializers.ValidationError("Sender not enough value")
 
         #TODO: Checker les clé rsa des wallets
-        raise serializers.ValidationError("TODO: Checker les clé rsa des wallets")
+        raise serializers.ValidationError("TODO: Checker les signatures des wallets")
         # return attrs
 
     # def get_attribute(self, instance):
