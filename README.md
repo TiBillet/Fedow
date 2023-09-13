@@ -13,159 +13,96 @@ S'intégrant aux outils [TiBillet](https://tibillet.org) il permet l'utilisation
 
 Enfin, Fedow intègre des principes de [monnaie fondantes](https://fr.wikipedia.org/wiki/Monnaie_fondante) dans une chaine de block par preuve d'autorité, transparente, non spéculative et non énergivore.
 
-## Code source publié en AGPLv3 :
+Vous pouvez trouver plus d'informations sur notre blog : 
 
-[https://github.com/TiBillet/Fedow](https://github.com/TiBillet/Fedow)
+[https://tibillet.org/blog/federation-part5-fedow](https://tibillet.org/blog/federation-part5-fedow)
 
-## Manifeste pour l'appropriation d'une économie locale, sociale et solidaire.
 
-### Moteur libre et open-source de gestion de monnaies temps et/ou locale.
+## Principtes
 
-Parce qu'une banque peut être un logiciel libre :
-Nous n'avons pas besoin de blockchain spéculative, de NFT, DeFi ou Dapp ou de tout autre battage techno-solutionniste.
+### Assets et Fédération
 
-Tout ce dont nous avons besoin, c'est d'un moteur de création monétaire, de gestion de compte et de transactions.
-Le tout sous une gestion fédérée et transparente, pour créer des réseaux de points de vente acceptant des monnaies locales, des monnaies temporelles ou même des monnaies qui ne sont pas des monnaies.
+Une ou plusieurs fédérations peuvent être créées sur un serveur Fedow.
+Un actif (asset primaire) est créé pour chaque fédération et servira de monnaie d'échange.
+Il est lié à un compte Stripe pour une équivalence en euros.
 
-Un outil simple pour créer une petite banque à l'échelle d'un petit ou d'un grand territoire et soutenir une économie locale, sociale et inclusive.
+Lors de son arrivée dans une instance fedow, chaque nouveau point de vente génère son propre actif (asset secondaire).
+Chaque lieu (ou point de vente) peut être associé à une fédération, et peut choisir d'accepter un ou tous les assets des lieux présents dans la fédération. 
 
-### Pourquoi ?
+Une balance peut alors être réalisée entre l'asset primaire et les assets secondaires.
 
-Chez Code Commun (la coopérative numérique qui développe l'écosystème TiBillet), nous pensons que le logiciel libre couplé à des pratiques de gouvernance ouverte et transparente pour une économie sociale et solidaire sont les conditions d'une société que nous souhaitons voir émerger.
+## Stripe Connect
 
-Avec **Fedow**, qui s'inscrit dans l'écosystème **TiBillet**, nous souhaitons permettre à chacun de créer ou rejoindre une fédération de monnaies **locale** ou **temps** et de participer à sa gouvernance.
+Lors de la création d'une instance Fedow, un portefeuille primaire est créé. 
+Ce "portefeuille primaire" est lié à un compte Stripe principal et possède les clés de chiffrements rsa nécéssaires aux transactions sur l'asset primaire.
 
-Nous ne croyons pas aux solutions technologiques promises par le Web3 : Blockchains énergivores, création de valeur sur du vide, bulles spéculatives, marchés d'échanges dérégulés, gourous milliardaires… Autant de promesses populistes d'empuissancements non tenues au service d'une économie ultra-libérale de la rareté et de la spéculation.
+Lors de la création d'un nouvel espace de point de vente, un compte stripe connect est demandé.
+Chaque "portefeuille secondaire" voit l'identité de son propriétaire vérifié.
 
-Ceci dit, nous ne jetons pas le bébé avec l'eau du bain.
+## Mécanismes de compensations entre asset primaire et secondaires.
 
-Nous pensons que les entreprises humaines, coopératives et locales peuvent (doivent ?) être soutenues par des outils numériques libres pour construire des structures bancaires locales et coopératives au service d'une économie réelle.
+Est appellé token, asset et portfeuille "primaire" les outils gérés par le serveur Fedow avec une équivalence en euros sur le compte stripe principal.
 
-Nous pensons que les technologies de blockchain peuvent aider en garantissant la sécurité, la transparence et la gouvernance partagée : *The code we own is law.*
+Lors d'une recharque de carte d'un utilisateur en ligne via un paiement stripe, le portefeuille primaire est crédité en euros.
+C'est une action de création de monnaie.
+Le "portefeuille utilisateur" est ensuite crédité en token d'asset primaire, une transaction depuis le portefeuille primaire vers le portefeuille utilisateur est enregistré dans la blockchain.
 
-Nous souhaitons construire **Fedow** dans ce sens : un outil numérique simple et compréhensible par chacun pour une économie **réelle, non spéculative et transparente.**
+Lors d'une recharge en espèces ou carte bancaire via un TPE non géré par Fedow, le portefeuille secondaire génère un asset secondaire.
+Le portefeuille utilisateur est crédité en token d'asset secondaire.
+Cet asset secondaire est géré directement par le lieu. Ce dernier est responsable financièrement et légalement de sa gestion.
 
+Chaque point de vente peut choisir d'accepter ou non les assets secondaires des autres points de vente de la fédération.
+Une balance peut être réalisée entre les assets secondaires d'un lieu et les tokens d'asset primaire du portefeuille secondaire d'un autre lieu.
 
-### L'économie réelle et la blockchain éthique
+Les portefeuilles utilisateurs peuvent s'échanger des token entre eux à l'aide de leur signature (chiffrement rsa asymétique).
 
-Imaginons un livre de compte tenu par tous les acteurs d'une coopérative.
+Les portefeuilles secondaires peuvent prélever directement depuis un portefeuille utilisateur si une délégation d'autorité existe.
+Lors d'une vente d'article, le portefeuille utilisateur transfère ses tokens de monnaie fédérée vers le portefeuille secondaire du point de vente.
 
-Dans ce livre de compte, chaque acteur peut créer sa propre monnaie et peut (ou non) l'échanger à un taux fixe avec les autres monnaies de la coopérative.
+Lors d'une opération de balance, le portefeuille point de vente peut échanger ses tokens de monnaie fédérée vers le portefeuille primaire.
+Un virement en euros est alors effectué sur le compte Stripe connect du point de vente.
 
-Une monnaie fédérée à l'ensemble des acteurs est créée, indexée sur l'euro pour que chaque monnaie puisse s'échanger et servir à l'économie réelle des biens et services.
+### Délégation d'autorité.
 
-D'autres type de monnaies non indexée sur l'euro peuvent être créées : Monnaie temps pour s'échanger des services ou valoriser le bénévolat, monnaie "cadeau" pour analyser les stocks offerts, monnaie "ticket resto" pour gérer des repas des invités, et même monnaie "libre" compatibles avec d'autres systèmes comme la June.
+Un mécanisme de délégation d'autorité est disponible sur les *Wallets*.
+Un Wallet peut être prélevé automatiquement pour des abonnements, des paiments sans contacts sur des points de ventes Tiillet certifiés ou pour le mécanisme de la monnaie fondante.
 
-Couplés au reste des outils de TiBillet, il est alors possible de créer des points de ventes, des caisses enregistreuses, des rapports de comptabilité légaux et des boutiques en ligne qui acceptent indifféremment les monnaies locales et fédérées du réseau, comme des espèces ou cartes bancaires.
+On retrouve alors un système similaire aux "Smart Contract" de la blockchain Ethereum.
 
-Tout ceci avec du matériel DiY et du software low-tech, en favorisant au maximum le réemploi et le reconditionnement de matériel existant, et en utilisant une preuve d'enjeu comme mécanisme de consensus solide, sécurisé et transparent de validation (cf explications plus bas).
+### Monnaie fondante
 
+Un portefeuille de monnaie fondante est un portefeuille dont le solde diminue de manière régulière. Utile pour :
+- Encourager l'économie réèlle
+- Prélever des frais de gestion pour la pérennité du système
+- Garder l'outil libre et gratuit pour les utilisateurs
 
-### Financement, pérennisation du projet et lutte contre la spéculation.
 
-Imaginons un mécanisme qui puisse à la fois :
+### Intégration aux outils TiBillet
 
-- Inciter de nouveaux acteurs à rejoindre la fédération ou en créer de nouvelles.
-- Financer le développement du projet libre et coopératif (Problématique récurrente dans le milieu des logiciels  libres).
-- Lutter contre la spéculation et l'accumulation des capitaux pour une économie réelle et non financiarisée.
+Conçu à l'origine pour créer un système de monnaie scripturale en euros ou en temps (tel qu'il est utilisé dans les festivals) pour plusieurs lieux, le dépôt actuel est une séparation du code source intégré à l'origine dans le [projet de point de vente sans numéraire TiBillet] (https://tibillet.org).
 
-Une idée a été retenue. Elle a le mérite de résoudre les trois problématiques soulevées et s'inspire fortement de la [monnaie fondante](https://fr.wikipedia.org/wiki/Monnaie_fondante) théorisé par l'économiste [Silvio Gesell](https://fr.wikipedia.org/wiki/Silvio_Gesell).
+> [!INFO]
+> Ce projet fait partie des outils coopératifs TiBillet.
+> [https://tibillet.org](https://tibillet.org)
 
-#### Concepts :
+Fedow a été conçu pour connecter différents serveurs de points de vente TiBillet afin qu'ils puissent partager les cartes de leurs utilisateurs respectifs.
 
-- Tout le matériel nécessaire est produit par la coopérative et distribuée à ses acteurs à prix coutant. (matériel de points de vente, TPE, carte RFID, logiciel comptable, e-boutique, etc... voir [TiBillet](https://tibillet.org))
-- Chaque utilisateur dispose d'un portefeuille numérique qui lui permet d'utiliser toutes les monnaies du réseau.
-- Chaque lieu de point de vente est un **nœud** du réseau et est considéré comme un point de change.
-- Les portefeuilles sont utilisables à vie et sans frais pour les utilisateurs ni pour les **nœuds**.
-- Un [demeurage](https://fr.wikipedia.org/wiki/Demeurage_(finance)) est appliqué sur les portefeuilles sous la condition suivante : Si la monnaie n'est pas utilisée sous un certain délai (un an ou plus?) elle fond. **Une partie est prélevée pour être réinjecté dans le réseau coopératif.**
+Stripe connect est actuellement le seul point de paiement accepté pour la gestion des assets primaires.
 
-Les principes du demeurage et de la monnaie fondante permettent de favoriser la circulation des capitaux. En intégrant ce mécanisme dans le code de **Fedow**, nous tentons d'inciter la création d'un écosystème redistributif, social et solidaire.
+Chaque serveur TiBillet/Caisse connecté à Fedow dispose d'un portefeuille secondaire et d'un identifiant Stripe Connect.
 
-Plus vous encouragez vos utilisateurs à utiliser une monnaie locale, plus vous récolterez une partie de la monnaie fondante issu du **demeurage**.
+Lorsqu'un achat est effectué dans l'un des points de vente de n'importe quel serveur TiBillet fédéré, un transfert du compte Stripe primaire vers le compte Stripe connect est effectué.
 
-Ce mécanisme propose une solution incitative à la circulation de monnaie(s) locale(s) qui est une grande problématique de beaucoup de MLCC (monnaies locales citoyennes et complémentaires).
+> [!WARNING]  
+> Les actifs monétaires primaires et secondaires ne peuvent être créés que si vous avez accès au serveur.
+> Il en va de même pour chaque serveur TiBillet. 
+> Il n'y a pas d'API pour chacune de ces actions, une opération manuelle est volontairement nécéssaire.
 
+> [!WARNING]
+> Chaque clé renvoyée est privée: ne les perdez pas et conservez-les en lieu sûr.
+> Elles sont "hachées" du côté du serveur et ne peuvent plus jamais être révélées.
 
-### Je suis un utilisateur lambda, en pratique ça donne quoi ?
-
-- J'adhère et donne de mon temps dans une association de quartier qui utilise TiBillet pour gérer ses adhésions : je reçois une carte de membre et l'association me crédite de la monnaie temps.
-- Je peux dépenser cette monnaie temps pour réserver des heures d'utilisation d'un fablab ou d'un espace de travail partagé.
-- Je scanne ma carte et je peux la recharger en ligne. Je change des euros contre de la monnaie fédérée.
-- Je réserve une place dans un festival partenaire de la coopérative qui utilise le système de cashless et de billetterie de TiBillet.
-- J'achète le billet, des boissons et de la nourriture sur place avec cette même carte préalablement rechargée : Le festival reçoit de la monnaie fédérée.
-- Le festival peut échanger cette monnaie fédérée contre des euros, ou s'en servir pour payer ses prestataires avec tout le bénéfice d'une [monnaie locale complémentaire et citoyenne "MLCC"](https://monnaie-locale-complementaire-citoyenne.net).
-- Il me reste de la monnaie sur ma carte. Je peux la dépenser dans un autre lieu qui utilise TiBillet/Fedow ou la garder pour le prochain festival : Elle est valable à vie.
-- Je l'oublie dans un tiroir : Je suis régulièrement rappelé à l'utiliser via les newsletters de la fédération qui font la promotion des évènements associatifs et coopératifs du réseau.
-- Si ma carte reste inactive pendant un certain temps, la coopérative récupère une partie du contenu du portefeuille et le réinjecte dans le développement du réseau.
-- La coopérative se réunit régulièrement pour faire le point sur la circulation des monnaies et choisir les projets dans lesquels réinvestir l'argent récupéré.
-
-
-(Exemple posssible : 1/3 pour le nœud (organisateur de festival, association...),  1/3 pour un fond commun de soutien aux projets associatifs et coopératifs, 1/3 pour la maintenance et le développement de l'outil.)
-
-
-
-### Blockchain bas carbone et mécanisme de confiance : La preuve d'enjeux (PoS) et la preuve d'autorité (PoA) : 
-
-Ou comment répondre à la grande question : *Comment faire pour avoir confiance en un système bancaire décentralisé sur lequel repose de l'argent réel ?*
-
-
-[ATTENTION DISCLAIMER PARTIE VULGARISATION TECHNIQUE CRYPTO !]
-
-Pour créer un système décentralisé mais sécurisé et fiduciaire, le Bitcoin a proposé la preuve de travail (Proof of Work) : Plus on est nombreux à vérifier, plus il est difficile de falsifier le document comptable car il faut convaincre la majorité pour faire consensus.
-
-Pour encourager le nombre, il est proposé de récompenser les validateurs. Et pour savoir quel validateur va récupérer la récompense, on leur propose une énigme. Celui qui réussit à la résoudre gagne la récompense et valide par la même occasion le bloc de transaction. 
-
-Le reste du groupe vérifie ensuite que ce bloc a bien été validé correctement et tente de résoudre l'énigme suivante. On appelle ça "miner" et cela ne peut se faire qu'à l'aide d'ordinateur très puissants.
-
-Résultat : c'est super sécurisé car beaucoup de monde vérifie chaque transaction. 
-
-Corollaire : c'est très (trop) énergivore au point d'en être insoutenable. (Et ne parlons même pas des mécanismes de rareté et de spéculation qui finissent par achever ce système à nos yeux...)
-
-La preuve d'enjeu (Proof of Stake) a été proposée très vite comme une alternative à la preuve de travail (Proof of Work). Dans un système PoS, il n'y a pas de concept de mineurs, de matériel spécialisé ou de consommation massive d'énergie. 
-
-Pour être un validateur, vous devez prouver que vous avez intérêt à ce que tout le système reste bien valide. Chez *Ethereum*, la deuxième blockchain la plus valorisée, vous devez verrouiller une quantité variable de capital comme preuve d'intérêt et vous êtes récompensé en fonction de cette quantité verouillée.
-
-Ce système est beaucoup moins energivore, mais il à tendance à favoriser une oligarchie car n'importe qui peut devenir un nœud : il suffit d'être riche...
-
-Avec Fedow, c'est un peu différent. Il est nécéssaire de vérifier votre identité comme celle de vos utilisateurs. La preuve d'enjeu, c'est vous ! 
-
-Cette preuve d'enjeu, c'est la quantité de monnaie fédéré que vous récolterez en installant TiBillet/Fedow. Vous avez intérêt à ce que les comptes soient bien valide car vous en possédez une partie des actifs.
-
-Dans ce système, il n'y a pas de concept de mineurs, de matériel spécialisé ou de consommation massive d'énergie. Tout ce dont vous avez besoin, c'est d'un ordinateur ordinaire sous linux.
-
-Et cet ordinateur, vous l'avez déjà : il héberge votre instance TiBillet. Validez la co-optation ou créez votre réseau Fedow, et votre instance TiBillet devient un nœud  qui valide les transactions de tout le réseau en toute transparence.
-
-La preuve d'enjeu, c'est votre instance liée à votre identité. Plus exactement, ce mécanisme de consensus dérivé du *PoS* est appellé une [preuve d'autorité](https://academy.binance.com/fr/articles/proof-of-authority-explained?hide=stickyBar) (PoA).
-
-En pratique : 
-
-- Créez ou rejoignez le nœud primaire Fedow de votre région ou réseau.
-- Une fois votre identité validée, votre instance devient un nœud et vous validez les transactions avec les autres validateurs du réseau fédéré.
-- Chaque nœud participant fait de même. Si tout le monde est d'accord, alors la transaction est validée. Tout le monde à une copie du même livre de compte : le réseau est résilient aux pannes, décentralisé, immuable et transparent.
-- En contrepartie de votre participation à la sécurisation du livre de compte commun, vous recevrez une partie des frais prélevés lors de la revalorisation de la monnaie fondante (le [demeurage](https://fr.wikipedia.org/wiki/Demeurage_(finance))).
-
-
-### C'est quoi la différence finalement avec une autre blockchain ?
-
-Contrairement à la majorité des crypto-actifs, il n'y a pas de **blocks** fraîchement créés dans le cadre de la récompense pour les validateurs. La monnaie fédérée est émise dans une économie réelle. 
-
-Cette émission est réalisée par les adhérents et utilisateurs de vos lieux lorsqu'ils échangent de vrais euros pour recharger leur carte cashless de festival ou d'adhésion associative.
-
-La monnaie est bien réelle. Elle n'est pas volatile. Le moteur de l'application et le consensus de validation s'assurent qu'il existe et existera toujours 1€ de disponible en banque pour 1 *token* fédéré.
-
-Nous ne sommes pas une startup. Notre but n'est pas de lever des fonds en crypto-actif ou d'entrer en bourse. Nous ne prélevons pas de pourcentage sur les transactions dans le but de revendre les tokens que nous créons nous même sur un marché spéculatif.
-
-Nous construisons TiBillet/Fedow au sein de tiers-lieux populaires, de coopératives et associations culturelles dans le but de construire des communs.
-
-Nous ne souhaitons pas **un** Fedow pour contrôler un actif financier, mais **des** Fedows pour des mises en réseaux de lieux.
-
-Nous sommes une société coopérative d'intérêt collectif, et nous invitons tous les acteurs de TiBillet à devenir sociétaires pour décider ensemble de l'évolution du projet.
-
-Nous sommes [CodeCommun.Coop](CodeCommun.Coop), Venez [discuter](https://discord.gg/ecb5jtP7vY) avec nous !
-
-### Project built, financed and tested with the support of :
-
-Originally designed to create a cashless euro or time currency system (as used at festivals) for several venues, the current repository is a separation of the source code originally integrated into the [TiBillet cashless point of sale project](https://tibillet.org).
+### Projet construit, financé et testé avec l'aide de :
 
 - [Coopérative Code Commun](https://codecommun.coop)
 - [la Réunion des Tiers-lieux](https://www.communecter.org/costum/co/index/slug/LaReunionDesTiersLieux/#welcome)
@@ -204,45 +141,6 @@ coverage report
 coverage html
 ```
 
-## Documentation
- 
-### Délégation d'autorité.
-
-Un mécanisme de délégation d'autorité est disponible sur les *Wallets*.
-Un Wallet peut être prélevé automatiquement pour des abonnements, des paiments sans contacts sur des points de ventes Tiillet certifiés ou pour le mécanisme de la monnaie fondante.
-
-On alors retrouve un système similaire aux "Smart Contract" de la blockchain Ethereum.
-
-### Intégration aux outils TiBillet
-
-This project is a part of the TiBillet Cooperative tools.
-
-https://tibillet.org
-
-Fedow was designed from the outset to connect different TiBillet point-of-sale servers so that they could share the
-cards of their respective users.
-
-Stripe connect is currently the accepted payment endpoint.
-
-Each TiBillet server connected to Fedow has a primary wallet and a Stripe Connect id.
-
-When a cashless reload is validated by Fedow, the card is reloaded and the money is available on the primary Stripe
-account.
-
-When a purchase is made in one of the points of sale of any federated TiBillet server, a transfer from the primary
-Stripe account to the Stripe connect account of the TiBillet server is carried out.
-
-To do this, you need to create a federated main asset, then create an entry for each federated Tibillet server.
-
-> [!WARNING]  
-> The primary and federated monetary asset can only be created if you have access to the server.
-> The same applies to each TiBillet server. We will call them "Places".
-> There is no API for each of these actions.
-
-> [!WARNING]
-> Each key returned is private.
-> Do not lose them and keep them in a safe place.
-> They are hashed on the server side and can never be revealed again.
 
 ### Create a new asset
 

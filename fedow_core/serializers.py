@@ -193,8 +193,47 @@ class WalletCreateSerializer(serializers.Serializer):
         representation['wallet'] = f"{self.user.wallet.uuid}"
         return representation
 
+class NewTransactionFromCardToPlaceValidator(serializers.Serializer):
+    amount = serializers.IntegerField()
+    asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all())
+    primary_card = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all())
+    user_card = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all())
 
-class NewTransactionValidator(serializers.Serializer):
+    def validate_amount(self, value):
+        # Positive amount only
+        if value <= 0:
+            raise serializers.ValidationError("Amount must be positive")
+        return value
+
+    def validate_user_primary_card(self, value):
+        # Check if card is linked to user
+        if not value.user:
+            raise serializers.ValidationError("Card not linked to user")
+        return value
+
+    def validate_user_card(self, value):
+        # Check if card is linked to user
+        if not value.user:
+            raise serializers.ValidationError("Card not linked to user")
+        return value
+
+    def validate(self, attrs):
+        # Récupération de la place grâce a la permission HasKeyAndCashlessSignature
+        request = self.context.get('request')
+        place: Place = request.place
+        receiver: Wallet = place.wallet
+        sender: Wallet = attrs.get('user_card').user.wallet
+
+        if not receiver in sender.authority_delegation.all():
+            # Place must be in card user wallet authority delegation
+            raise serializers.ValidationError("Unauthorized")
+
+        self.receiver = receiver
+        self.sender = sender
+
+        return attrs
+
+class NewTransactionWallet2WalletValidator(serializers.Serializer):
     amount = serializers.IntegerField()
     sender = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
     receiver = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
@@ -233,7 +272,9 @@ class NewTransactionValidator(serializers.Serializer):
             logger.error(f"{timezone.localtime()} ERROR sender not enough value - {request}")
             raise serializers.ValidationError("Sender not enough value")
 
-        return attrs
+        #TODO: Checker les clé rsa des wallets
+        raise serializers.ValidationError("TODO: Checker les clé rsa des wallets")
+        # return attrs
 
     # def get_attribute(self, instance):
     #     attribute = super().get_attribute(instance)

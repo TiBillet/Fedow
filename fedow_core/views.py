@@ -20,7 +20,7 @@ from fedow_core.models import Transaction, Place, Configuration, Asset, Checkout
     OrganizationAPIKey, Card
 from fedow_core.permissions import HasKeyAndCashlessSignature, HasAPIKey, IsStripe
 from fedow_core.serializers import TransactionSerializer, PlaceSerializer, WalletCreateSerializer, HandshakeValidator, \
-    NewTransactionValidator, CheckCardSerializer, CreateCardSerializer
+    NewTransactionWallet2WalletValidator, CheckCardSerializer, CreateCardSerializer, NewTransactionFromCardToPlaceValidator
 from rest_framework.pagination import PageNumberPagination
 
 from fedow_core.utils import get_request_ip, fernet_encrypt, fernet_decrypt, dict_to_b64_utf8, dict_to_b64, \
@@ -420,8 +420,11 @@ class TransactionAPI(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
-        # On récupère place grâce à la permission HasKeyAndCashlessSignature
-        serializer = NewTransactionValidator(data=request.data, context={'request': request})
+        if request.data.get('primary_card') and request.data.get('user_card') :
+            serializer = NewTransactionFromCardToPlaceValidator(data=request.data, context={'request': request})
+        else :
+            serializer = NewTransactionWallet2WalletValidator(data=request.data, context={'request': request})
+
         #TODO: Créer new transaction depuis carte
         if serializer.is_valid():
             virement = Transaction.objects.create(
