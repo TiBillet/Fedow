@@ -28,6 +28,7 @@ class Command(BaseCommand):
             help="Add test data",
         )
 
+
     def handle(self, *args, **options):
 
         try:
@@ -60,7 +61,11 @@ class Command(BaseCommand):
 
             fed_asset = Asset.objects.get(name='Fedow')
             assert fed_asset.origin == config.primary_wallet, "Fedow origin is not primary wallet"
-            fed_asset.id_price_stripe = os.environ.get('PRICE_STRIPE_ID_FED', fed_asset.get_id_price_stripe(force=True))
+            # import ipdb; ipdb.set_trace()
+            price_stripe_id_refill_fed = os.environ.get('PRICE_STRIPE_ID_FED')
+            if not price_stripe_id_refill_fed:
+                price_stripe_id_refill_fed = fed_asset.get_id_price_stripe(force=True)
+            fed_asset.id_price_stripe = price_stripe_id_refill_fed
             fed_asset.save()
 
             primary_federation = Federation.objects.create(name="Fedow Primary Federation")

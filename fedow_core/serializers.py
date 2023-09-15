@@ -79,20 +79,44 @@ class HandshakeValidator(serializers.Serializer):
     #     # Add apikey user to representation
     #     representation = super().to_representation(instance)
     #     representation['user'] = self.user
-    #     return representation
+
+class TokenSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Token
+        fields = (
+            'uuid',
+            'name',
+            'value',
+        )
+
+class WalletSerializer(serializers.ModelSerializer):
+    tokens = TokenSerializer(many=True)
+    class Meta:
+        model = Wallet
+        fields = (
+            'uuid',
+            'tokens',
+        )
+
+class UserSerializer(serializers.ModelSerializer):
+    wallet = WalletSerializer(many=False)
+    class Meta:
+        model = FedowUser
+        fields = (
+            'uuid',
+            'wallet',
+        )
 
 
 class CheckCardSerializer(serializers.ModelSerializer):
+    user = UserSerializer(many=False)
     class Meta:
         model = Card
         fields = (
-            'qr_code_printed',
-            'number'
-            # 'user',
-            # 'origin',
-            # 'primary',
-            # 'date',
+            'first_tag_id',
+            'user',
         )
+
 
 
 class CreateCardSerializer(serializers.Serializer):

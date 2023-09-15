@@ -76,13 +76,14 @@ class HelloWorld(viewsets.ViewSet):
 
 class CardAPI(viewsets.ViewSet):
 
-    def list(self, request):
-        serializer = CheckCardSerializer(Card.objects.all(), many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+    # def list(self, request):
+    #     serializer = CheckCardSerializer(Card.objects.all(), many=True)
+    #     return Response(serializer.data, status=status.HTTP_200_OK)
 
     def retrieve(self, request, pk=None):
         # Utilisé par les serveurs cashless comme un check card
         serializer = CheckCardSerializer(Card.objects.get(first_tag_id=pk))
+        # check qui demande ?
         return Response(serializer.data)
 
     def create(self, request):
@@ -93,8 +94,8 @@ class CardAPI(viewsets.ViewSet):
 
     def get_permissions(self):
         permission_classes = [HasKeyAndCashlessSignature]
-        if self.action in ['list']:
-            permission_classes = [HasAPIKey]
+        # if self.action in ['list', 'retrieve']:
+        #     permission_classes = [HasAPIKey]
         return [permission() for permission in permission_classes]
 
 class WalletAPI(viewsets.ViewSet):

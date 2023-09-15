@@ -186,6 +186,9 @@ class Token(models.Model):
     wallet = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name='tokens')
     asset = models.ForeignKey(Asset, on_delete=models.PROTECT, related_name='tokens')
 
+    def name(self):
+        return self.asset.name
+
     # def __str__(self):
     #     return f"{self.wallet.name} {self.asset.name} {self.value}"
     def is_primary_stripe_token(self):

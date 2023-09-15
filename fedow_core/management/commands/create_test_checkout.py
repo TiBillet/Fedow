@@ -17,7 +17,12 @@ class Command(BaseCommand):
     help = 'Asset creation'
 
     def add_arguments(self, parser):
-        pass
+
+        parser.add_argument(
+            "--no-stripe",
+            action="store_true",
+            help="Offline test, don't check stripe.",
+        )
 
     # parser.add_argument('--test', type=str)
 
@@ -28,13 +33,12 @@ class Command(BaseCommand):
         config = Configuration.get_solo()
         stripe.api_key = settings.STRIPE_KEY_TEST
 
-
         ### Création de l'user
         email = 'lambda@lambda.com'
         user, created = get_or_create_user(email)
 
         ### Création d'un lieu
-        try :
+        try:
             place = Place.objects.get(name='TestPlace')
         except Place.DoesNotExist:
             out = StringIO()
@@ -48,7 +52,7 @@ class Command(BaseCommand):
             place = Place.objects.get(pk=decoded_data.get('uuid'))
 
         ### Création d'une carte
-        try :
+        try:
             card = Card.objects.get(user=user)
         except Card.DoesNotExist:
 
@@ -68,7 +72,6 @@ class Command(BaseCommand):
                 origin=gen1,
                 user=user,
             )
-
 
         primary_wallet = config.primary_wallet
         primary_stripe_asset = primary_wallet.primary_asset
@@ -113,11 +116,18 @@ class Command(BaseCommand):
             },
             'client_reference_id': f"{user.pk}",
         }
-        checkout_session = stripe.checkout.Session.create(**data_checkout)
+
+        if options.get('no_stripe'):
+            checkout_session_ID = "proutproutprout"
+            checkout_session_URL = "https://prout.com/"
+        else:
+            checkout_session = stripe.checkout.Session.create(**data_checkout)
+            checkout_session_ID = checkout_session.id
+            checkout_session_URL = checkout_session.url
 
         # Enregistrement du checkout Stripe dans la base de donnée
         checkout_db = CheckoutStripe.objects.create(
-            checkout_session_id_stripe=checkout_session.id,
+            checkout_session_id_stripe=checkout_session_ID,
             asset=user_token.asset,
             status=CheckoutStripe.OPEN,
             user=user,
@@ -129,4 +139,4 @@ class Command(BaseCommand):
         # self.stdout.write(
         #     self.style.WARNING(f"Payez manuellement, gardez le numéro de l'event pour faire un stripe events resend"),
         #     ending='\n')
-        self.stdout.write(self.style.SUCCESS(f'{checkout_session.url}'), ending='\n')
+        self.stdout.write(self.style.SUCCESS(f'{checkout_session_URL}'), ending='\n')

@@ -68,15 +68,26 @@ class HasKeyAndCashlessSignature(BaseHasAPIKey):
 
     def has_permission(self, request: HttpRequest, view: typing.Any) -> bool:
         key = self.get_key(request)
-        if key:
-            api_key = self.model.objects.get_from_key(key)
-            signature = self.get_signature(request)
+        if not key:
+            return False
 
-            if signature and api_key:
-                message = dict_to_b64(request.data)
-                cashless_public_key = api_key.place.cashless_public_key()
-                if cashless_public_key:
-                    if verify_signature(cashless_public_key, message, signature):
-                        request.place = api_key.place
-                        return super().has_permission(request, view)
+        api_key = self.model.objects.get_from_key(key)
+        place = api_key.place
+        request.place = place
+
+        signature = self.get_signature(request)
+        if not signature:
+            return False
+
+        if request.method == 'POST':
+            message = dict_to_b64(request.data)
+        if request.method == 'GET':
+            message = request.META.get('PATH_INFO').encode('utf8')
+        else :
+            return False
+
+        cashless_public_key = place.cashless_public_key()
+        if cashless_public_key:
+            if verify_signature(cashless_public_key, message, signature):
+                return super().has_permission(request, view)
         return False

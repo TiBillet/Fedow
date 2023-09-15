@@ -54,9 +54,6 @@ class FedowTestCase(TestCase):
         self.private_cashless_rsa = get_private_key(private_cashless_pem)
         self.public_cashless_pem = public_cashless_pem
 
-        self.place.cashless_rsa_pub_key = public_cashless_pem
-        self.place.save()
-
 
 class TransactionsTest(FedowTestCase):
 
@@ -197,7 +194,8 @@ class TransactionsTest(FedowTestCase):
         self.assertEqual(primary_token.asset, user_token.asset)
         self.assertTrue(primary_token.is_primary_stripe_token())
 
-    def test_REFILL(self):
+    @tag("only")
+    def test_create_checkout_and_REFILL(self):
         ### RECHARGE AVEC ASSET PRINCIPAL STRIPE
         ## Creation de monnaie. Reception d'un webhook stripe
         ## A faire a la main en attendant une automatisation du paiement checkout
@@ -215,6 +213,7 @@ class TransactionsTest(FedowTestCase):
         # Création d'un checkout stripe
         out = StringIO()
         call_command('create_test_checkout',
+                     '--no-stripe',
                      stdout=out)
         last_line = out.getvalue()
         # print(last_line)
@@ -273,9 +272,51 @@ class TransactionsTest(FedowTestCase):
         self.assertEqual(int(amount_total), user_token.value)
         self.assertEqual(0, primary_token.value)
 
-    @tag("only")
+
+        # Ajout d'une carte primaire
+        admin_place_user, created = get_or_create_user('admin@admin.admin')
+        primary_card = Card.objects.all()[10]
+        primary_card.user = admin_place_user
+        primary_card.save()
+
+        # Simulation de la clé rsa du cashless
+        self.place.cashless_rsa_pub_key = self.public_cashless_pem
+        self.place.primary_cards_cashless.add(primary_card)
+        self.place.save()
+
+        message = {"primary_card" : str(primary_card.uuid)}
+        private_cashless_rsa = get_private_key(self.private_cashless_pem)
+        signature = sign_message(
+            f'/card/{card.first_tag_id}/'.encode('utf8'),
+            private_cashless_rsa)
+
+        # creation de la requete nouvelle transaction par carte :
+        # check card API
+        response = self.client.get(f'/card/{card.first_tag_id}/',
+                                   headers={
+                                       'Authorization': f'Api-Key {self.temp_key_place}',
+                                        'Signature': signature,
+                                   })
+
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        fti = data['first_tag_id']
+        resp_card = Card.objects.get(first_tag_id=fti)
+        self.assertEqual(resp_card, card)
+        user_id = data['user']['uuid']
+        self.assertEqual(user_id, str(user_token.wallet.user.uuid))
+        user_wallet_id = data['user']['wallet']['uuid']
+        self.assertEqual(user_wallet_id, str(user_token.wallet.uuid))
+        tokens = data['user']['wallet']['tokens']
+        fedow_token_value = tokens[0]['value']
+        self.assertEqual(fedow_token_value, 4200)
+
+        print(response.json())
+
+    # @tag("only")
     def test_transaction_from_card_to_place(self):
-        charge42 = self.test_REFILL()
+        charge42 = self.test_create_checkout_and_REFILL()
         last_transaction = Transaction.objects.order_by('datetime').last()
         self.assertTrue(last_transaction.verify_hash())
         card = last_transaction.card
@@ -318,6 +359,9 @@ class TransactionsTest(FedowTestCase):
             "primary_card": f"{primary_card.uuid}",
             "user_card": f"{card.uuid}",
         }
+
+        self.place.cashless_rsa_pub_key = self.public_cashless_pem
+        self.place.save()
 
         private_cashless_rsa = get_private_key(self.private_cashless_pem)
         signature = sign_message(dict_to_b64(message), private_cashless_rsa)
