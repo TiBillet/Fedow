@@ -8,7 +8,7 @@ from django.core import signing
 from django.core.signing import Signer
 from django.core.validators import URLValidator
 from django.http import Http404
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import permission_classes
@@ -71,6 +71,10 @@ class HelloWorld(viewsets.ViewSet):
         permission_classes = [AllowAny]
         return [permission() for permission in permission_classes]
 
+#### HTMX PAGE ####
+
+def indexHTMX(request):
+    return render(request, 'index.html')
 
 ### REST API ###
 

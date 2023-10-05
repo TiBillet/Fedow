@@ -417,7 +417,7 @@ class APITestHelloWorld(FedowTestCase):
         api_key = OrganizationAPIKey.objects.get_from_key(key)
         place = Place.objects.get(pk=decoded_data.get('uuid'))
 
-        # On simule une paire de clé généré par le serveur cashless
+        # On simule une paire de clé générée par le serveur cashless
         private_cashless_pem, public_cashless_pem = rsa_generator()
         private_cashless_rsa = get_private_key(private_cashless_pem)
         place.cashless_rsa_pub_key = public_cashless_pem

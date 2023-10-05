@@ -1,4 +1,6 @@
 from django.urls import path, include
+
+from fedow_dashboard import urls as dashboard_urls
 from fedow_core.views import TransactionAPI, TestApiKey, HelloWorld, WalletAPI, PlaceAPI, Onboard_stripe_return, \
     WebhookStripe, ChargePrimaryAsset, CardAPI
 # from django.conf import settings
@@ -14,9 +16,12 @@ router.register(r'wallet', WalletAPI, basename='wallet')
 router.register(r'place', PlaceAPI, basename='place')
 router.register(r'card', CardAPI, basename='card')
 
+# router.register(r'', IndexRESThtmx, basename='index')
+
 urlpatterns = [
-    path('', include(router.urls)),
     path('onboard_stripe_return/<str:encoded_data>/', Onboard_stripe_return.as_view()),
     path('charge_primary_asset/', ChargePrimaryAsset.as_view()),
     path('webhook_stripe/', WebhookStripe.as_view()),
+    path('', include(dashboard_urls)),
+    path('', include(router.urls)),
 ]

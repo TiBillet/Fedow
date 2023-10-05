@@ -22,12 +22,14 @@ logger = logging.getLogger(__name__)
 class Command(BaseCommand):
     def add_arguments(self, parser):
         # Positional arguments
+        """
         parser.add_argument(
             "--test",
             action="store_true",
             help="Add test data",
         )
-
+        """
+        pass
 
     def handle(self, *args, **options):
 
