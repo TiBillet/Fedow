@@ -76,10 +76,10 @@ class Asset(models.Model):
                     )
 
     origin = models.OneToOneField('Wallet', on_delete=models.PROTECT,
-                               related_name='primary_asset',
-                               help_text="Lieu ou configuration d'origine",
-                               editable=False,
-                               )
+                                  related_name='primary_asset',
+                                  help_text="Lieu ou configuration d'origine",
+                                  editable=False,
+                                  )
 
     # Primary and federated asset send to cashless on new connection
     # On token of this asset is equivalent to 1 euro
@@ -137,10 +137,10 @@ class Asset(models.Model):
         self.save()
 
     # class Meta:
-        # Only one can be true :
-        # constraints = [UniqueConstraint(fields=["stripe_primary"],
-        #                                 condition=Q(stripe_primary=True),
-        #                                 name="unique_stripe_primary_asset")]
+    # Only one can be true :
+    # constraints = [UniqueConstraint(fields=["stripe_primary"],
+    #                                 condition=Q(stripe_primary=True),
+    #                                 name="unique_stripe_primary_asset")]
 
 
 class Wallet(models.Model):
@@ -155,7 +155,7 @@ class Wallet(models.Model):
 
     def get_authority_delegation(self, card=None):
         card: Card = card
-        if self.user == card.user :
+        if self.user == card.user:
             place_origin = card.origin.place
             return place_origin.wallet_federated_with()
         return []
@@ -291,7 +291,7 @@ class Transaction(models.Model):
             # FILL TOKEN WALLET
             token_receiver.value += self.amount
             token_receiver.save()
-        else :
+        else:
             if not token_sender.value >= self.amount:
                 raise ValueError("amount too high")
 
@@ -346,6 +346,7 @@ def inspector(sender, instance, **kwargs):
     token_receiver = Token.objects.get(wallet=instance.receiver, asset=instance.asset)
 """
 
+
 class Federation(models.Model):
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
     name = models.CharField(max_length=100, unique=True)
@@ -353,6 +354,7 @@ class Federation(models.Model):
 
     def __str__(self):
         return f"{self.name} : {','.join([place for place in self.places.all()])}"
+
 
 class Configuration(SingletonModel):
     name = models.CharField(max_length=100)
@@ -461,6 +463,7 @@ class Place(models.Model):
 
     def __str__(self):
         return self.name
+
 
 class Origin(models.Model):
     place = models.ForeignKey(Place, on_delete=models.PROTECT, related_name='origins')

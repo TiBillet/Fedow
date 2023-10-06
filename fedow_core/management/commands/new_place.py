@@ -47,7 +47,7 @@ class Command(BaseCommand):
         if not configuration.domain:
             raise CommandError('Please set the domain name in the admin panel')
 
-        # Avons nous les information nécessaire ?
+        # Avons nous les informations nécessaires ?
         # Si non, on les réclame en input user
         federation_name = options.get('federation', None)
         email = options.get('email', None)

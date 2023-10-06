@@ -54,6 +54,7 @@ class HandshakeValidator(serializers.Serializer):
         public_key = self.pub_key
         signed_message = dict_to_b64(request.data)
         signature = request.META.get('HTTP_SIGNATURE')
+
         if not verify_signature(public_key, signed_message, signature):
             logger.error(f"{timezone.localtime()} ERROR HANDSHAKE Invalid signature - {request.data}")
             raise serializers.ValidationError("Invalid signature")

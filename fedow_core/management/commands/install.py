@@ -68,7 +68,7 @@ class Command(BaseCommand):
             fed_asset.id_price_stripe = price_stripe_id_refill_fed
             fed_asset.save()
 
-            primary_federation = Federation.objects.create(name="Primary Federation")
+            primary_federation = Federation.objects.create(name="Fedow")
 
             self.stdout.write(
                 self.style.SUCCESS(f'Configuration, primary asset, wallet and token created : {instance_name}'),

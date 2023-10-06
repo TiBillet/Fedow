@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+
 {% block content %}
     <button class="btn btn-dark btn-sm mt-5"
             _="on click toggle .dark-version on body
@@ -18,7 +19,9 @@
     <p>Places : {{ places.count }}</p>
     <hr class="dark horizontal mb-5">
     <div class="card-group">
-        {% include 'index/place_card.html' %}
+        {% for place in places %}
+            {% include 'index/place_card.html' %}
+        {% endfor %}
     </div>
 
 {% endblock content %}

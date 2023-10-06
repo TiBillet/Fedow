@@ -1,7 +1,7 @@
 <div class="card" data-animation="true">
     <div class="card-header p-0 position-relative mt-n4 mx-3 z-index-2">
         <a class="d-block blur-shadow-image">
-            <img src="https://demos.creative-tim.com/test/material-dashboard-pro/assets/img/products/product-1-min.jpg"
+            <img src="{{ place.img.med.url }}"
                  alt="img-blur-shadow" class="img-fluid shadow border-radius-lg">
         </a>
         <div class="colored-shadow"
@@ -19,10 +19,10 @@
             </button>
         </div>
         <h5 class="font-weight-normal mt-3">
-            <a href="javascript:;">{{ place.name | default:'Place Name'}}</a>
+            <a href="javascript:;">{{ place.name | default:'Place Name' }}</a>
         </h5>
         <p class="mb-0">
-            {{ place.name | default:'Place description'}}
+            {{ place.name | default:'Place description' }}
         </p>
     </div>
     <hr class="dark horizontal my-0">

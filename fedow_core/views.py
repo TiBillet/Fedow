@@ -169,9 +169,10 @@ class PlaceAPI(viewsets.ViewSet):
             url_onboard = create_account_link_for_onboard(place)
             data = {
                 "url_onboard": url_onboard,
-                "admin_key": key,
-                "wallet_rsa_public_key": place.wallet.public_pem,
+                "place_admin_apikey": key,
+                "place_wallet_public_pem": place.wallet.public_pem,
             }
+            print(data)
 
             data_encoded = dict_to_b64_utf8(data)
             return Response(data_encoded, status=status.HTTP_202_ACCEPTED)
