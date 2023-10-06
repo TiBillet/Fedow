@@ -9,7 +9,7 @@ from django.core.management.base import BaseCommand
 from django.core.signing import Signer
 
 from fedow_core.models import Asset, Configuration, Token, get_or_create_user, Wallet, CheckoutStripe, Origin, Place, \
-    Card
+    Card, Federation
 from fedow_core.utils import rsa_generator, dict_to_b64_utf8, utf8_b64_to_dict
 
 
@@ -42,9 +42,11 @@ class Command(BaseCommand):
             place = Place.objects.get(name='TestPlace')
         except Place.DoesNotExist:
             out = StringIO()
+            primary_federation = Federation.objects.all()[0]
             call_command('new_place',
                          '--name', 'TestPlace',
                          '--email', 'place@place.coop',
+                         '--federation', f'{primary_federation.name}',
                          stdout=out)
 
             self.last_line = out.getvalue().split('\n')[-2]

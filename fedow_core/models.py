@@ -86,6 +86,9 @@ class Asset(models.Model):
     # A Stripe Chekcout must be associated to the transaction creation money
     id_price_stripe = models.CharField(max_length=30, blank=True, null=True, editable=False)
 
+    def total_token_value(self):
+        return sum([token.value for token in self.tokens.all()])
+
     def is_stripe_primary(self):
         if (self.origin == Configuration.get_solo().primary_wallet
                 and self.id_price_stripe != None):
@@ -344,8 +347,12 @@ def inspector(sender, instance, **kwargs):
 """
 
 class Federation(models.Model):
+    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
     name = models.CharField(max_length=100, unique=True)
     places = models.ManyToManyField('Place', related_name='federations')
+
+    def __str__(self):
+        return f"{self.name} : {','.join([place for place in self.places.all()])}"
 
 class Configuration(SingletonModel):
     name = models.CharField(max_length=100)
@@ -452,6 +459,8 @@ class Place(models.Model):
         else:
             raise Exception("Cashless public key empty.")
 
+    def __str__(self):
+        return self.name
 
 class Origin(models.Model):
     place = models.ForeignKey(Place, on_delete=models.PROTECT, related_name='origins')

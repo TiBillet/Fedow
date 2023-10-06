@@ -47,13 +47,19 @@ class Command(BaseCommand):
         if not configuration.domain:
             raise CommandError('Please set the domain name in the admin panel')
 
-        place_name = options['name']
-        email = options['email']
-        if not options['federation']:
-            federation = Federation.objects.get(name="Fedow Primary Federation")
-        else :
-            federation = Federation.objects.get(uuid=options['federation'])
+        # Avons nous les information nécessaire ?
+        # Si non, on les réclame en input user
+        federation_name = options.get('federation', None)
+        email = options.get('email', None)
+        place_name = options.get('name', None)
 
+        if not all([federation_name, email, place_name]) :
+            place_name = input("Please enter the name of the place : ")
+            email = input("Please enter the admin email : ")
+            print("\n".join([f.name for f in Federation.objects.all()]))
+            federation_name = input("Please enter the Federation name :")
+
+        federation = Federation.objects.get(name=federation_name)
         user, user_created = get_or_create_user(email)
 
         if not user_created :

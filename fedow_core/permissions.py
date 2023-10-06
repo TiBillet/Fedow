@@ -69,22 +69,28 @@ class HasKeyAndCashlessSignature(BaseHasAPIKey):
     def has_permission(self, request: HttpRequest, view: typing.Any) -> bool:
         key = self.get_key(request)
         if not key:
+            logger.debug(f"HasKeyAndCashlessSignature : no key")
             return False
 
         api_key = self.model.objects.get_from_key(key)
         place = api_key.place
         request.place = place
 
+
         signature = self.get_signature(request)
         if not signature:
+            logger.debug(f"HasKeyAndCashlessSignature : no signature")
             return False
 
+
+        logger.debug(f"request methode : {request.method}")
         if request.method == 'POST':
             message = dict_to_b64(request.data)
-        if request.method == 'GET':
+        elif request.method == 'GET':
             message = request.META.get('PATH_INFO').encode('utf8')
         else :
             return False
+
 
         cashless_public_key = place.cashless_public_key()
         if cashless_public_key:

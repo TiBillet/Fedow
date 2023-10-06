@@ -120,20 +120,17 @@ Lorsqu'un achat est effectué dans l'un des points de vente de n'importe quel se
 
 ## Install
 
-### With docker compose (Production)
+### With docker compose (Production environment)
 
 ```bash
-cp env_example .env
-# Edit .env 
+cp env_example .env && nano .env # or Vim ? -> edit .env 
 docker compose up -d
 ```
 
-### Without (Development)
+### Without docker compose (Development environment)
 
 ```bash
-git pull && cd Fedow
-poetry install
-# or poetry update if you have already installed it.
+poetry install # or poetry update if you have already installed it.
 poetry shell
 ./manage.py migrate
 ./manage.py install
@@ -156,7 +153,7 @@ poetry run python manage.py create_asset Peaksu PKS
 
 ```bash
 # Create new place
-poetry run python manage.py new_place "Manapany Festival"
+poetry run python manage.py new_place --name "Manapany Festival" --email = "contact@manap.org"
 # Copy the string and paste it to the TiBillet server administration.
 ```
 

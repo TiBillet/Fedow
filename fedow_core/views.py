@@ -80,9 +80,9 @@ def indexHTMX(request):
 
 class CardAPI(viewsets.ViewSet):
 
-    # def list(self, request):
-    #     serializer = CheckCardSerializer(Card.objects.all(), many=True)
-    #     return Response(serializer.data, status=status.HTTP_200_OK)
+    def list(self, request):
+        serializer = CheckCardSerializer(Card.objects.all(), many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def retrieve(self, request, pk=None):
         # Utilisé par les serveurs cashless comme un check card

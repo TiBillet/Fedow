@@ -12,7 +12,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework_api_key.models import APIKey
 
 from fedow_core.models import Card, Place, FedowUser, OrganizationAPIKey, Origin, get_or_create_user, Wallet, \
-    Configuration, Asset, Token, CheckoutStripe, Transaction
+    Configuration, Asset, Token, CheckoutStripe, Transaction, Federation
 from fedow_core.utils import utf8_b64_to_dict, rsa_generator, dict_to_b64, sign_message, get_private_key, b64_to_dict, \
     get_public_key, fernet_decrypt, verify_signature
 from fedow_core.views import HelloWorld
@@ -27,6 +27,7 @@ class FedowTestCase(TestCase):
     def setUp(self):
         call_command('install', '--test')
 
+        primary_federation = Federation.objects.all()[0]
         User: FedowUser = get_user_model()
         email_admin = 'admin@admin.admin'
         self.email_admin = email_admin
@@ -36,6 +37,7 @@ class FedowTestCase(TestCase):
         call_command('new_place',
                      '--name', 'Billetistan',
                      '--email', f'{email_admin}',
+                     '--federation', f'{primary_federation.name}',
                      stdout=out)
 
         self.last_line = out.getvalue().split('\n')[-2]
@@ -78,9 +80,25 @@ class TransactionsTest(FedowTestCase):
             )
         self.card = Card.objects.all()[0]
 
+    @tag("only")
     def test_list_all_cards(self):
-        response = self.client.get('/card/',
-                                   headers={'Authorization': f'Api-Key {self.temp_key_place}'})
+        # Simulation de la clé rsa du cashless
+        self.place.cashless_rsa_pub_key = self.public_cashless_pem
+        self.place.save()
+        private_cashless_rsa = get_private_key(self.private_cashless_pem)
+
+        PATH = f'/card/'
+        signature = sign_message(
+            PATH.encode('utf8'),
+            private_cashless_rsa)
+
+        # creation de la requete nouvelle transaction par carte :
+        # check card API
+        response = self.client.get(PATH,
+                                   headers={
+                                       'Authorization': f'Api-Key {self.temp_key_place}',
+                                       'Signature': signature,
+                                   })
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 100)
@@ -194,7 +212,7 @@ class TransactionsTest(FedowTestCase):
         self.assertEqual(primary_token.asset, user_token.asset)
         self.assertTrue(primary_token.is_primary_stripe_token())
 
-    @tag("only")
+    # @tag("only")
     def test_create_checkout_and_REFILL(self):
         ### RECHARGE AVEC ASSET PRINCIPAL STRIPE
         ## Creation de monnaie. Reception d'un webhook stripe
@@ -272,7 +290,6 @@ class TransactionsTest(FedowTestCase):
         self.assertEqual(int(amount_total), user_token.value)
         self.assertEqual(0, primary_token.value)
 
-
         # Ajout d'une carte primaire
         admin_place_user, created = get_or_create_user('admin@admin.admin')
         primary_card = Card.objects.all()[10]
@@ -284,18 +301,21 @@ class TransactionsTest(FedowTestCase):
         self.place.primary_cards_cashless.add(primary_card)
         self.place.save()
 
-        message = {"primary_card" : str(primary_card.uuid)}
+        message = {"primary_card": str(primary_card.uuid)}
         private_cashless_rsa = get_private_key(self.private_cashless_pem)
+
+        # Pour les requetes GET, on signe le path
+        PATH = f'/card/{card.first_tag_id}/'
         signature = sign_message(
-            f'/card/{card.first_tag_id}/'.encode('utf8'),
+            PATH.encode('utf8'),
             private_cashless_rsa)
 
         # creation de la requete nouvelle transaction par carte :
         # check card API
-        response = self.client.get(f'/card/{card.first_tag_id}/',
+        response = self.client.get(PATH,
                                    headers={
                                        'Authorization': f'Api-Key {self.temp_key_place}',
-                                        'Signature': signature,
+                                       'Signature': signature,
                                    })
 
         self.assertEqual(response.status_code, 200)

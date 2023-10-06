@@ -22,14 +22,11 @@ logger = logging.getLogger(__name__)
 class Command(BaseCommand):
     def add_arguments(self, parser):
         # Positional arguments
-        """
         parser.add_argument(
             "--test",
             action="store_true",
             help="Add test data",
         )
-        """
-        pass
 
     def handle(self, *args, **options):
 
@@ -57,20 +54,21 @@ class Command(BaseCommand):
             config.save()
 
             call_command("create_asset",
-                         '--name', 'Fedow',
+                         '--name', 'Primary Asset',
                          '--currency_code', 'FED',
                          '--origin', f'{primary_wallet.uuid}')
 
-            fed_asset = Asset.objects.get(name='Fedow')
+            assert Asset.objects.all().count() == 1, "There is more than one asset"
+            fed_asset = Asset.objects.all()[0]
             assert fed_asset.origin == config.primary_wallet, "Fedow origin is not primary wallet"
-            # import ipdb; ipdb.set_trace()
+
             price_stripe_id_refill_fed = os.environ.get('PRICE_STRIPE_ID_FED')
             if not price_stripe_id_refill_fed:
                 price_stripe_id_refill_fed = fed_asset.get_id_price_stripe(force=True)
             fed_asset.id_price_stripe = price_stripe_id_refill_fed
             fed_asset.save()
 
-            primary_federation = Federation.objects.create(name="Fedow Primary Federation")
+            primary_federation = Federation.objects.create(name="Primary Federation")
 
             self.stdout.write(
                 self.style.SUCCESS(f'Configuration, primary asset, wallet and token created : {instance_name}'),
