@@ -63,20 +63,19 @@ class Command(BaseCommand):
                 generation=1
             )
 
-            nfc_uuid = uuid4()
-            qrcode = uuid4()
+            complete_tag_id_uuid = uuid4()
+            qrcode_uuid = uuid4()
             card = Card.objects.create(
-                uuid=uuid4(),
-                first_tag_id=f"{str(nfc_uuid).split('-')[0]}",
-                nfc_uuid=nfc_uuid,
-                qr_code_printed=qrcode,
-                number=str(qrcode).split('-')[0],
+                first_tag_id=f"{str(complete_tag_id_uuid).split('-')[0]}",
+                complete_tag_id_uuid=complete_tag_id_uuid,
+                qrcode_uuid=qrcode_uuid,
+                number_printed=str(qrcode_uuid).split('-')[0],
                 origin=gen1,
                 user=user,
             )
 
         primary_wallet = config.primary_wallet
-        primary_stripe_asset = primary_wallet.primary_asset
+        primary_stripe_asset = Asset.objects.get(origin=primary_wallet, category=Asset.STRIPE_FED_FIAT)
         id_price_stripe = primary_stripe_asset.get_id_price_stripe()
         assert primary_stripe_asset.is_stripe_primary(), "Asset is not primary"
 

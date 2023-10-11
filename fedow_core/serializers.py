@@ -3,13 +3,14 @@ import json
 from collections import OrderedDict
 import hashlib
 import re
+from datetime import datetime
 
 from cryptography.hazmat.primitives.asymmetric import rsa
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_api_key.models import APIKey
 from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction, OrganizationAPIKey, Asset, Token, \
-    get_or_create_user, Origin
+    get_or_create_user, Origin, wallet_creator, asset_creator
 from fedow_core.utils import get_request_ip, get_public_key, dict_to_b64, verify_signature, rsa_generator
 import logging
 
@@ -81,6 +82,7 @@ class HandshakeValidator(serializers.Serializer):
     #     representation = super().to_representation(instance)
     #     representation['user'] = self.user
 
+
 class TokenSerializer(serializers.ModelSerializer):
     class Meta:
         model = Token
@@ -90,8 +92,10 @@ class TokenSerializer(serializers.ModelSerializer):
             'value',
         )
 
+
 class WalletSerializer(serializers.ModelSerializer):
     tokens = TokenSerializer(many=True)
+
     class Meta:
         model = Wallet
         fields = (
@@ -99,8 +103,10 @@ class WalletSerializer(serializers.ModelSerializer):
             'tokens',
         )
 
+
 class UserSerializer(serializers.ModelSerializer):
     wallet = WalletSerializer(many=False)
+
     class Meta:
         model = FedowUser
         fields = (
@@ -111,6 +117,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 class CheckCardSerializer(serializers.ModelSerializer):
     user = UserSerializer(many=False)
+
     class Meta:
         model = Card
         fields = (
@@ -119,30 +126,38 @@ class CheckCardSerializer(serializers.ModelSerializer):
         )
 
 
-
 class CreateCardSerializer(serializers.Serializer):
     email = serializers.EmailField(required=False)
     generation = serializers.IntegerField()
     first_tag_id = serializers.CharField()
-    nfc_uuid = serializers.UUIDField()
-    qr_code_printed = serializers.UUIDField()
-    number = serializers.CharField()
+    complete_tag_id_uuid = serializers.UUIDField(required=False)
+    qrcode_uuid = serializers.UUIDField()
+    number_printed = serializers.CharField()
+    assets = serializers.ListField(required=False)
 
     def validate_first_tag_id(self, value):
         first_tag_regex = r"^[0-9a-fA-F]{8}\b"
         if not re.match(first_tag_regex, value):
             raise serializers.ValidationError("First tag id invalid")
+
+        if Card.objects.filter(first_tag_id=value).exists():
+            raise serializers.ValidationError("First tag id already used")
         return value
 
-    def validate_number(self, value):
+    def validate_number_printed(self, value):
         first_tag_regex = r"^[0-9a-fA-F]{8}\b"
         if not re.match(first_tag_regex, value):
             raise serializers.ValidationError("First tag id invalid")
+
+        if Card.objects.filter(number_printed=value).exists():
+            raise serializers.ValidationError("First tag id already used")
         return value
 
     def validate_email(self, value):
-        self.user, created = get_or_create_user(value)
-        return self.user.email
+        if value:
+            self.user, created = get_or_create_user(value)
+            return self.user.email
+        return value
 
     def validate_generation(self, value):
         # Récupération de la place grâce a la permission HasKeyAndCashlessSignature
@@ -154,18 +169,95 @@ class CreateCardSerializer(serializers.Serializer):
         self.origin, created = Origin.objects.get_or_create(place=self.place, generation=value)
         return self.origin.generation
 
+    def validate_assets(self, value):
+        # Création des assets s'ils n'existent pas.
+        # Retourne une liste avec les valeurs des futurs tokens
+        # La création des token se fait dans le validateur global
+        tokens = []
+        if value:
+            for token in value:
+                asset_uuid = token['monnaie_uuid']
+                request = self.context.get('request')
+                self.place: Place = request.place
+                try:
+                    asset = Asset.objects.get(uuid=asset_uuid)
+                except Asset.DoesNotExist:
+                    asset = asset_creator(
+                        token['monnaie_name'],
+                        token['currency_code'],
+                        token['category'],
+                        self.place.wallet,
+                        uuid_cashless=asset_uuid,
+                        ip=get_request_ip(request),
+                    )
+
+                tokens.append({
+                    "Asset": asset,
+                    "qty": int(float(token['qty']) * 100),
+                    "last_date_used": datetime.fromisoformat(token['last_date_used']),
+                })
+
+            return tokens
+        return value
+
     def validate(self, attrs):
-        user = getattr(self,'user', None)
+        user = getattr(self, 'user', None)
+
+        # Si nous n'avons pas de user, nous créons un wallet éphémère
+        # pour les cartes de festivals anonymes
+        wallet_ephemere = None
+        if not user:
+            wallet_ephemere = wallet_creator()
+
+        # Création de la carte cashless
         self.card = Card.objects.create(
             first_tag_id=attrs.get('first_tag_id'),
-            nfc_uuid=attrs.get('nfc_uuid'),
+            complete_tag_id_uuid=attrs.get('complete_tag_id_uuid'),
 
-            qr_code_printed=attrs.get('qr_code_printed'),
-            number=attrs.get('number'),
+            qrcode_uuid=attrs.get('qrcode_uuid'),
+            number_printed=attrs.get('number_printed'),
 
             user=user,
             origin=self.origin,
+
+            wallet_ephemere=wallet_ephemere,
         )
+
+        pre_tokens = attrs.get('assets', None)
+        if pre_tokens:
+            for pre_token in pre_tokens:
+                # Create token from scratch
+                # import ipdb; ipdb.set_trace()
+                asset: Asset = pre_token['Asset']
+                token_creation = Transaction.objects.create(
+                    ip=get_request_ip(self.context.get('request')),
+                    checkout_stripe=None,
+                    sender=asset.origin,
+                    receiver=asset.origin,
+                    asset=asset,
+                    amount=pre_token['qty'],
+                    action=Transaction.CREATION,
+                    card=self.card,
+                    primary_card=None,  # Création de monnaie
+                )
+
+                assert token_creation.verify_hash(), "Token creation hash is not valid"
+
+                # virement vers le wallet de l'utilisateur
+                virement = Transaction.objects.create(
+                    ip=get_request_ip(self.context.get('request')),
+                    checkout_stripe=None,
+                    sender=asset.origin,
+                    receiver=self.card.wallet(),
+                    asset=asset,
+                    amount=pre_token['qty'],
+                    action=Transaction.REFILL,
+                    card=self.card,
+                    primary_card=None,  # Création de monnaie
+                )
+
+                assert virement.verify_hash(), "Token creation hash is not valid"
+
         return attrs
 
 
@@ -218,6 +310,7 @@ class WalletCreateSerializer(serializers.Serializer):
         representation['wallet'] = f"{self.user.wallet.uuid}"
         return representation
 
+
 class NewTransactionFromCardToPlaceValidator(serializers.Serializer):
     amount = serializers.IntegerField()
     asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all())
@@ -260,6 +353,7 @@ class NewTransactionFromCardToPlaceValidator(serializers.Serializer):
 
         return attrs
 
+
 class NewTransactionWallet2WalletValidator(serializers.Serializer):
     amount = serializers.IntegerField()
     sender = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
@@ -299,7 +393,7 @@ class NewTransactionWallet2WalletValidator(serializers.Serializer):
             logger.error(f"{timezone.localtime()} ERROR sender not enough value - {request}")
             raise serializers.ValidationError("Sender not enough value")
 
-        #TODO: Checker les clé rsa des wallets
+        # TODO: Checker les clé rsa des wallets
         raise serializers.ValidationError("TODO: Checker les signatures des wallets")
         # return attrs
 

@@ -69,13 +69,13 @@ class TransactionsTest(FedowTestCase):
         )
         # création de 100 cartes sans user
         for i in range(100):
-            uuid_nfc = str(uuid4())
-            uuid_qrcode = str(uuid4())
+            complete_tag_id_uuid = str(uuid4())
+            qrcode_uuid = str(uuid4())
             Card.objects.create(
-                nfc_uuid=uuid_nfc,
-                first_tag_id=f"{uuid_nfc.split('-')[0]}",
-                qr_code_printed=uuid_qrcode,
-                number=f"{uuid_qrcode.split('-')[0]}",
+                complete_tag_id_uuid=complete_tag_id_uuid,
+                first_tag_id=f"{complete_tag_id_uuid.split('-')[0]}",
+                qrcode_uuid=qrcode_uuid,
+                number_printed=f"{qrcode_uuid.split('-')[0]}",
                 origin=gen1,
             )
         self.card = Card.objects.all()[0]
@@ -114,13 +114,13 @@ class TransactionsTest(FedowTestCase):
         # création d'une liste de 100 cartes sans email
         cards = []
         for i in range(100):
-            uuid_nfc = str(uuid4())
-            uuid_qrcode = str(uuid4())
+            complete_tag_id_uuid = str(uuid4())
+            qrcode_uuid = str(uuid4())
             cards.append({
-                "nfc_uuid": uuid_nfc,
-                "first_tag_id": uuid_nfc.split('-')[0],
-                "qr_code_printed": uuid_qrcode,
-                "number": uuid_qrcode.split('-')[0],
+                "first_tag_id": complete_tag_id_uuid.split('-')[0],
+                "complete_tag_id_uuid": complete_tag_id_uuid,
+                "qrcode_uuid": qrcode_uuid,
+                "number_printed": qrcode_uuid.split('-')[0],
                 "generation": "1",
             })
 
@@ -142,10 +142,10 @@ class TransactionsTest(FedowTestCase):
             uuid_nfc = str(uuid4())
             uuid_qrcode = str(uuid4())
             cards_with_email.append({
-                "nfc_uuid": uuid_nfc,
                 "first_tag_id": uuid_nfc.split('-')[0],
-                "qr_code_printed": uuid_qrcode,
-                "number": uuid_qrcode.split('-')[0],
+                "complete_tag_id_uuid": uuid_nfc,
+                "qrcode_uuid": uuid_qrcode,
+                "number_printed": uuid_qrcode.split('-')[0],
                 "generation": "2",
                 "email": f"{Faker().email()}",
             })
@@ -345,7 +345,8 @@ class TransactionsTest(FedowTestCase):
 
         place_wallet = self.place.wallet
         config = Configuration.get_solo()
-        primary_asset = config.primary_wallet.primary_asset
+        # primary_asset = config.primary_wallet.primary_asset
+        primary_asset = Asset.objects.get(origin=config.primary_wallet, category=Asset.STRIPE_FED_FIAT)
         self.assertEqual(Token.objects.get(wallet=user_wallet, asset=primary_asset).value, 4200)
 
         try:
@@ -533,6 +534,7 @@ class ModelsTest(FedowTestCase):
         self.assertEqual(api_key_from_decoded_data.user, admin)
         self.assertIn('temp_', api_key_from_decoded_data.name)
 
+    # @tag("crash")
     def test_simulate_cashless_handshake(self):
         # Données pour simuler un cashless.
         cashless_private_rsa_key, cashless_pub_rsa_key = rsa_generator()
@@ -585,8 +587,9 @@ class ModelsTest(FedowTestCase):
         place.refresh_from_db()
         decoded_data = b64_to_dict(response.content)
         self.assertIsInstance(decoded_data, dict)
+
         # Vérification que la clé est bien celui du wallet du lieu
-        admin_key = OrganizationAPIKey.objects.get_from_key(decoded_data.get('admin_key'))
+        admin_key = OrganizationAPIKey.objects.get_from_key(decoded_data.get('place_admin_apikey'))
         self.assertIn(admin_key.user, place.admins.all())
 
         # Check si tout a bien été entré en base de donnée

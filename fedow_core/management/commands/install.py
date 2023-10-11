@@ -4,7 +4,7 @@ from django.conf import settings
 from django.core.management import call_command
 from rest_framework_api_key.models import APIKey
 
-from fedow_core.models import Configuration, Wallet, Asset, Federation
+from fedow_core.models import Configuration, Wallet, Asset, Federation, wallet_creator
 from django.core.management.base import BaseCommand, CommandError
 
 from cryptography.hazmat.primitives import serialization
@@ -35,16 +35,9 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f'Configuration and master wallet already exists : {config.name}'),
                               ending='\n')
         except Exception as e:
-            # Génération d'une paire de clés RSA
-            private_pem, public_pem = rsa_generator()
+            primary_wallet = wallet_creator()
 
             instance_name = os.environ.get('DOMAIN', 'fedow.tibillet.localhost')
-            primary_wallet = Wallet.objects.create(
-                name="Primary Wallet",
-                private_pem=private_pem,
-                public_pem=public_pem,
-            )
-
             config = Configuration(
                 name=instance_name,
                 domain=instance_name,
@@ -56,7 +49,8 @@ class Command(BaseCommand):
             call_command("create_asset",
                          '--name', 'Primary Asset',
                          '--currency_code', 'FED',
-                         '--origin', f'{primary_wallet.uuid}')
+                         '--origin', f'{primary_wallet.uuid}',
+                         '--category', 'FED')
 
             assert Asset.objects.all().count() == 1, "There is more than one asset"
             fed_asset = Asset.objects.all()[0]

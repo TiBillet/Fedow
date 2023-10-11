@@ -6,7 +6,8 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils.text import slugify
 from rest_framework_api_key.models import APIKey
 
-from fedow_core.models import Asset, Place, Wallet, Configuration, get_or_create_user, OrganizationAPIKey, Federation
+from fedow_core.models import Asset, Place, Wallet, Configuration, get_or_create_user, OrganizationAPIKey, Federation, \
+    wallet_creator
 from fedow_core.utils import rsa_generator, dict_to_b64_utf8
 
 """
@@ -53,7 +54,7 @@ class Command(BaseCommand):
         email = options.get('email', None)
         place_name = options.get('name', None)
 
-        if not all([federation_name, email, place_name]) :
+        if not all([federation_name, email, place_name]):
             place_name = input("Please enter the name of the place : ")
             email = input("Please enter the admin email : ")
             print("\n".join([f.name for f in Federation.objects.all()]))
@@ -62,7 +63,7 @@ class Command(BaseCommand):
         federation = Federation.objects.get(name=federation_name)
         user, user_created = get_or_create_user(email)
 
-        if not user_created :
+        if not user_created:
             raise CommandError('User name already exist')
 
         self.stdout.write(f"", ending='\n')
@@ -78,17 +79,9 @@ class Command(BaseCommand):
             f"To finalise the creation, please enter this key in your cashless interface",
             ending='\n')
 
-        priv, pub = rsa_generator()
-        # Create wallet
-        wallet = Wallet.objects.create(
-            private_pem=priv,
-            public_pem=pub,
-            name=place_name,
-        )
-
         place = Place.objects.create(
             name=place_name,
-            wallet=wallet,
+            wallet=wallet_creator(),
         )
 
         place.admins.add(user)

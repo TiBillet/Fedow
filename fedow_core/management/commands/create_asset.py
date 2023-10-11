@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand, CommandError
 from rest_framework_api_key.models import APIKey
 
-from fedow_core.models import Asset, Transaction, Configuration, Wallet
+from fedow_core.models import Asset, Transaction, Configuration, Wallet, asset_creator
 
 """
 Pense bête :
@@ -33,48 +33,14 @@ class Command(BaseCommand):
         parser.add_argument('--name', type=str)
         parser.add_argument('--currency_code', type=str)
         parser.add_argument('--origin', type=str)
+        parser.add_argument('--category', type=str)
 
     def handle(self, *args, **options):
         asset_name = options['name']
+        category = options['category']
         currency_code = options['currency_code'].upper()
         origin = Wallet.objects.get(uuid=options['origin'])
 
-        if len(currency_code) > 3:
-            raise CommandError('Max 3 for currency code')
+        asset = asset_creator(asset_name, currency_code, category, origin)
 
-        try:
-            Asset.objects.get(name=asset_name)
-            raise CommandError('Asset name already exist')
-        except Asset.DoesNotExist:
-            pass
-
-        try:
-            Asset.objects.get(currency_code=currency_code)
-            raise CommandError('Asset currency_code already exist')
-        except Asset.DoesNotExist:
-            pass
-
-        asset = Asset.objects.create(
-            name=asset_name,
-            currency_code=currency_code,
-            origin=origin,
-        )
-
-        # Création du premier block
-        config = Configuration.get_solo()
-        primary_wallet = config.primary_wallet
-        first_block = Transaction.objects.create(
-            ip='0.0.0.0',
-            checkout_stripe=None,
-            sender=primary_wallet,
-            receiver=primary_wallet,
-            asset=asset,
-            amount=int(0),
-            action=Transaction.FIRST,
-            card=None,
-            primary_card=None,
-        )
-
-        self.stdout.write(self.style.SUCCESS(f"Asset succesfully created."), ending='\n')
-        self.stdout.write(f"", ending='\n')
-        self.stdout.write(f"NAME : {asset_name} - CURRENCY CODE : {currency_code}", ending='\n')
+        self.stdout.write(self.style.SUCCESS(f"Asset succesfully created : NAME : {asset.name} - CURRENCY CODE : {asset.currency_code}"), ending='\n')

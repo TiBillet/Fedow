@@ -73,8 +73,6 @@ class HelloWorld(viewsets.ViewSet):
 
 #### HTMX PAGE ####
 
-def indexHTMX(request):
-    return render(request, 'index.html')
 
 ### REST API ###
 
@@ -212,6 +210,9 @@ def create_account_link_for_onboard(place: Place):
     return url_onboard
 
 
+
+
+
 @permission_classes([IsStripe])
 class WebhookStripe(APIView):
     def post(self, request):
@@ -328,7 +329,8 @@ class Onboard_stripe_return(APIView):
             # Envoie des infos de la monnaie fédéré
 
             primary_wallet = config.primary_wallet
-            primary_stripe_asset = primary_wallet.primary_asset
+            # primary_stripe_asset = primary_wallet.primary_asset
+            primary_stripe_asset = Asset.objects.get(origin=primary_wallet, category=Asset.STRIPE_FED_FIAT)
             assert primary_stripe_asset.is_stripe_primary(), "Asset is not primary"
 
             data = {
@@ -357,7 +359,8 @@ class ChargePrimaryAsset(APIView):
             card: Card = serializer.card
             config = Configuration.get_solo()
             primary_wallet = config.primary_wallet
-            stripe_asset = primary_wallet.primary_asset
+            # stripe_asset = primary_wallet.primary_asset
+            stripe_asset = Asset.objects.get(origin=primary_wallet, category=Asset.STRIPE_FED_FIAT)
             id_price_stripe = stripe_asset.get_id_price_stripe()
 
             primary_token, created = Token.objects.get_or_create(

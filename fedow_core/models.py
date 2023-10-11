@@ -57,7 +57,7 @@ class CheckoutStripe(models.Model):
 
 class Asset(models.Model):
     # One asset per currency
-    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
+    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=False)
     name = models.CharField(max_length=100, unique=True)
     currency_code = models.CharField(max_length=3, unique=True)
     img = JPEGField(upload_to='assets/',
@@ -75,11 +75,27 @@ class Asset(models.Model):
                     blank=True, null=True,
                     )
 
-    origin = models.OneToOneField('Wallet', on_delete=models.PROTECT,
-                                  related_name='primary_asset',
-                                  help_text="Lieu ou configuration d'origine",
-                                  editable=False,
-                                  )
+    origin = models.ForeignKey('Wallet', on_delete=models.PROTECT,
+                               # related_name='primary_asset',
+                               related_name='assets_created',
+                               help_text="Lieu ou configuration d'origine",
+                               editable=False,
+                               )
+
+    TOKEN_LOCAL_FIAT = 'TLF'
+    TOKEN_LOCAL_NOT_FIAT = 'TNF'
+    STRIPE_FED_FIAT = 'FED'
+
+    CATEGORIES = [
+        (TOKEN_LOCAL_FIAT, 'Fiduciary local token'),
+        (TOKEN_LOCAL_NOT_FIAT, 'Token local non fiduciaire'),
+        (STRIPE_FED_FIAT, 'Fiduciary and federated token on stripe'),
+    ]
+
+    category = models.CharField(
+        max_length=3,
+        choices=CATEGORIES
+    )
 
     # Primary and federated asset send to cashless on new connection
     # On token of this asset is equivalent to 1 euro
@@ -91,7 +107,8 @@ class Asset(models.Model):
 
     def is_stripe_primary(self):
         if (self.origin == Configuration.get_solo().primary_wallet
-                and self.id_price_stripe != None):
+                and self.id_price_stripe != None
+                and self.category == Asset.STRIPE_FED_FIAT):
             return True
         return False
 
@@ -145,7 +162,7 @@ class Asset(models.Model):
 
 class Wallet(models.Model):
     # One wallet per user
-    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
+    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=False)
     name = models.CharField(max_length=100, blank=True, null=True)
 
     private_pem = models.CharField(max_length=2048, editable=False)
@@ -184,7 +201,7 @@ class Wallet(models.Model):
 
 class Token(models.Model):
     # One token per user per currency
-    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
+    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=False)
     value = models.PositiveIntegerField(default=0, help_text="Valeur, en centimes.")
     wallet = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name='tokens')
     asset = models.ForeignKey(Asset, on_delete=models.PROTECT, related_name='tokens')
@@ -207,7 +224,7 @@ class Token(models.Model):
 
 
 class Transaction(models.Model):
-    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
+    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=False)
     hash = models.CharField(max_length=64, unique=True, editable=False)
 
     ip = models.GenericIPAddressField(verbose_name="Ip source")
@@ -282,11 +299,12 @@ class Transaction(models.Model):
         if self.action == Transaction.FIRST:
             assert not self.asset.transactions.filter(
                 action=Transaction.FIRST).exists(), "First transaction already exists."
+
         # Validator 1 : IF CREATION
         elif self.action == Transaction.CREATION:
             assert self.sender == self.receiver, "Sender and receiver must be the same for creation money."
-            assert self.asset.is_stripe_primary(), "Asset must be federated primary for creation money."
-            assert self.checkout_stripe != None, "Checkout stripe must be set for creation money."
+            if self.asset.is_stripe_primary():
+                assert self.checkout_stripe != None, "Checkout stripe must be set for create federated money."
 
             # FILL TOKEN WALLET
             token_receiver.value += self.amount
@@ -300,7 +318,8 @@ class Transaction(models.Model):
             assert not self.receiver.is_primary(), "Receiver must be a user wallet"
             assert self.receiver.user, "Receiver must be a user wallet"
             assert not self.receiver.is_place(), "Receiver must be a user wallet"
-            assert self.checkout_stripe != None, "Checkout stripe must be set for refill."
+            if self.asset.is_stripe_primary():
+                assert self.checkout_stripe != None, "Checkout stripe must be set for refill."
 
             # FILL TOKEN WALLET
             token_sender.value -= self.amount
@@ -348,7 +367,7 @@ def inspector(sender, instance, **kwargs):
 
 
 class Federation(models.Model):
-    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
+    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=False)
     name = models.CharField(max_length=100, unique=True)
     places = models.ManyToManyField('Place', related_name='federations')
 
@@ -388,8 +407,8 @@ class FedowUser(AbstractUser):
     """
     User model with email as unique identifier
     """
-    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
-    email = models.EmailField(max_length=100, unique=True)
+    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=False)
+    email = models.EmailField(max_length=100, unique=True, db_index=True)
 
     # customer standard user
     stripe_customer_id = models.CharField(max_length=21, blank=True, null=True)
@@ -404,7 +423,7 @@ class FedowUser(AbstractUser):
 
 
 class Place(models.Model):
-    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
+    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=False)
     name = models.CharField(max_length=100, unique=True)
 
     # User with Stripe connect and cashless federated server
@@ -485,45 +504,43 @@ class Origin(models.Model):
                     )
 
 
-class Card(models.Model):
-    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
+"""
+    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=False)
 
     first_tag_id = models.CharField(max_length=8, editable=False, db_index=True)
-    nfc_uuid = models.UUIDField(editable=False)
+    complete_tag_id_uuid = models.UUIDField(editable=False, blank=True, null=True)
 
-    qr_code_printed = models.UUIDField(editable=False)
-    number = models.CharField(max_length=8, editable=False, db_index=True)
+    qrcode_uuid = models.UUIDField(editable=False)
+    number_printed = models.CharField(max_length=8, editable=False, db_index=True)
 
     user = models.ForeignKey(FedowUser, on_delete=models.PROTECT, related_name='cards', blank=True, null=True)
     origin = models.ForeignKey(Origin, on_delete=models.PROTECT, related_name='cards', blank=True, null=True)
+"""
 
 
-def get_or_create_user(email, ip=None):
-    User: FedowUser = get_user_model()
-    try:
-        user = User.objects.get(email=email.lower())
-        created = False
-        return user, created
-    except User.DoesNotExist:
-        private_pem, public_pem = rsa_generator()
+class Card(models.Model):
+    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=False)
 
-        if ip == None:
-            ip = '0.0.0.0'
+    first_tag_id = models.CharField(max_length=8, editable=False, db_index=True)
+    complete_tag_id_uuid = models.UUIDField(editable=False, blank=True, null=True)
 
-        wallet = Wallet.objects.create(
-            ip=ip,
-            private_pem=private_pem,
-            public_pem=public_pem,
-        )
+    qrcode_uuid = models.UUIDField(editable=False)
+    number_printed = models.CharField(max_length=8, editable=False, db_index=True)
 
-        user = User.objects.create(
-            email=email.lower(),
-            username=email.lower(),
-            wallet=wallet,
-        )
-        created = True
+    user = models.ForeignKey(FedowUser, on_delete=models.PROTECT, related_name='cards', blank=True, null=True)
+    origin = models.ForeignKey(Origin, on_delete=models.PROTECT, related_name='cards')
 
-        return user, created
+    # Dette technique pour les cartes qui ne possèdent pas d'utilisateur
+    # TODO : Dès qu'un user se manifeste, fusionner les wallet
+    wallet_ephemere = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='card_ephemere', blank=True,
+                                           null=True)
+
+    def wallet(self):
+        if self.user:
+            return self.user.wallet
+        if self.wallet_ephemere:
+            return self.wallet_ephemere
+        return None
 
 
 class OrganizationAPIKey(AbstractAPIKey):
@@ -544,3 +561,88 @@ class OrganizationAPIKey(AbstractAPIKey):
         verbose_name = "API key"
         verbose_name_plural = "API keys"
         unique_together = [['place', 'user']]
+
+
+### CREATORS TOOLS
+
+
+def wallet_creator(ip=None):
+    if ip is None:
+        ip = "0.0.0.0"
+
+    private_pem, public_pem = rsa_generator()
+    wallet = Wallet.objects.create(
+        ip=ip,
+        private_pem=private_pem,
+        public_pem=public_pem,
+    )
+    return wallet
+
+
+def asset_creator(asset_name: str,
+                  currency_code: str,
+                  category: str,
+                  origin: Wallet,
+                  uuid_cashless=None,
+                  ip=None,):
+
+    if ip is None:
+        ip = "0.0.0.0"
+
+    # Code Currency must be 3 char max
+    if len(currency_code) > 3:
+        raise ValueError('Max 3 char for currency code')
+
+    if category not in [Asset.TOKEN_LOCAL_FIAT, Asset.TOKEN_LOCAL_NOT_FIAT, Asset.STRIPE_FED_FIAT]:
+        raise ValueError('Category not in choices')
+
+    # Vérification que l'asset et/ou le code n'existe pas
+    try:
+        Asset.objects.get(name=asset_name)
+        raise ValueError('Asset name already exist')
+    except Asset.DoesNotExist:
+        pass
+    try:
+        Asset.objects.get(currency_code=currency_code)
+        raise ValueError('Asset currency_code already exist')
+    except Asset.DoesNotExist:
+        pass
+
+    asset = Asset.objects.create(
+        uuid=uuid_cashless if uuid_cashless else uuid4(),
+        name=asset_name,
+        currency_code=currency_code,
+        origin=origin,
+        category=category,
+    )
+
+    # Création du premier block
+    first_block = Transaction.objects.create(
+        ip=ip,
+        checkout_stripe=None,
+        sender=origin,
+        receiver=origin,
+        asset=asset,
+        amount=int(0),
+        action=Transaction.FIRST,
+        card=None,
+        primary_card=None,
+    )
+
+    return asset
+
+def get_or_create_user(email, ip=None):
+    User: FedowUser = get_user_model()
+    try:
+        user = User.objects.get(email=email.lower())
+        created = False
+        return user, created
+    except User.DoesNotExist:
+        user = User.objects.create(
+            email=email.lower(),
+            username=email.lower(),
+            wallet=wallet_creator(ip=ip),
+        )
+        created = True
+
+        return user, created
