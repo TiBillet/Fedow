@@ -20,7 +20,8 @@ from fedow_core.models import Transaction, Place, Configuration, Asset, Checkout
     OrganizationAPIKey, Card
 from fedow_core.permissions import HasKeyAndCashlessSignature, HasAPIKey, IsStripe
 from fedow_core.serializers import TransactionSerializer, PlaceSerializer, WalletCreateSerializer, HandshakeValidator, \
-    NewTransactionWallet2WalletValidator, CheckCardSerializer, CreateCardSerializer, NewTransactionFromCardToPlaceValidator
+    NewTransactionWallet2WalletValidator, CheckCardSerializer, CreateCardSerializer, \
+    NewTransactionFromCardToPlaceValidator
 from rest_framework.pagination import PageNumberPagination
 
 from fedow_core.utils import get_request_ip, fernet_encrypt, fernet_decrypt, dict_to_b64_utf8, dict_to_b64, \
@@ -71,6 +72,7 @@ class HelloWorld(viewsets.ViewSet):
         permission_classes = [AllowAny]
         return [permission() for permission in permission_classes]
 
+
 #### HTMX PAGE ####
 
 
@@ -89,7 +91,8 @@ class CardAPI(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
-        serializer = CreateCardSerializer(data=json.loads(request.data.get('cards')), context={'request': request}, many=True)
+        serializer = CreateCardSerializer(data=json.loads(request.data.get('cards')), context={'request': request},
+                                          many=True)
         if serializer.is_valid():
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -99,6 +102,7 @@ class CardAPI(viewsets.ViewSet):
         # if self.action in ['list', 'retrieve']:
         #     permission_classes = [HasAPIKey]
         return [permission() for permission in permission_classes]
+
 
 class WalletAPI(viewsets.ViewSet):
     """
@@ -208,9 +212,6 @@ def create_account_link_for_onboard(place: Place):
 
     url_onboard = account_link.get('url')
     return url_onboard
-
-
-
 
 
 @permission_classes([IsStripe])

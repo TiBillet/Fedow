@@ -154,6 +154,7 @@ class CreateCardSerializer(serializers.Serializer):
         return value
 
     def validate_email(self, value):
+        self.user = None
         if value:
             self.user, created = get_or_create_user(value)
             return self.user.email
@@ -173,7 +174,7 @@ class CreateCardSerializer(serializers.Serializer):
         # Création des assets s'ils n'existent pas.
         # Retourne une liste avec les valeurs des futurs tokens
         # La création des token se fait dans le validateur global
-        tokens = []
+        self.pre_tokens = []
         if value:
             for token in value:
                 asset_uuid = token['monnaie_uuid']
@@ -191,17 +192,19 @@ class CreateCardSerializer(serializers.Serializer):
                         ip=get_request_ip(request),
                     )
 
-                tokens.append({
+                self.pre_tokens.append({
                     "Asset": asset,
                     "qty": int(float(token['qty']) * 100),
                     "last_date_used": datetime.fromisoformat(token['last_date_used']),
                 })
 
-            return tokens
+            return value
         return value
 
     def validate(self, attrs):
-        user = getattr(self, 'user', None)
+        user = None
+        if attrs.get('email'):
+            user = getattr(self, 'user', None)
 
         # Si nous n'avons pas de user, nous créons un wallet éphémère
         # pour les cartes de festivals anonymes
@@ -223,7 +226,7 @@ class CreateCardSerializer(serializers.Serializer):
             wallet_ephemere=wallet_ephemere,
         )
 
-        pre_tokens = attrs.get('assets', None)
+        pre_tokens = self.pre_tokens
         if pre_tokens:
             for pre_token in pre_tokens:
                 # Create token from scratch

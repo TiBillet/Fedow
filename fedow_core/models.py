@@ -316,7 +316,9 @@ class Transaction(models.Model):
         # Validator 2 : IF REFILL
         if self.action == Transaction.REFILL:
             assert not self.receiver.is_primary(), "Receiver must be a user wallet"
-            assert self.receiver.user, "Receiver must be a user wallet"
+            if self.card:
+                if not self.card.wallet_ephemere:
+                    assert self.receiver.user, "Receiver must be a user wallet"
             assert not self.receiver.is_place(), "Receiver must be a user wallet"
             if self.asset.is_stripe_primary():
                 assert self.checkout_stripe != None, "Checkout stripe must be set for refill."
@@ -333,10 +335,13 @@ class Transaction(models.Model):
             assert self.receiver.place, "Receiver must be a place wallet"
             assert not self.receiver.is_primary(), "Receiver must be a place wallet"
             assert not self.sender.is_place(), "Sender must be a user wallet"
-            assert self.sender.user, "Sender must be a user wallet"
-            assert not self.sender.is_primary(), "Sender must be a user wallet"
 
             assert self.card, "Card must be set for sale."
+            if not self.card.wallet_ephemere:
+               assert self.sender.user, "Sender must be a user wallet"
+
+            assert not self.sender.is_primary(), "Sender must be a user wallet"
+
             assert self.primary_card, "Primary card must be set for sale."
             assert self.primary_card in self.receiver.place.primary_cards_cashless.all(), \
                 "Primary card must be set for sale and admin on place"
