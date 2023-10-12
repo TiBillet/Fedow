@@ -329,8 +329,8 @@ class AssetCardTest(FedowTestCase):
         total_par_assets = {asset['uuid']: 0 for asset in assets_from_ext}
 
         for i in range(10):
-            uuid_nfc = str(uuid4())
-            uuid_qrcode = str(uuid4())
+            complete_tag_id_uuid = str(uuid4())
+            qrcode_uuid = str(uuid4())
 
             # Création aléatoire de portefeuille
             token_and_assets = []
@@ -348,10 +348,10 @@ class AssetCardTest(FedowTestCase):
                 token_and_assets.append(token_and_asset)
 
             cards_with_asset_and_email.append({
-                "first_tag_id": uuid_nfc.split('-')[0],
-                "complete_tag_id_uuid": uuid_nfc,
-                "qrcode_uuid": uuid_qrcode,
-                "number_printed": uuid_qrcode.split('-')[0],
+                "first_tag_id": complete_tag_id_uuid.split('-')[0],
+                "complete_tag_id_uuid": complete_tag_id_uuid,
+                "qrcode_uuid": qrcode_uuid,
+                "number_printed": qrcode_uuid.split('-')[0],
                 "generation": "2",
                 "email": f"{Faker().email()}",
                 "tokens": token_and_assets,
@@ -369,6 +369,16 @@ class AssetCardTest(FedowTestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(Card.objects.all().count(), 40)
         self.assertEqual(Card.objects.filter(user__isnull=False).count(), 20)
+
+        for card in cards_with_asset_and_email:
+            self.assertEqual(Card.objects.get(first_tag_id=card['first_tag_id']).user.email, card['email'])
+            self.assertEqual(Card.objects.get(first_tag_id=card['first_tag_id']).qrcode_uuid, uuid.UUID(card['qrcode_uuid']))
+            for token in card["tokens"]:
+                self.assertEqual(Token.objects.get(wallet__user__email=card['email'],
+                                                   asset__uuid=token['asset_uuid']).value,
+                                 token['qty_cents'])
+
+
 
         # Calcul de la somme de chaque wallet avec aggregate :
         for asset_uuid, total in total_par_assets.items():
