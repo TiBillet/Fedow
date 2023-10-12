@@ -1,17 +1,18 @@
+{% load fedow_dashboard_tags %}
 <div class="col-xl-3 col-sm-6 mb-xl-0 mb-4">
     <div class="card">
         <div class="card-header p-3 pt-2">
             <div class="icon icon-lg icon-shape bg-gradient-dark shadow-dark text-center border-radius-xl mt-n4 position-absolute">
-                <i class="material-icons opacity-10">{{ asset.currency_code }}</i>
+                <i class="material-icons opacity-10">{{ asset.currency_code | upper }}</i>
             </div>
             <div class="text-end pt-1">
-                <p class="text-sm mb-0 text-capitalize">{{ asset.name}}</p>
-                <h4 class="mb-0">{{ asset.total_token_value }}€</h4>
+                <p class="text-sm mb-0 text-capitalize">{{ asset.name | capfirst }}</p>
+                <h4 class="mb-0">{{ asset.total_token_value | dround }}</h4>
             </div>
         </div>
         <hr class="dark horizontal my-0">
         <div class="card-footer p-3">
-            <p class="mb-0">Origine : {{ asset.origin.name }}</p>
+            <p class="mb-0">Origine : {{ asset.origin.get_name | capfirst }}</p>
         </div>
     </div>
 </div>

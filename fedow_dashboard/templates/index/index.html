@@ -7,21 +7,21 @@
             then toggle .btn-dark on me">
         Dark
     </button>
-    <hr class="dark horizontal mt-5">
-    <p>Assets : {{ assets.count }}</p>
-    <hr class="dark horizontal mb-5">
+    <hr class="dark horizontal my-2">
+    <p>{{ assets.count }} monnaie(s) en circulation</p>
     <div class="row">
         {% for asset in assets %}
             {% include 'index/asset_card.html' %}
         {% endfor %}
     </div>
-    <hr class="dark horizontal mt-5">
-    <p>Places : {{ places.count }}</p>
-    <hr class="dark horizontal mb-5">
+    <hr class="dark horizontal my-2">
+    <p>{{ places.count }} Lieu(x)</p>
     <div class="card-group">
-        {% for place in places %}
-            {% include 'index/place_card.html' %}
-        {% endfor %}
+        <ul>
+            {% for place in places %}
+                <li>{{ place.name | title }}</li>
+            {% endfor %}
+        </ul>
     </div>
 
 {% endblock content %}

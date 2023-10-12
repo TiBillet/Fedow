@@ -35,7 +35,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f'Configuration and master wallet already exists : {config.name}'),
                               ending='\n')
         except Exception as e:
-            primary_wallet = wallet_creator()
+            primary_wallet = wallet_creator(name="Primary Wallet")
 
             instance_name = os.environ.get('DOMAIN', 'fedow.tibillet.localhost')
             config = Configuration(

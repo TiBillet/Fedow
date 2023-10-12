@@ -170,6 +170,17 @@ class Wallet(models.Model):
 
     ip = models.GenericIPAddressField(verbose_name="Ip source", default='0.0.0.0')
 
+    def get_name(self):
+        if self.name:
+            return self.name
+        elif getattr(self, 'place', None):
+            return self.place.name
+        elif getattr(self, 'user', None):
+            return self.user.email
+        elif getattr(self, 'primary', None):
+            return "Primary"
+        return f"{str(self.uuid)[:8]}"
+
     def get_authority_delegation(self, card=None):
         card: Card = card
         if self.user == card.user:
@@ -179,7 +190,10 @@ class Wallet(models.Model):
 
     def is_primary(self):
         # primary is the related name of the Wallet Configuration foreign key
+        # On peux récupérer cet object dans les controleurs de cette façon : Wallet.objects.get(primary__isnull=False)
         if getattr(self, 'primary', None):
+            # le self.primary devrait suffire (config est un singleton),
+            # mais on vérifie quand même
             if self.primary == Configuration.get_solo():
                 return True
         return False
@@ -571,12 +585,13 @@ class OrganizationAPIKey(AbstractAPIKey):
 ### CREATORS TOOLS
 
 
-def wallet_creator(ip=None):
+def wallet_creator(ip=None, name=None):
     if ip is None:
         ip = "0.0.0.0"
 
     private_pem, public_pem = rsa_generator()
     wallet = Wallet.objects.create(
+        name=name,
         ip=ip,
         private_pem=private_pem,
         public_pem=public_pem,
