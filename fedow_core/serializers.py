@@ -1,5 +1,6 @@
 import base64
 import json
+import uuid
 from collections import OrderedDict
 import hashlib
 import re
@@ -8,6 +9,7 @@ from datetime import datetime
 from cryptography.hazmat.primitives.asymmetric import rsa
 from django.utils import timezone
 from rest_framework import serializers
+from rest_framework.fields import empty
 from rest_framework_api_key.models import APIKey
 from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction, OrganizationAPIKey, Asset, Token, \
     get_or_create_user, Origin, wallet_creator, asset_creator
@@ -126,6 +128,48 @@ class CheckCardSerializer(serializers.ModelSerializer):
         )
 
 
+class CreateAssetSerializer(serializers.Serializer):
+    uuid = serializers.UUIDField(required=False)
+    name = serializers.CharField()
+    currency_code = serializers.CharField(max_length=3)
+    category = serializers.ChoiceField(choices=Asset.CATEGORIES)
+    created_at = serializers.DateTimeField(required=False)
+
+    def validate_name(self, value):
+        if Asset.objects.filter(name=value).exists():
+            raise serializers.ValidationError("Asset already exists")
+        return value
+
+    def validate_currency_code(self, value):
+        if Asset.objects.filter(currency_code=value).exists():
+            raise serializers.ValidationError("Currency code already exists")
+        return value.upper()
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        place = request.place
+
+        asset_dict = {
+            "name": attrs.get('name'),
+            "currency_code": attrs.get('currency_code'),
+            "category": attrs.get('category'),
+            "origin": place.wallet,
+            "ip": get_request_ip(request),
+        }
+
+        if attrs.get('uuid'):
+            asset_dict["original_uuid"] = attrs.get('uuid')
+        if attrs.get('created_at'):
+            asset_dict["created_at"] = attrs.get('created_at')
+
+        self.asset = asset_creator(**asset_dict)
+
+        if self.asset:
+            return attrs
+        else:
+            raise serializers.ValidationError("Asset creation failed")
+
+
 class CreateCardSerializer(serializers.Serializer):
     email = serializers.EmailField(required=False)
     generation = serializers.IntegerField()
@@ -133,7 +177,7 @@ class CreateCardSerializer(serializers.Serializer):
     complete_tag_id_uuid = serializers.UUIDField(required=False)
     qrcode_uuid = serializers.UUIDField()
     number_printed = serializers.CharField()
-    assets = serializers.ListField(required=False)
+    token = serializers.ListField(required=False)
 
     def validate_first_tag_id(self, value):
         first_tag_regex = r"^[0-9a-fA-F]{8}\b"
@@ -161,56 +205,42 @@ class CreateCardSerializer(serializers.Serializer):
         return value
 
     def validate_generation(self, value):
-        # Récupération de la place grâce a la permission HasKeyAndCashlessSignature
-        request = self.context.get('request')
-        self.place: Place = request.place
-        if not self.place:
+        place = self.context.get('request').place
+        if not place:
             raise serializers.ValidationError("Place not found")
 
-        self.origin, created = Origin.objects.get_or_create(place=self.place, generation=value)
+        self.origin, created = Origin.objects.get_or_create(place=place, generation=value)
         return self.origin.generation
 
-    def validate_assets(self, value):
+    def validate_token(self, value):
         # Création des assets s'ils n'existent pas.
         # Retourne une liste avec les valeurs des futurs tokens
         # La création des token se fait dans le validateur global
-        self.pre_tokens = []
-        if value:
-            for token in value:
-                asset_uuid = token['monnaie_uuid']
+        for token in value:
+            try:
+                asset_uuid = uuid.UUID(token['asset_uuid'])
+                qty_cents = int(token['qty_cents'])
+                last_date_used = datetime.fromisoformat(token['last_date_used'])
+
                 request = self.context.get('request')
-                self.place: Place = request.place
-                try:
-                    asset = Asset.objects.get(uuid=asset_uuid)
-                except Asset.DoesNotExist:
-                    asset = asset_creator(
-                        token['monnaie_name'],
-                        token['currency_code'],
-                        token['category'],
-                        self.place.wallet,
-                        uuid_cashless=asset_uuid,
-                        ip=get_request_ip(request),
-                    )
+                place = request.place
+
+                asset = Asset.objects.get(uuid=asset_uuid)
 
                 self.pre_tokens.append({
                     "Asset": asset,
-                    "qty": int(float(token['qty']) * 100),
-                    "last_date_used": datetime.fromisoformat(token['last_date_used']),
+                    "qty_cents": qty_cents,
+                    "last_date_used": last_date_used,
                 })
-
-            return value
+            except Exception as e:
+                # import ipdb; ipdb.set_trace()
+                raise serializers.ValidationError(f"Assets error : {e}")
         return value
 
     def validate(self, attrs):
-        user = None
-        if attrs.get('email'):
-            user = getattr(self, 'user', None)
-
-        # Si nous n'avons pas de user, nous créons un wallet éphémère
-        # pour les cartes de festivals anonymes
-        wallet_ephemere = None
-        if not user:
-            wallet_ephemere = wallet_creator()
+        # User est vide si pas d'email
+        # Doit être remis à zéro pour chaque itération de many=True
+        user = getattr(self, 'user', None) if attrs.get('email') else None
 
         # Création de la carte cashless
         self.card = Card.objects.create(
@@ -222,23 +252,24 @@ class CreateCardSerializer(serializers.Serializer):
 
             user=user,
             origin=self.origin,
-
-            wallet_ephemere=wallet_ephemere,
         )
 
-        pre_tokens = self.pre_tokens
+        # Si le serveur LaBoutik envoie des valeurs d'assets
+        # Alors le validate_asset à vérifié que les assets correspondent entre LaBoutik et Fedow
+        # Il faut alors gérer la création monnétaire et le transfert sur le wallet de la carte et/ou de le user
+        pre_tokens = self.pre_tokens if attrs.get('assets', None) else None
         if pre_tokens:
             for pre_token in pre_tokens:
                 # Create token from scratch
-                # import ipdb; ipdb.set_trace()
                 asset: Asset = pre_token['Asset']
+
                 token_creation = Transaction.objects.create(
                     ip=get_request_ip(self.context.get('request')),
                     checkout_stripe=None,
                     sender=asset.origin,
                     receiver=asset.origin,
                     asset=asset,
-                    amount=pre_token['qty'],
+                    amount=pre_token['qty_cents'],
                     action=Transaction.CREATION,
                     card=self.card,
                     primary_card=None,  # Création de monnaie
@@ -251,16 +282,15 @@ class CreateCardSerializer(serializers.Serializer):
                     ip=get_request_ip(self.context.get('request')),
                     checkout_stripe=None,
                     sender=asset.origin,
-                    receiver=self.card.wallet(),
+                    receiver=self.card.get_wallet(),
                     asset=asset,
-                    amount=pre_token['qty'],
+                    amount=pre_token['qty_cents'],
                     action=Transaction.REFILL,
                     card=self.card,
                     primary_card=None,  # Création de monnaie
                 )
 
                 assert virement.verify_hash(), "Token creation hash is not valid"
-
         return attrs
 
 

@@ -60,6 +60,10 @@ class Asset(models.Model):
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=False)
     name = models.CharField(max_length=100, unique=True)
     currency_code = models.CharField(max_length=3, unique=True)
+
+    created_at = models.DateTimeField(default=timezone.now)
+    last_update = models.DateTimeField(auto_now=True, verbose_name="Dernière modification des informations de l'asset")
+
     img = JPEGField(upload_to='assets/',
                     validators=[
                         MinSizeValidator(480, 480),
@@ -305,7 +309,8 @@ class Transaction(models.Model):
         return hashlib.sha256(encoded_block).hexdigest() == self.hash
 
     def save(self, *args, **kwargs):
-        self.datetime = timezone.localtime()
+        if not self.datetime:
+            self.datetime = timezone.localtime()
         token_sender, created = Token.objects.get_or_create(wallet=self.sender, asset=self.asset)
         token_receiver, created = Token.objects.get_or_create(wallet=self.receiver, asset=self.asset)
 
@@ -352,7 +357,7 @@ class Transaction(models.Model):
 
             assert self.card, "Card must be set for sale."
             if not self.card.wallet_ephemere:
-               assert self.sender.user, "Sender must be a user wallet"
+                assert self.sender.user, "Sender must be a user wallet"
 
             assert not self.sender.is_primary(), "Sender must be a user wallet"
 
@@ -360,16 +365,24 @@ class Transaction(models.Model):
             assert self.primary_card in self.receiver.place.primary_cards_cashless.all(), \
                 "Primary card must be set for sale and admin on place"
 
+        ## Check previous transaction
+        # Le hash ne peut se faire que si la transaction précédente est validée
+        self.previous_transaction = self._previous_asset_transaction()
+        assert self.previous_transaction.verify_hash(), "Previous transaction hash is not valid."
+        assert self.previous_transaction.datetime <= self.datetime, "Datetime must be after previous transaction."
+
+        # ALL VALIDATOR PASSED : HASH CREATION
+        if not self.hash:
+            self.hash = self.create_hash()
+
+        if self.verify_hash():
             # FILL TOKEN WALLET
+
             token_sender.value -= self.amount
             token_sender.save()
             token_receiver.value += self.amount
             token_receiver.save()
 
-        # ALL VALIDATOR PASSED : HASH CREATION
-        if not self.hash:
-            self.previous_transaction = self._previous_asset_transaction()
-            self.hash = self.create_hash()
             super(Transaction, self).save(*args, **kwargs)
         else:
             raise Exception("Transaction hash already set.")
@@ -554,12 +567,19 @@ class Card(models.Model):
     wallet_ephemere = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='card_ephemere', blank=True,
                                            null=True)
 
-    def wallet(self):
+    def get_wallet(self):
         if self.user:
             return self.user.wallet
         if self.wallet_ephemere:
             return self.wallet_ephemere
-        return None
+
+        # Si nous n'avons pas de user, nous créons un wallet éphémère
+        # pour les cartes de festivals anonymes
+        else:
+            wallet_ephemere = wallet_creator()
+            self.wallet_ephemere = wallet_ephemere
+            self.save()
+            return self.wallet_ephemere
 
 
 class OrganizationAPIKey(AbstractAPIKey):
@@ -599,12 +619,21 @@ def wallet_creator(ip=None, name=None):
     return wallet
 
 
-def asset_creator(asset_name: str,
-                  currency_code: str,
-                  category: str,
-                  origin: Wallet,
-                  uuid_cashless=None,
-                  ip=None,):
+def asset_creator(name: str = None,
+                  currency_code: str = None,
+                  category: str = None,
+                  origin: Wallet = None,
+                  original_uuid: uuid4 = None,
+                  created_at: timezone = None,
+                  ip=None, ):
+
+    """
+    Create an asset with a first block
+    Can be outdated if the creation date if before the creation of fedow instance
+    """
+
+    if created_at is None:
+        created_at = timezone.localtime()
 
     if ip is None:
         ip = "0.0.0.0"
@@ -618,7 +647,7 @@ def asset_creator(asset_name: str,
 
     # Vérification que l'asset et/ou le code n'existe pas
     try:
-        Asset.objects.get(name=asset_name)
+        Asset.objects.get(name=name)
         raise ValueError('Asset name already exist')
     except Asset.DoesNotExist:
         pass
@@ -629,11 +658,12 @@ def asset_creator(asset_name: str,
         pass
 
     asset = Asset.objects.create(
-        uuid=uuid_cashless if uuid_cashless else uuid4(),
-        name=asset_name,
+        uuid=original_uuid if original_uuid else uuid4(),
+        name=name,
         currency_code=currency_code,
         origin=origin,
         category=category,
+        created_at=created_at,
     )
 
     # Création du premier block
@@ -644,12 +674,14 @@ def asset_creator(asset_name: str,
         receiver=origin,
         asset=asset,
         amount=int(0),
+        datetime=created_at,
         action=Transaction.FIRST,
         card=None,
         primary_card=None,
     )
-
+    print(f"First block created for {asset.name}")
     return asset
+
 
 def get_or_create_user(email, ip=None):
     User: FedowUser = get_user_model()

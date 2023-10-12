@@ -21,7 +21,7 @@ from fedow_core.models import Transaction, Place, Configuration, Asset, Checkout
 from fedow_core.permissions import HasKeyAndCashlessSignature, HasAPIKey, IsStripe
 from fedow_core.serializers import TransactionSerializer, PlaceSerializer, WalletCreateSerializer, HandshakeValidator, \
     NewTransactionWallet2WalletValidator, CheckCardSerializer, CreateCardSerializer, \
-    NewTransactionFromCardToPlaceValidator
+    NewTransactionFromCardToPlaceValidator, CreateAssetSerializer
 from rest_framework.pagination import PageNumberPagination
 
 from fedow_core.utils import get_request_ip, fernet_encrypt, fernet_decrypt, dict_to_b64_utf8, dict_to_b64, \
@@ -76,7 +76,23 @@ class HelloWorld(viewsets.ViewSet):
 #### HTMX PAGE ####
 
 
+
 ### REST API ###
+
+class AssetAPI(viewsets.ViewSet):
+    # def list(self, request):
+    #     serializer = AssetSerializer(Asset.objects.all(), many=True)
+    #     return Response(serializer.data)
+
+    def create(self, request):
+        serializer = CreateAssetSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def get_permissions(self):
+        permission_classes = [HasKeyAndCashlessSignature]
+        return [permission() for permission in permission_classes]
+
 
 class CardAPI(viewsets.ViewSet):
 

@@ -41,6 +41,12 @@ class Command(BaseCommand):
         currency_code = options['currency_code'].upper()
         origin = Wallet.objects.get(uuid=options['origin'])
 
-        asset = asset_creator(asset_name, currency_code, category, origin)
+        asset = asset_creator(
+            name=asset_name,
+            currency_code=currency_code,
+            category=category,
+            origin=origin
+        )
 
-        self.stdout.write(self.style.SUCCESS(f"Asset succesfully created : NAME : {asset.name} - CURRENCY CODE : {asset.currency_code}"), ending='\n')
+        self.stdout.write(self.style.SUCCESS(
+            f"Asset succesfully created : NAME : {asset.name} - CURRENCY CODE : {asset.currency_code}"), ending='\n')
