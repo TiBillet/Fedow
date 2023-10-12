@@ -177,7 +177,7 @@ class CreateCardSerializer(serializers.Serializer):
     complete_tag_id_uuid = serializers.UUIDField(required=False)
     qrcode_uuid = serializers.UUIDField()
     number_printed = serializers.CharField()
-    token = serializers.ListField(required=False)
+    tokens = serializers.ListField(required=False)
 
     def validate_first_tag_id(self, value):
         first_tag_regex = r"^[0-9a-fA-F]{8}\b"
@@ -212,20 +212,22 @@ class CreateCardSerializer(serializers.Serializer):
         self.origin, created = Origin.objects.get_or_create(place=place, generation=value)
         return self.origin.generation
 
-    def validate_token(self, value):
-        # Création des assets s'ils n'existent pas.
+    def validate_tokens(self, value):
         # Retourne une liste avec les valeurs des futurs tokens
-        # La création des token se fait dans le validateur global
+        # La création des tokens se fait dans le validateur global
+        self.pre_tokens = []
         for token in value:
             try:
                 asset_uuid = uuid.UUID(token['asset_uuid'])
+                asset = Asset.objects.get(uuid=asset_uuid)
+
+                # Seul la clé du serveur LaBoutik est autorisé à créer des tokens
+                # sur l'asset de la carte
+                place = self.context.get('request').place
+                assert asset.origin == place.wallet, "Unauthorized"
+
                 qty_cents = int(token['qty_cents'])
                 last_date_used = datetime.fromisoformat(token['last_date_used'])
-
-                request = self.context.get('request')
-                place = request.place
-
-                asset = Asset.objects.get(uuid=asset_uuid)
 
                 self.pre_tokens.append({
                     "Asset": asset,
@@ -257,8 +259,9 @@ class CreateCardSerializer(serializers.Serializer):
         # Si le serveur LaBoutik envoie des valeurs d'assets
         # Alors le validate_asset à vérifié que les assets correspondent entre LaBoutik et Fedow
         # Il faut alors gérer la création monnétaire et le transfert sur le wallet de la carte et/ou de le user
-        pre_tokens = self.pre_tokens if attrs.get('assets', None) else None
+        pre_tokens = self.pre_tokens if attrs.get('tokens', None) else None
         if pre_tokens:
+            # import ipdb; ipdb.set_trace()
             for pre_token in pre_tokens:
                 # Create token from scratch
                 asset: Asset = pre_token['Asset']

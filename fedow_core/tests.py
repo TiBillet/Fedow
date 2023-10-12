@@ -1,6 +1,6 @@
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import StringIO
 import random
 from uuid import uuid4
@@ -96,9 +96,9 @@ class AssetCardTest(FedowTestCase):
             origin=self.place.wallet
         )
         self.assertTrue(Asset.objects.filter(name=name).exists())
-        self.assertTrue(Transaction.objects.filter(asset__name=name, action=Transaction.FIRST ).exists())
+        self.assertTrue(Transaction.objects.filter(asset__name=name, action=Transaction.FIRST).exists())
 
-        try :
+        try:
             asset_creator(
                 name=name,
                 currency_code=currency_code,
@@ -110,7 +110,6 @@ class AssetCardTest(FedowTestCase):
             self.assertTrue(Asset.objects.filter(name=name).exists())
         except ValueError as e:
             self.assertEqual(e.args[0], "Asset name already exist")
-
 
         # UUID et DATETIME donné en paramètre
         # Pour simuler la création d'un asset depuis un serveur cashless, par exemple
@@ -133,8 +132,9 @@ class AssetCardTest(FedowTestCase):
         self.assertTrue(Asset.objects.filter(name=name).exists())
         self.assertEqual(str(Asset.objects.get(name=name).uuid), asset_uuid)
         self.assertEqual(Asset.objects.get(name=name).created_at.isoformat(), created_at.isoformat())
-        self.assertTrue(Transaction.objects.filter(asset__name=name, action=Transaction.FIRST ).exists())
-        self.assertEqual(Transaction.objects.get(asset__name=name, action=Transaction.FIRST).datetime.isoformat(), created_at.isoformat())
+        self.assertTrue(Transaction.objects.filter(asset__name=name, action=Transaction.FIRST).exists())
+        self.assertEqual(Transaction.objects.get(asset__name=name, action=Transaction.FIRST).datetime.isoformat(),
+                         created_at.isoformat())
 
     @tag("CreateAsset")
     def testCreateAssetWithAPI(self):
@@ -168,7 +168,7 @@ class AssetCardTest(FedowTestCase):
 
         self.assertEqual(response.status_code, 201)
         self.assertTrue(Asset.objects.filter(name=name).exists())
-        self.assertTrue(Transaction.objects.filter(asset__name=name, action=Transaction.FIRST ).exists())
+        self.assertTrue(Transaction.objects.filter(asset__name=name, action=Transaction.FIRST).exists())
 
         faker = Faker()
         name = faker.currency_name()
@@ -180,7 +180,7 @@ class AssetCardTest(FedowTestCase):
             "name": name,
             "currency_code": currency_code,
             "category": random.choice([Asset.TOKEN_LOCAL_FIAT, Asset.TOKEN_LOCAL_NOT_FIAT]),
-            "uuid" : asset_uuid,
+            "uuid": asset_uuid,
             "created_at": created_at.isoformat()
         }
 
@@ -194,12 +194,12 @@ class AssetCardTest(FedowTestCase):
 
         self.assertEqual(response.status_code, 201)
         self.assertTrue(Asset.objects.filter(name=name).exists())
-        self.assertTrue(Transaction.objects.filter(asset__name=name, action=Transaction.FIRST ).exists())
+        self.assertTrue(Transaction.objects.filter(asset__name=name, action=Transaction.FIRST).exists())
 
         self.assertEqual(str(Asset.objects.get(name=name).uuid), asset_uuid)
         self.assertEqual(Asset.objects.get(name=name).created_at.isoformat(), created_at.isoformat())
-        self.assertEqual(Transaction.objects.get(asset__name=name, action=Transaction.FIRST).datetime.isoformat(), created_at.isoformat())
-
+        self.assertEqual(Transaction.objects.get(asset__name=name, action=Transaction.FIRST).datetime.isoformat(),
+                         created_at.isoformat())
 
     # @tag("only")
     def test_list_all_cards(self):
@@ -224,8 +224,8 @@ class AssetCardTest(FedowTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 10)
 
-    @tag("create_card")
-    def xtest_create_multiple_card(self):
+    @tag("CreateCard")
+    def test_create_multiple_card(self):
         place = self.place
         # On simule une paire de clé généré par le serveur cashless
         private_cashless_pem, public_cashless_pem = rsa_generator()
@@ -288,29 +288,45 @@ class AssetCardTest(FedowTestCase):
         # ( donc création d'un user et d'un wallet )
 
         # Création de 3 assets différents pour simuler un asset € et deux monnaie temps/bénévoles
+        faker = Faker()
+
         assets_from_ext = [
             {
-                'asset_uuid': str(uuid.uuid4()),
-                'asset_name': "TestCoin",
-                'asset_currency_code': "TCE",
-                'asset_category': Asset.TOKEN_LOCAL_FIAT,
+                'uuid': str(uuid.uuid4()),
+                'name': "TestCoin",
+                'currency_code': "TCE",
+                'category': Asset.TOKEN_LOCAL_FIAT,
+                'created_at': make_aware(faker.date_time_this_year()).isoformat()
             },
             {
-                'asset_uuid': str(uuid.uuid4()),
-                'asset_name': "TestCoin Cadeau",
-                'asset_currency_code': "TCG",
-                'asset_category': Asset.TOKEN_LOCAL_NOT_FIAT,
+                'uuid': str(uuid.uuid4()),
+                'name': "TestCoin Cadeau",
+                'currency_code': "TCG",
+                'category': Asset.TOKEN_LOCAL_NOT_FIAT,
+                'created_at': make_aware(faker.date_time_this_year()).isoformat()
             },
             {
-                'asset_uuid': str(uuid.uuid4()),
-                'asset_name': "Monnaie Temps",
-                'asset_currency_code': "TCT",
-                'asset_category': Asset.TOKEN_LOCAL_NOT_FIAT,
+                'uuid': str(uuid.uuid4()),
+                'name': "Monnaie Temps",
+                'currency_code': "TCT",
+                'category': Asset.TOKEN_LOCAL_NOT_FIAT,
+                'created_at': make_aware(faker.date_time_this_year()).isoformat()
             }
         ]
 
+        for asset in assets_from_ext:
+            message = asset
+            signature = sign_message(dict_to_b64(message), private_cashless_rsa)
+
+            response = self.client.post('/asset/', data=message,
+                                        headers={
+                                            'Authorization': f'Api-Key {self.temp_key_place}',
+                                            'Signature': signature,
+                                        })
+            self.assertEqual(response.status_code, 201)
+
         cards_with_asset_and_email = []
-        total_par_assets = {asset['asset_uuid']: 0 for asset in assets_from_ext}
+        total_par_assets = {asset['uuid']: 0 for asset in assets_from_ext}
 
         for i in range(10):
             uuid_nfc = str(uuid4())
@@ -321,9 +337,13 @@ class AssetCardTest(FedowTestCase):
             assets = random.sample(assets_from_ext, k=random.randint(0, 3))
 
             for asset in assets:
-                token_and_asset = asset.copy()
-                token_and_asset['qty_cents'] = random.randint(100, 10000)
-                token_and_asset['last_date_used'] = Faker().date_time_this_year().isoformat()
+                token_and_asset = {
+                    'qty_cents': random.randint(100, 10000),
+                    'last_date_used': (datetime.fromisoformat(asset['created_at'])
+                                       + timedelta(days=1)).isoformat(),
+                    'asset_uuid': asset['uuid'],
+
+                }
                 total_par_assets[token_and_asset['asset_uuid']] += token_and_asset['qty_cents']
                 token_and_assets.append(token_and_asset)
 
@@ -334,7 +354,7 @@ class AssetCardTest(FedowTestCase):
                 "number_printed": uuid_qrcode.split('-')[0],
                 "generation": "2",
                 "email": f"{Faker().email()}",
-                "assets": token_and_assets,
+                "tokens": token_and_assets,
             })
 
         message = {"cards": json.dumps(cards_with_asset_and_email)}
@@ -352,7 +372,8 @@ class AssetCardTest(FedowTestCase):
 
         # Calcul de la somme de chaque wallet avec aggregate :
         for asset_uuid, total in total_par_assets.items():
-            self.assertEqual(Token.objects.filter(asset__uuid=asset_uuid).aggregate(Sum('value')).get('value__sum'), total)
+            self.assertEqual(Token.objects.filter(asset__uuid=asset_uuid).aggregate(Sum('value')).get('value__sum'),
+                             total)
 
 
 def testWallet(self):

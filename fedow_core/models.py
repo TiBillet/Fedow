@@ -235,7 +235,7 @@ class Token(models.Model):
         return False
 
     def __str__(self):
-        return f"{self.asset.name} {self.value}"
+        return f"{self.wallet.get_name()} {self.asset.name} {self.value}"
 
     class Meta:
         unique_together = [['wallet', 'asset']]
@@ -327,7 +327,6 @@ class Transaction(models.Model):
 
             # FILL TOKEN WALLET
             token_receiver.value += self.amount
-            token_receiver.save()
         else:
             if not token_sender.value >= self.amount:
                 raise ValueError("amount too high")
@@ -344,9 +343,7 @@ class Transaction(models.Model):
 
             # FILL TOKEN WALLET
             token_sender.value -= self.amount
-            token_sender.save()
             token_receiver.value += self.amount
-            token_receiver.save()
 
         # Validator 3 : IF SALE
         if self.action == Transaction.SALE:
@@ -365,6 +362,10 @@ class Transaction(models.Model):
             assert self.primary_card in self.receiver.place.primary_cards_cashless.all(), \
                 "Primary card must be set for sale and admin on place"
 
+            # FILL TOKEN WALLET
+            token_sender.value -= self.amount
+            token_receiver.value += self.amount
+
         ## Check previous transaction
         # Le hash ne peut se faire que si la transaction précédente est validée
         self.previous_transaction = self._previous_asset_transaction()
@@ -376,13 +377,9 @@ class Transaction(models.Model):
             self.hash = self.create_hash()
 
         if self.verify_hash():
-            # FILL TOKEN WALLET
-
-            token_sender.value -= self.amount
             token_sender.save()
-            token_receiver.value += self.amount
             token_receiver.save()
-
+            print(f"*** {self.action} : {token_sender} -> {token_receiver}")
             super(Transaction, self).save(*args, **kwargs)
         else:
             raise Exception("Transaction hash already set.")
