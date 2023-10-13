@@ -20,8 +20,8 @@ from fedow_core.models import Transaction, Place, Configuration, Asset, Checkout
     OrganizationAPIKey, Card
 from fedow_core.permissions import HasKeyAndCashlessSignature, HasAPIKey, IsStripe
 from fedow_core.serializers import TransactionSerializer, PlaceSerializer, WalletCreateSerializer, HandshakeValidator, \
-    NewTransactionWallet2WalletValidator, CheckCardSerializer, CreateCardSerializer, \
-    NewTransactionFromCardToPlaceValidator, CreateAssetSerializer
+    NewTransactionWallet2WalletValidator, CheckCardSerializer, CardCreateValidator, \
+    NewTransactionFromCardToPlaceValidator, AssetCreateValidator
 from rest_framework.pagination import PageNumberPagination
 
 from fedow_core.utils import get_request_ip, fernet_encrypt, fernet_decrypt, dict_to_b64_utf8, dict_to_b64, \
@@ -85,7 +85,7 @@ class AssetAPI(viewsets.ViewSet):
     #     return Response(serializer.data)
 
     def create(self, request):
-        serializer = CreateAssetSerializer(data=request.data, context={'request': request})
+        serializer = AssetCreateValidator(data=request.data, context={'request': request})
         if serializer.is_valid():
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -107,8 +107,8 @@ class CardAPI(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
-        serializer = CreateCardSerializer(data=json.loads(request.data.get('cards')), context={'request': request},
-                                          many=True)
+        serializer = CardCreateValidator(data=json.loads(request.data.get('cards')), context={'request': request},
+                                         many=True)
         if serializer.is_valid():
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

@@ -128,7 +128,7 @@ class CheckCardSerializer(serializers.ModelSerializer):
         )
 
 
-class CreateAssetSerializer(serializers.Serializer):
+class AssetCreateValidator(serializers.Serializer):
     uuid = serializers.UUIDField(required=False)
     name = serializers.CharField()
     currency_code = serializers.CharField(max_length=3)
@@ -170,7 +170,7 @@ class CreateAssetSerializer(serializers.Serializer):
             raise serializers.ValidationError("Asset creation failed")
 
 
-class CreateCardSerializer(serializers.Serializer):
+class CardCreateValidator(serializers.Serializer):
     email = serializers.EmailField(required=False)
     generation = serializers.IntegerField()
     first_tag_id = serializers.CharField()
