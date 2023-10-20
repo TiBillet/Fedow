@@ -452,11 +452,11 @@ class TransactionAPI(viewsets.ViewSet):
     def create(self, request):
         transaction_validator = TransactionW2W(data=request.data, context={'request': request})
         if transaction_validator.is_valid():
-            transaction : Transaction = transaction_validator.validated_data
-            return Response(f"{transaction.pk}", status=status.HTTP_201_CREATED)
+            transaction : Transaction = transaction_validator.transaction
+            transaction_serialized = TransactionSerializer(transaction)
+            return Response(transaction_serialized.data, status=status.HTTP_201_CREATED)
 
         logger.error(f"{timezone.localtime()} ERROR - Transaction create error : {transaction_validator.errors}")
-        import ipdb; ipdb.set_trace()
         return Response(transaction_validator.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get_permissions(self):

@@ -536,7 +536,8 @@ class TransactionW2W(serializers.Serializer):
             logger.error(f"{timezone.localtime()} ERROR NewTransactionWallet2WalletValidator : transaction hash is not valid")
             raise serializers.ValidationError("Transaction hash is not valid")
 
-        return transaction
+        self.transaction = transaction
+        return attrs
 
 
 class TransactionSerializer(serializers.ModelSerializer):
@@ -544,9 +545,13 @@ class TransactionSerializer(serializers.ModelSerializer):
         model = Transaction
         fields = (
             "uuid",
+            "action",
+            "hash",
+            "datetime",
             "sender",
             "receiver",
-            "date",
             "amount",
+            "previous_transaction",
             "comment",
+            "verify_hash",
         )

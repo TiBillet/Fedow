@@ -241,7 +241,7 @@ class Token(models.Model):
         return False
 
     def __str__(self):
-        return f"{self.wallet.get_name()} {self.asset.name} {self.value}"
+        return f"{self.wallet.get_name()} - {self.asset.name} {self.value}"
 
     class Meta:
         unique_together = [['wallet', 'asset']]
@@ -273,7 +273,7 @@ class Transaction(models.Model):
         (FIRST, "Premier bloc"),
         (SALE, "Vente d'article"),
         (CREATION, 'Creation monétaire'),
-        (REFILL, 'Recharge Cashless'),
+        (REFILL, 'Recharge'),
         (TRANSFER, 'Transfert'),
     )
     action = models.CharField(max_length=1, choices=TYPE_ACTION, default=SALE)

@@ -452,6 +452,8 @@ class AssetCardTest(FedowTestCase):
         self.assertTrue(wallet)
         self.assertEqual(user.wallet, wallet)
 
+        return user
+
     def test_get_stripe_checkout_in_charge_primary_asset_api(self):
         # Test la création d'un lien stripe pour faire une recharge de monnaie
 
@@ -496,9 +498,46 @@ class AssetCardTest(FedowTestCase):
             "asset": f"{asset.uuid}",
         }
         response = self._post_from_simulated_cashless('transaction', data)
-
         self.assertEqual(response.status_code, 201)
 
+        transaction = Transaction.objects.get(pk=response.json().get('uuid'))
+        self.assertEqual(transaction.action, Transaction.CREATION)
+        self.assertEqual(transaction.asset, asset)
+        self.assertEqual(transaction.sender, place.wallet)
+        self.assertEqual(transaction.receiver, place.wallet)
+        self.assertEqual(transaction.amount, int(data['amount']))
+
+        return transaction
+
+    @tag("refill_token")
+    def test_REFILL_token_place_wallet_2_user_wallet(self):
+        place = self.place
+
+        user= self.test_email_plus_wallet()
+        creation_transaction = self.test_CREATION_token_with_asset_not_primary_via_api_transaction()
+        asset = creation_transaction.asset
+
+        data = {
+            "amount": "10",
+            "sender": f"{place.wallet.uuid}",
+            "receiver": f"{user.wallet.uuid}",
+            "asset": f"{asset.uuid}",
+        }
+
+        response = self._post_from_simulated_cashless('transaction', data)
+        self.assertEqual(response.status_code, 201)
+
+        transaction = Transaction.objects.get(pk=response.json().get('uuid'))
+        self.assertEqual(transaction.action, Transaction.REFILL)
+        self.assertEqual(transaction.asset, asset)
+        self.assertEqual(transaction.sender, place.wallet)
+        self.assertEqual(transaction.receiver, user.wallet)
+        self.assertEqual(transaction.amount, int(data['amount']))
+
+        token = Token.objects.get(asset=asset, wallet=user.wallet)
+        self.assertEqual(token.value, int(data['amount']))
+
+        import ipdb; ipdb.set_trace()
 # @tag("only")
 def test_create_checkout_and_REFILL(self):
     ### RECHARGE AVEC ASSET PRINCIPAL STRIPE
