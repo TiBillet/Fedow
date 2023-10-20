@@ -1,15 +1,18 @@
 import base64
 import json
+from io import StringIO
 
 import stripe
 from cryptography.fernet import Fernet
 from django.conf import settings
 from django.core import signing
+from django.core.management import call_command
 from django.core.signing import Signer
 from django.core.validators import URLValidator
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
+from faker import Faker
 from rest_framework import viewsets, status, serializers
 from rest_framework.decorators import permission_classes
 from rest_framework.permissions import AllowAny
@@ -17,7 +20,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_api_key.models import APIKey
 from fedow_core.models import Transaction, Place, Configuration, Asset, CheckoutStripe, Token, Wallet, FedowUser, \
-    OrganizationAPIKey, Card
+    OrganizationAPIKey, Card, Federation
 from fedow_core.permissions import HasKeyAndCashlessSignature, HasAPIKey, IsStripe
 from fedow_core.serializers import TransactionSerializer, PlaceSerializer, WalletCreateSerializer, HandshakeValidator, \
     TransactionW2W, CardSerializer, CardCreateValidator, \
@@ -74,7 +77,6 @@ class HelloWorld(viewsets.ViewSet):
 
 
 #### HTMX PAGE ####
-
 
 
 ### REST API ###
@@ -151,6 +153,26 @@ class WalletAPI(viewsets.ViewSet):
         return [permission() for permission in permission_classes]
 
 
+def get_new_place_token_for_test(request):
+    if request.method == 'GET':
+        if settings.DEBUG:
+            out = StringIO()
+            faker = Faker()
+            name = faker.company()
+            federation = Federation.objects.create(
+                name=f"FED {name}",
+            )
+            call_command('new_place',
+                         '--name', f'{name}',
+                         '--email', f'{faker.email()}',
+                         '--federation', f'{federation.name}',
+                         stdout=out)
+            encoded_data = out.getvalue().split('\n')[-2]
+            return JsonResponse({"encoded_data": encoded_data})
+
+    return Response("Not found", status=status.HTTP_404_NOT_FOUND)
+
+
 class PlaceAPI(viewsets.ViewSet):
     """
     GET /place : Places where we can use all federated wallets
@@ -195,6 +217,7 @@ class PlaceAPI(viewsets.ViewSet):
                 "url_onboard": url_onboard,
                 "place_admin_apikey": key,
                 "place_wallet_public_pem": place.wallet.public_pem,
+                "place_wallet_uuid": str(place.wallet.uuid),
             }
             print(data)
 
@@ -430,9 +453,11 @@ class ChargePrimaryAsset(APIView):
 
             return Response(checkout_session.url, status=status.HTTP_202_ACCEPTED)
 
+
 class MembershipAPI(viewsets.ViewSet):
     def create(self, request):
         serializer = TransactionW2W(data=request.data, context={'request': request})
+
 
 class TransactionAPI(viewsets.ViewSet):
     """
@@ -452,7 +477,7 @@ class TransactionAPI(viewsets.ViewSet):
     def create(self, request):
         transaction_validator = TransactionW2W(data=request.data, context={'request': request})
         if transaction_validator.is_valid():
-            transaction : Transaction = transaction_validator.transaction
+            transaction: Transaction = transaction_validator.transaction
             transaction_serialized = TransactionSerializer(transaction)
             return Response(transaction_serialized.data, status=status.HTTP_201_CREATED)
 

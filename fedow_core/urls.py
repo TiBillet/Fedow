@@ -2,7 +2,7 @@ from django.urls import path, include
 
 from fedow_dashboard import urls as dashboard_urls
 from fedow_core.views import TransactionAPI, TestApiKey, HelloWorld, WalletAPI, PlaceAPI, Onboard_stripe_return, \
-    WebhookStripe, ChargePrimaryAsset, CardAPI, AssetAPI
+    WebhookStripe, ChargePrimaryAsset, CardAPI, AssetAPI, get_new_place_token_for_test
 # from django.conf import settings
 from rest_framework import routers
 
@@ -20,6 +20,9 @@ router.register(r'card', CardAPI, basename='card')
 # router.register(r'', IndexRESThtmx, basename='index')
 
 urlpatterns = [
+    # Route pour test fedow :
+    path('get_new_place_token_for_test/', get_new_place_token_for_test),
+
     # Requete depuis le cashless pour le retour de l'onboarding stripe
     path('onboard_stripe_return/', Onboard_stripe_return.as_view()),
 
