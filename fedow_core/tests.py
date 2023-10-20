@@ -60,11 +60,10 @@ class FedowTestCase(TestCase):
         self.private_cashless_rsa = get_private_key(private_cashless_pem)
         self.public_cashless_pem = public_cashless_pem
 
-
     def _post_from_simulated_cashless(self, path, data):
         decoded_data = utf8_b64_to_dict(self.last_line)
         key = decoded_data.get('temp_key')
-        place : Place = self.place
+        place: Place = self.place
 
         # On simule une paire de clé générée par le serveur cashless
         place.cashless_rsa_pub_key = self.public_cashless_pem
@@ -417,13 +416,12 @@ class AssetCardTest(FedowTestCase):
 
         for card in cards_with_asset_and_email:
             self.assertEqual(Card.objects.get(first_tag_id=card['first_tag_id']).user.email, card['email'])
-            self.assertEqual(Card.objects.get(first_tag_id=card['first_tag_id']).qrcode_uuid, uuid.UUID(card['qrcode_uuid']))
+            self.assertEqual(Card.objects.get(first_tag_id=card['first_tag_id']).qrcode_uuid,
+                             uuid.UUID(card['qrcode_uuid']))
             for token in card["tokens"]:
                 self.assertEqual(Token.objects.get(wallet__user__email=card['email'],
                                                    asset__uuid=token['asset_uuid']).value,
                                  token['qty_cents'])
-
-
 
         # Calcul de la somme de chaque wallet avec aggregate :
         for asset_uuid, total in total_par_assets.items():
@@ -513,7 +511,7 @@ class AssetCardTest(FedowTestCase):
     def test_REFILL_token_place_wallet_2_user_wallet(self):
         place = self.place
 
-        user= self.test_email_plus_wallet()
+        user = self.test_email_plus_wallet()
         creation_transaction = self.test_CREATION_token_with_asset_not_primary_via_api_transaction()
         asset = creation_transaction.asset
 
@@ -537,7 +535,7 @@ class AssetCardTest(FedowTestCase):
         token = Token.objects.get(asset=asset, wallet=user.wallet)
         self.assertEqual(token.value, int(data['amount']))
 
-        import ipdb; ipdb.set_trace()
+
 # @tag("only")
 def test_create_checkout_and_REFILL(self):
     ### RECHARGE AVEC ASSET PRINCIPAL STRIPE
@@ -660,6 +658,7 @@ def test_create_checkout_and_REFILL(self):
     self.assertEqual(fedow_token_value, 4200)
 
     print(response.json())
+
 
 # @tag("only")
 def test_transaction_from_card_to_place(self):
