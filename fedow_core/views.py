@@ -10,7 +10,7 @@ from django.core.validators import URLValidator
 from django.http import Http404
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, serializers
 from rest_framework.decorators import permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -20,8 +20,8 @@ from fedow_core.models import Transaction, Place, Configuration, Asset, Checkout
     OrganizationAPIKey, Card
 from fedow_core.permissions import HasKeyAndCashlessSignature, HasAPIKey, IsStripe
 from fedow_core.serializers import TransactionSerializer, PlaceSerializer, WalletCreateSerializer, HandshakeValidator, \
-    NewTransactionWallet2WalletValidator, CheckCardSerializer, CardCreateValidator, \
-    NewTransactionFromCardToPlaceValidator, AssetCreateValidator
+    TransactionW2W, CardSerializer, CardCreateValidator, \
+    NewTransactionFromCardToPlaceValidator, AssetCreateValidator, OnboardSerializer, AssetSerializer
 from rest_framework.pagination import PageNumberPagination
 
 from fedow_core.utils import get_request_ip, fernet_encrypt, fernet_decrypt, dict_to_b64_utf8, dict_to_b64, \
@@ -85,9 +85,16 @@ class AssetAPI(viewsets.ViewSet):
     #     return Response(serializer.data)
 
     def create(self, request):
+        # Création de l'asset :
         serializer = AssetCreateValidator(data=request.data, context={'request': request})
+
         if serializer.is_valid():
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            # Sérialisation de l'asset
+            asset_seralized = AssetSerializer(serializer.asset)
+            return Response(asset_seralized.data, status=status.HTTP_201_CREATED)
+
+        logger.error(f"Asset create error : {serializer.errors}")
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get_permissions(self):
         permission_classes = [HasKeyAndCashlessSignature]
@@ -95,14 +102,13 @@ class AssetAPI(viewsets.ViewSet):
 
 
 class CardAPI(viewsets.ViewSet):
-
-    def list(self, request):
-        serializer = CheckCardSerializer(Card.objects.all(), many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+    # def list(self, request):
+    #     serializer = CardSerializer(Card.objects.all(), many=True)
+    #     return Response(serializer.data, status=status.HTTP_200_OK)
 
     def retrieve(self, request, pk=None):
         # Utilisé par les serveurs cashless comme un check card
-        serializer = CheckCardSerializer(Card.objects.get(first_tag_id=pk))
+        serializer = CardSerializer(Card.objects.get(first_tag_id=pk))
         # check qui demande ?
         return Response(serializer.data)
 
@@ -320,51 +326,41 @@ class WebhookStripe(APIView):
         return Response("Non traité", status=status.HTTP_208_ALREADY_REPORTED)
 
 
-@permission_classes([HasAPIKey])
+@permission_classes([HasKeyAndCashlessSignature])
 class Onboard_stripe_return(APIView):
-    def get(self, request, encoded_data):
-        decoded_data = json.loads(base64.b64decode(encoded_data).decode('utf-8'))
-        uuid = decoded_data.get('uuid')
+    def post(self, request):
+        onboard_serializer = OnboardSerializer(data=request.data, context={'request': request})
+        if onboard_serializer.is_valid():
+            info_stripe = onboard_serializer.info_stripe
+            details_submitted = info_stripe.get('details_submitted')
+            place = onboard_serializer.validated_data.get('fedow_place_uuid')
 
-        api_key = APIKey.objects.get_from_key(request.META["HTTP_AUTHORIZATION"].split()[1])
-        place = Place.objects.get(pk=uuid)
-        if place.wallet.key != api_key:
-            return Response("Unauthorized", status=status.HTTP_401_UNAUTHORIZED)
+            if details_submitted:
+                # Stripe est OK
+                place.stripe_connect_account = onboard_serializer.validated_data.get('id_acc_connect')
+                place.stripe_connect_valid = True
+                place.save()
+                logger.info(f"details_submitted : {details_submitted}")
 
-        config = Configuration.get_solo()
-        stripe.api_key = config.get_stripe_api()
+                # Envoie des infos de la monnaie fédéré
+                config = Configuration.get_solo()
+                primary_wallet = config.primary_wallet
+                primary_stripe_asset = Asset.objects.get(origin=primary_wallet, category=Asset.STRIPE_FED_FIAT)
+                assert primary_stripe_asset.is_stripe_primary(), "Asset is not primary"
 
-        info_stripe = stripe.Account.retrieve(decoded_data.get('id_acc_connect'))
-        details_submitted = info_stripe.details_submitted
-        if details_submitted:
-            place.stripe_connect_account = decoded_data.get('id_acc_connect')
-            place.stripe_connect_valid = True
-            place.save()
-            logger.info(f"details_submitted : {details_submitted}")
+                data = {
+                    'primary_stripe_asset_uuid': f'{primary_stripe_asset.uuid}',
+                    'primary_stripe_asset_name': primary_stripe_asset.name,
+                    'primary_stripe_asset_currency_code': primary_stripe_asset.currency_code,
+                }
 
-            # Stripe est OK
-            # Envoie des infos de la monnaie fédéré
+                return Response(data, status=status.HTTP_200_OK)
 
-            primary_wallet = config.primary_wallet
-            # primary_stripe_asset = primary_wallet.primary_asset
-            primary_stripe_asset = Asset.objects.get(origin=primary_wallet, category=Asset.STRIPE_FED_FIAT)
-            assert primary_stripe_asset.is_stripe_primary(), "Asset is not primary"
-
-            data = {
-                'uuid': f'{primary_stripe_asset.uuid}',
-                'name': primary_stripe_asset.name,
-                'currency_code': primary_stripe_asset.currency_code,
-            }
-
-            data_encoded = base64.b64encode(json.dumps(data).encode('utf-8')).decode('utf-8')
-
-            return Response(data_encoded, status=status.HTTP_200_OK)
-
-        else:
-            # return Response(f"{create_account_link_for_onboard()}", status=status.HTTP_206_PARTIAL_CONTENT)
-            place.stripe_connect_valid = False
-            place.save()
-            return Response("Compte stripe non valide", status=status.HTTP_406_NOT_ACCEPTABLE)
+            else:
+                # return Response(f"{create_account_link_for_onboard()}", status=status.HTTP_206_PARTIAL_CONTENT)
+                place.stripe_connect_valid = False
+                place.save()
+                return Response("Compte stripe non valide", status=status.HTTP_406_NOT_ACCEPTABLE)
 
 
 @permission_classes([HasAPIKey])
@@ -434,6 +430,9 @@ class ChargePrimaryAsset(APIView):
 
             return Response(checkout_session.url, status=status.HTTP_202_ACCEPTED)
 
+class MembershipAPI(viewsets.ViewSet):
+    def create(self, request):
+        serializer = TransactionW2W(data=request.data, context={'request': request})
 
 class TransactionAPI(viewsets.ViewSet):
     """
@@ -451,22 +450,14 @@ class TransactionAPI(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
-        # serializer = NewTransactionWallet2WalletValidator(data=request.data, context={'request': request})
-        serializer = NewTransactionFromCardToPlaceValidator(data=request.data, context={'request': request})
-        if serializer.is_valid():
-            virement = Transaction.objects.create(
-                ip=get_request_ip(request),
-                checkout_stripe=None,
-                sender=serializer.sender,
-                receiver=serializer.receiver,
-                asset=serializer.validated_data['asset'],
-                amount=int(serializer.validated_data['amount']),
-                action=Transaction.SALE,
-                primary_card=serializer.validated_data['primary_card'],
-                card=serializer.validated_data['user_card'],
-            )
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        transaction_validator = TransactionW2W(data=request.data, context={'request': request})
+        if transaction_validator.is_valid():
+            transaction : Transaction = transaction_validator.validated_data
+            return Response(f"{transaction.pk}", status=status.HTTP_201_CREATED)
+
+        logger.error(f"{timezone.localtime()} ERROR - Transaction create error : {transaction_validator.errors}")
+        import ipdb; ipdb.set_trace()
+        return Response(transaction_validator.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get_permissions(self):
         # Cette permission rajoute place dans request si la signature est validé

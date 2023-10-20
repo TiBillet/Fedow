@@ -1,19 +1,13 @@
-import base64
-import json
-import uuid
+import uuid, re
 from collections import OrderedDict
-import hashlib
-import re
 from datetime import datetime
-
-from cryptography.hazmat.primitives.asymmetric import rsa
 from django.utils import timezone
 from rest_framework import serializers
-from rest_framework.fields import empty
-from rest_framework_api_key.models import APIKey
 from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction, OrganizationAPIKey, Asset, Token, \
-    get_or_create_user, Origin, wallet_creator, asset_creator
-from fedow_core.utils import get_request_ip, get_public_key, dict_to_b64, verify_signature, rsa_generator
+    get_or_create_user, Origin, asset_creator, Configuration
+from fedow_core.utils import get_request_ip, get_public_key, dict_to_b64, verify_signature
+from cryptography.hazmat.primitives.asymmetric import rsa
+import stripe
 import logging
 
 logger = logging.getLogger(__name__)
@@ -79,10 +73,35 @@ class HandshakeValidator(serializers.Serializer):
 
         return attrs
 
-    # def to_representation(self, instance):
-    #     # Add apikey user to representation
-    #     representation = super().to_representation(instance)
-    #     representation['user'] = self.user
+
+class OnboardSerializer(serializers.Serializer):
+    id_acc_connect = serializers.CharField(max_length=21)
+    fedow_place_uuid = serializers.PrimaryKeyRelatedField(queryset=Place.objects.all())
+
+    def validate_id_acc_connect(self, value):
+        config = Configuration.get_solo()
+        stripe.api_key = config.get_stripe_api()
+        self.info_stripe = None
+        try:
+            info_stripe = stripe.Account.retrieve(value)
+            self.info_stripe = info_stripe
+        except Exception as exc:
+            logger.error(f"Stripe Account.retrieve : {exc}")
+            raise serializers.ValidationError("Stripe error")
+        if not info_stripe:
+            raise serializers.ValidationError("id_acc_connect not a stripe account")
+        return value
+
+    def validate_fedow_place_uuid(self, value):
+        place: Place = self.context.get('request').place
+        if place != value:
+            raise serializers.ValidationError("Place not match")
+        return value
+
+# class AssetSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         models = Asset
+#         fields = (
 
 
 class TokenSerializer(serializers.ModelSerializer):
@@ -90,6 +109,8 @@ class TokenSerializer(serializers.ModelSerializer):
         model = Token
         fields = (
             'uuid',
+            'asset',
+            'asset_name',
             'name',
             'value',
         )
@@ -97,7 +118,6 @@ class TokenSerializer(serializers.ModelSerializer):
 
 class WalletSerializer(serializers.ModelSerializer):
     tokens = TokenSerializer(many=True)
-
     class Meta:
         model = Wallet
         fields = (
@@ -117,14 +137,34 @@ class UserSerializer(serializers.ModelSerializer):
         )
 
 
-class CheckCardSerializer(serializers.ModelSerializer):
-    user = UserSerializer(many=False)
+class CardSerializer(serializers.ModelSerializer):
+    # Un MethodField car le wallet peut être celui de l'user ou celui de la carte anonyme.
+    # Faut lancer la fonction get_wallet() pour avoir le bon wallet...
+    wallet= serializers.SerializerMethodField()
+
+    def get_wallet(self, obj: Card):
+        wallet= obj.get_wallet()
+        return WalletSerializer(wallet).data
 
     class Meta:
         model = Card
         fields = (
-            'first_tag_id',
-            'user',
+            'wallet',
+        )
+
+
+class AssetSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Asset
+        fields = (
+            'uuid',
+            'name',
+            'currency_code',
+            'category',
+            'origin',
+            'created_at',
+            'last_update',
+            'is_stripe_primary',
         )
 
 
@@ -379,10 +419,7 @@ class NewTransactionFromCardToPlaceValidator(serializers.Serializer):
         card: Card = attrs.get('user_card')
         sender: Wallet = card.user.wallet
 
-        # Si le lieu du wallet est dans la délégation d'autorité du wallet de la carte
-        if not receiver in sender.get_authority_delegation(card=card):
-            # Place must be in card user wallet authority delegation
-            raise serializers.ValidationError("Unauthorized")
+
 
         self.receiver = receiver
         self.sender = sender
@@ -390,14 +427,14 @@ class NewTransactionFromCardToPlaceValidator(serializers.Serializer):
         return attrs
 
 
-class NewTransactionWallet2WalletValidator(serializers.Serializer):
+class TransactionW2W(serializers.Serializer):
     amount = serializers.IntegerField()
     sender = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
     receiver = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
     asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all())
 
-    # primary_card = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all())
-    # user_card = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all())
+    primary_card = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
+    user_card = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
 
     def validate_amount(self, value):
         # Positive amount only
@@ -405,37 +442,101 @@ class NewTransactionWallet2WalletValidator(serializers.Serializer):
             raise serializers.ValidationError("Amount must be positive")
         return value
 
+    def validate_primary_card(self, value):
+        #TODO; Check carte primaire et lieux
+        return value
+
+    def validate_user_card(self, value):
+        return value
+
+    def get_action(self):
+        # Quel type de transaction ?
+        action = None
+
+        if self.place.wallet == self.sender :
+            # Un lieu envoi : c'est une recharge de carte
+            # ou une adhésion / abonnement
+            action = Transaction.REFILL
+            if self.sender == self.receiver:
+                if self.asset.origin == self.place.wallet:
+                    # Le wallet du lieu est le sender ET le receiver
+                    # L'origine de l'asset est bien le lieu
+                    # C'est alors une création de token d'asset non FEDEREE PRIMAIRE (qui doit obligatoirement passer par stripe )
+                    # adhésion, monnaie temps, monnaie cadeau, etc ...
+                    action = Transaction.CREATION
+
+        elif self.place.wallet == self.receiver:
+            action = Transaction.SALE
+            # Si le lieu du wallet est dans la délégation d'autorité du wallet de la carte
+            if not self.receiver in self.sender.get_authority_delegation(card=self.card):
+                # Place must be in card user wallet authority delegation
+                logger.warning(f"{timezone.localtime()} WARNING sender not in receiver authority delegation")
+                raise serializers.ValidationError("Unauthorized")
+
+        return action
+
+
     def validate(self, attrs):
         # Récupération de la place grâce a la permission HasKeyAndCashlessSignature
         request = self.context.get('request')
-        place: Place = request.place
+        self.place: Place = request.place
 
-        if not place.wallet == self.sender and not place.wallet == self.receiver:
+        # get variable
+        self.sender: Wallet = attrs.get('sender')
+        self.receiver: Wallet = attrs.get('receiver')
+        self.asset: Asset = attrs.get('asset')
+        self.amount: int = attrs.get('amount')
+        self.card = attrs.get('user_card')
+
+        action = self.get_action()
+        if not action:
+            # Si aucune des conditions d'action n'est remplie, c'est une erreur
+            logger.error(f"{timezone.localtime()} ERROR sender nor receiver are Unauthorized - ZERO ACTION FOUND - {request}")
+            raise serializers.ValidationError("Unauthorized")
+
+
+        # Check if sender or receiver are authorized
+        if not self.place.wallet == self.sender and not self.place.wallet == self.receiver:
             # Place must be sender or receiver
             logger.error(f"{timezone.localtime()} ERROR sender nor receiver are Unauthorized - {request}")
             raise serializers.ValidationError("Unauthorized")
 
+        # get sender token
         try:
-            self.token_sender = Token.objects.get(wallet=attrs.get('sender'), asset=attrs.get('asset'))
+            token_sender = Token.objects.get(wallet=self.sender, asset=self.asset)
+            # Check if sender has enough value
+            if token_sender.value < self.amount and action != Transaction.CREATION:
+                logger.error(f"{timezone.localtime()} ERROR sender not enough value - {request}")
+                raise serializers.ValidationError("Sender not enough value")
         except Token.DoesNotExist:
             raise serializers.ValidationError("Sender token does not exist")
 
+        # get or create receiver token
         try:
-            self.token_receiver = Token.objects.get(wallet=attrs.get('receiver'), asset=attrs.get('asset'))
+            self.token_receiver = Token.objects.get(wallet=self.receiver, asset=self.asset)
         except Token.DoesNotExist:
-            raise serializers.ValidationError("Receiver token does not exist")
+            logger.info(f"{timezone.localtime()} INFO NewTransactionWallet2WalletValidator : receiver token does not exist")
+            self.token_receiver = Token.objects.create(wallet=self.receiver, asset=self.asset, value=0)
 
-        if self.token_sender.value < attrs.get('amount'):
-            logger.error(f"{timezone.localtime()} ERROR sender not enough value - {request}")
-            raise serializers.ValidationError("Sender not enough value")
 
-        # TODO: Checker les clé rsa des wallets
-        raise serializers.ValidationError("TODO: Checker les signatures des wallets")
-        # return attrs
+        ### ALL CHECK OK ###
+        transaction = Transaction.objects.create(
+            ip=get_request_ip(request),
+            checkout_stripe=None,
+            sender=self.sender,
+            receiver=self.receiver,
+            asset=self.asset,
+            amount=self.amount,
+            action=action,
+            primary_card=attrs.get('primary_card'),
+            card=attrs.get('user_card'),
+        )
 
-    # def get_attribute(self, instance):
-    #     attribute = super().get_attribute(instance)
-    #     return attribute
+        if not transaction.verify_hash():
+            logger.error(f"{timezone.localtime()} ERROR NewTransactionWallet2WalletValidator : transaction hash is not valid")
+            raise serializers.ValidationError("Transaction hash is not valid")
+
+        return transaction
 
 
 class TransactionSerializer(serializers.ModelSerializer):

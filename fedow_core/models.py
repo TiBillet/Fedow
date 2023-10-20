@@ -89,11 +89,13 @@ class Asset(models.Model):
     TOKEN_LOCAL_FIAT = 'TLF'
     TOKEN_LOCAL_NOT_FIAT = 'TNF'
     STRIPE_FED_FIAT = 'FED'
+    MEMBERSHIP = 'MEM'
 
     CATEGORIES = [
         (TOKEN_LOCAL_FIAT, 'Fiduciary local token'),
         (TOKEN_LOCAL_NOT_FIAT, 'Token local non fiduciaire'),
         (STRIPE_FED_FIAT, 'Fiduciary and federated token on stripe'),
+        (MEMBERSHIP, 'Membership or subscription'),
     ]
 
     category = models.CharField(
@@ -187,9 +189,10 @@ class Wallet(models.Model):
 
     def get_authority_delegation(self, card=None):
         card: Card = card
-        if self.user == card.user:
-            place_origin = card.origin.place
-            return place_origin.wallet_federated_with()
+        if card :
+            if self.user == card.user:
+                place_origin = card.origin.place
+                return place_origin.wallet_federated_with()
         return []
 
     def is_primary(self):
@@ -225,6 +228,9 @@ class Token(models.Model):
     asset = models.ForeignKey(Asset, on_delete=models.PROTECT, related_name='tokens')
 
     def name(self):
+        return self.asset.name
+
+    def asset_name(self):
         return self.asset.name
 
     # def __str__(self):
@@ -401,7 +407,7 @@ class Federation(models.Model):
     places = models.ManyToManyField('Place', related_name='federations')
 
     def __str__(self):
-        return f"{self.name} : {','.join([place for place in self.places.all()])}"
+        return f"{self.name} : {','.join([place.name for place in self.places.all()])}"
 
 
 class Configuration(SingletonModel):
@@ -579,6 +585,7 @@ class Card(models.Model):
             return self.wallet_ephemere
 
 
+
 class OrganizationAPIKey(AbstractAPIKey):
     place = models.ForeignKey(
         Place,
@@ -639,7 +646,12 @@ def asset_creator(name: str = None,
     if len(currency_code) > 3:
         raise ValueError('Max 3 char for currency code')
 
-    if category not in [Asset.TOKEN_LOCAL_FIAT, Asset.TOKEN_LOCAL_NOT_FIAT, Asset.STRIPE_FED_FIAT]:
+    # Check catégorie. Si stripe : unique, sinon vérification que la catégorie est dans les choix
+    if category == Asset.STRIPE_FED_FIAT:
+        # Il ne peut y avoir qu'un seul asset de type STRIPE_FED_FIAT
+        if Asset.objects.filter(category=Asset.STRIPE_FED_FIAT).exists():
+            raise ValueError('Only one asset of type STRIPE_FED_FIAT can exist')
+    elif category not in [Asset.TOKEN_LOCAL_FIAT, Asset.TOKEN_LOCAL_NOT_FIAT, Asset.MEMBERSHIP]:
         raise ValueError('Category not in choices')
 
     # Vérification que l'asset et/ou le code n'existe pas

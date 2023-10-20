@@ -20,7 +20,9 @@ router.register(r'card', CardAPI, basename='card')
 # router.register(r'', IndexRESThtmx, basename='index')
 
 urlpatterns = [
-    path('onboard_stripe_return/<str:encoded_data>/', Onboard_stripe_return.as_view()),
+    # Requete depuis le cashless pour le retour de l'onboarding stripe
+    path('onboard_stripe_return/', Onboard_stripe_return.as_view()),
+
     path('charge_primary_asset/', ChargePrimaryAsset.as_view()),
     path('webhook_stripe/', WebhookStripe.as_view()),
     path('', include(dashboard_urls)),
