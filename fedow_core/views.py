@@ -108,6 +108,7 @@ class CardAPI(viewsets.ViewSet):
     #     serializer = CardSerializer(Card.objects.all(), many=True)
     #     return Response(serializer.data, status=status.HTTP_200_OK)
 
+
     def retrieve(self, request, pk=None):
         # Utilisé par les serveurs cashless comme un check card
         serializer = CardSerializer(Card.objects.get(first_tag_id=pk))
