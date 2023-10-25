@@ -104,23 +104,19 @@ class AssetAPI(viewsets.ViewSet):
 
 
 class CardAPI(viewsets.ViewSet):
-    # def list(self, request):
-    #     serializer = CardSerializer(Card.objects.all(), many=True)
-    #     return Response(serializer.data, status=status.HTTP_200_OK)
-
 
     def retrieve(self, request, pk=None):
         # Utilisé par les serveurs cashless comme un check card
         serializer = CardSerializer(Card.objects.get(first_tag_id=pk))
-        # check qui demande ?
-        return Response(serializer.data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def create(self, request):
-        serializer = CardCreateValidator(data=json.loads(request.data.get('cards')), context={'request': request},
-                                         many=True)
-        if serializer.is_valid():
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        card_serializer = CardCreateValidator(data=request.data, context={'request': request}, many=True)
+        if card_serializer.is_valid():
+            card_serializer.save()
+            return Response(request.data, status=status.HTTP_201_CREATED, content_type="application/json")
+        logger.error(f"Card create error : {card_serializer.errors}")
+        return Response(card_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get_permissions(self):
         permission_classes = [HasKeyAndCashlessSignature]
@@ -144,10 +140,10 @@ class WalletAPI(viewsets.ViewSet):
     #     return Response(serializer.data)
 
     def create(self, request):
-        serializer = WalletCreateSerializer(data=request.data, context={'request': request})
-        if serializer.is_valid():
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        wallet_create_serializer = WalletCreateSerializer(data=request.data, context={'request': request})
+        if wallet_create_serializer.is_valid():
+            return Response(f"{wallet_create_serializer.user.wallet.uuid}", status=status.HTTP_201_CREATED)
+        return Response(wallet_create_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get_permissions(self):
         permission_classes = [HasAPIKey]
@@ -387,6 +383,9 @@ class Onboard_stripe_return(APIView):
                 return Response("Compte stripe non valide", status=status.HTTP_406_NOT_ACCEPTABLE)
 
 
+
+
+
 @permission_classes([HasAPIKey])
 class ChargePrimaryAsset(APIView):
     def post(self, request):
@@ -457,7 +456,8 @@ class ChargePrimaryAsset(APIView):
 
 class MembershipAPI(viewsets.ViewSet):
     def create(self, request):
-        serializer = TransactionW2W(data=request.data, context={'request': request})
+        pass
+        # serializer = TransactionW2W(data=request.data, context={'request': request})
 
 
 class TransactionAPI(viewsets.ViewSet):

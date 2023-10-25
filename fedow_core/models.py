@@ -159,11 +159,14 @@ class Asset(models.Model):
         self.id_price_stripe = price.id
         self.save()
 
-    # class Meta:
-    # Only one can be true :
-    # constraints = [UniqueConstraint(fields=["stripe_primary"],
-    #                                 condition=Q(stripe_primary=True),
-    #                                 name="unique_stripe_primary_asset")]
+    def __str__(self):
+        return f"{self.name} {self.currency_code}"
+
+    class Meta:
+        # Only one can be true :
+        constraints = [UniqueConstraint(fields=["category"],
+                                        condition=Q(category='FED'),
+                                        name="unique_stripe_primary_asset")]
 
 
 class Wallet(models.Model):
@@ -554,13 +557,13 @@ class Origin(models.Model):
 
 
 class Card(models.Model):
-    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=False)
+    uuid = models.UUIDField(primary_key=True, default=uuid4, db_index=False)
 
-    first_tag_id = models.CharField(max_length=8, editable=False, db_index=True)
-    complete_tag_id_uuid = models.UUIDField(editable=False, blank=True, null=True)
+    first_tag_id = models.CharField(max_length=8, unique=True, db_index=True)
+    complete_tag_id_uuid = models.UUIDField(blank=True, null=True)
 
-    qrcode_uuid = models.UUIDField(editable=False)
-    number_printed = models.CharField(max_length=8, editable=False, db_index=True)
+    qrcode_uuid = models.UUIDField(unique=True)
+    number_printed = models.CharField(max_length=8, unique=True, db_index=True)
 
     user = models.ForeignKey(FedowUser, on_delete=models.PROTECT, related_name='cards', blank=True, null=True)
     origin = models.ForeignKey(Origin, on_delete=models.PROTECT, related_name='cards')

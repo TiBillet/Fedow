@@ -14,6 +14,20 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
+def data_to_b64(data: dict or list) -> bytes:
+    data_to_json = json.dumps(data)
+    json_to_bytes = data_to_json.encode('utf-8')
+    bytes_to_b64 = base64.urlsafe_b64encode(json_to_bytes)
+    return bytes_to_b64
+
+def b64_to_data(b64: bytes) -> dict or list:
+    b64_to_bytes = base64.urlsafe_b64decode(b64)
+    bytes_to_json = b64_to_bytes.decode('utf-8')
+    json_to_data = json.loads(bytes_to_json)
+    return json_to_data
+
+
+## OLD ##
 
 def dict_to_b64(dico: dict) -> bytes:
     dict_to_json = json.dumps(dico)
@@ -133,7 +147,9 @@ def get_public_key(public_key_pem: str) -> rsa.RSAPublicKey | bool:
         raise e
 
 
-def sign_message(message: bytes = None, private_key=None) -> bytes:
+def sign_message(message: bytes = None,
+                 private_key: rsa.RSAPrivateKey = None) -> bytes:
+    # Signer le message
     signature = private_key.sign(
         message,
         padding=padding.PSS(
@@ -162,5 +178,3 @@ def verify_signature(public_key: rsa.RSAPublicKey,
         return True
     except InvalidSignature:
         return False
-
-

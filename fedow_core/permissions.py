@@ -9,8 +9,8 @@ from rest_framework_api_key.models import APIKey
 from rest_framework_api_key.permissions import BaseHasAPIKey
 from stripe.error import SignatureVerificationError
 
-from fedow_core.models import Wallet, OrganizationAPIKey, Configuration
-from fedow_core.utils import verify_signature, dict_to_b64
+from fedow_core.models import OrganizationAPIKey, Configuration
+from fedow_core.utils import verify_signature, data_to_b64
 import stripe
 import logging
 
@@ -59,14 +59,12 @@ class HasKeyAndCashlessSignature(BaseHasAPIKey):
         signature = request.META.get("HTTP_SIGNATURE")
         return signature
 
-    # def get_wallet(self, request: HttpRequest) -> str | bool:
-    #     wallet = request.POST.get("sender")
-    #     return wallet
-
     def get_key(self, request: HttpRequest) -> typing.Optional[str]:
         return super().get_key(request)
 
     def has_permission(self, request: HttpRequest, view: typing.Any) -> bool:
+        # Récupération de la clé API qui va nous permettre de connaitre
+        # le lieu et sa clé RSA publique pour vérifier la signature.
         key = self.get_key(request)
         if not key:
             logger.debug(f"HasKeyAndCashlessSignature : no key")
@@ -75,25 +73,25 @@ class HasKeyAndCashlessSignature(BaseHasAPIKey):
         api_key = self.model.objects.get_from_key(key)
         place = api_key.place
         request.place = place
-
+        cashless_public_key = place.cashless_public_key()
 
         signature = self.get_signature(request)
         if not signature:
             logger.debug(f"HasKeyAndCashlessSignature : no signature")
             return False
 
-
-        logger.debug(f"request methode : {request.method}")
+        # SIGNATURE ( GET / POST )
+        # On signe la donnée si c'est du post.
+        # Uniquement la clé si c'est du get.
         if request.method == 'POST':
-            message = dict_to_b64(request.data)
+            message = data_to_b64(request.data)
         elif request.method == 'GET':
-            message = request.META.get('PATH_INFO').encode('utf8')
+            message = key.encode('utf8')
         else :
             return False
 
-
-        cashless_public_key = place.cashless_public_key()
         if cashless_public_key:
             if verify_signature(cashless_public_key, message, signature):
                 return super().has_permission(request, view)
+
         return False
