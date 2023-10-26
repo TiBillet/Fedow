@@ -22,9 +22,9 @@ from rest_framework_api_key.models import APIKey
 from fedow_core.models import Transaction, Place, Configuration, Asset, CheckoutStripe, Token, Wallet, FedowUser, \
     OrganizationAPIKey, Card, Federation
 from fedow_core.permissions import HasKeyAndCashlessSignature, HasAPIKey, IsStripe
-from fedow_core.serializers import TransactionSerializer, PlaceSerializer, WalletCreateSerializer, HandshakeValidator, \
+from fedow_core.serializers import TransactionSerializer, WalletCreateSerializer, HandshakeValidator, \
     TransactionW2W, CardSerializer, CardCreateValidator, \
-    NewTransactionFromCardToPlaceValidator, AssetCreateValidator, OnboardSerializer, AssetSerializer
+    AssetCreateValidator, OnboardSerializer, AssetSerializer
 from rest_framework.pagination import PageNumberPagination
 
 from fedow_core.utils import get_request_ip, fernet_encrypt, fernet_decrypt, dict_to_b64_utf8, dict_to_b64, \
@@ -385,17 +385,21 @@ class Onboard_stripe_return(APIView):
 
 
 
-
 @permission_classes([HasAPIKey])
-class ChargePrimaryAsset(APIView):
+class CheckoutStripeForChargePrimaryAsset(APIView):
     def post(self, request):
+        # Même sérializer que la création, sauf qu'on vérifie que le mail soit bien présent.
+        if not request.data.get('email'):
+            return Response("Email missing", status=status.HTTP_404_NOT_FOUND)
+
         serializer = WalletCreateSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
-            user: FedowUser = serializer.user
-            card: Card = serializer.card
             config = Configuration.get_solo()
+
+            # Vérification que l'email soit bien présent pour l'envoyer a Stripe
+            user: FedowUser = serializer.user
+
             primary_wallet = config.primary_wallet
-            # stripe_asset = primary_wallet.primary_asset
             stripe_asset = Asset.objects.get(origin=primary_wallet, category=Asset.STRIPE_FED_FIAT)
             id_price_stripe = stripe_asset.get_id_price_stripe()
 
@@ -403,9 +407,6 @@ class ChargePrimaryAsset(APIView):
                 wallet=primary_wallet,
                 asset=stripe_asset,
             )
-
-            if not primary_token.is_primary_stripe_token():
-                return Response('Token non primaire', status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
             user_token, created = Token.objects.get_or_create(
                 wallet=user.wallet,
@@ -423,8 +424,13 @@ class ChargePrimaryAsset(APIView):
             metadata = {
                 "primary_token": f"{primary_token.uuid}",
                 "user_token": f"{user_token.uuid}",
-                "card_uuid": f"{card.uuid}",
             }
+
+            # Ajout de l'uuid de la carte si elle envoyée :
+            if getattr(serializer, 'card', None):
+                card: Card = serializer.card
+                metadata['card_qrcode_uuid'] = f"{card.qrcode_uuid}"
+
             signer = Signer()
             signed_data = signer.sign(dict_to_b64_utf8(metadata))
 
@@ -453,6 +459,8 @@ class ChargePrimaryAsset(APIView):
 
             return Response(checkout_session.url, status=status.HTTP_202_ACCEPTED)
 
+        logger.error(f"CheckoutStripeForChargePrimaryAsset error : {serializer.errors}")
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class MembershipAPI(viewsets.ViewSet):
     def create(self, request):

@@ -99,12 +99,6 @@ class OnboardSerializer(serializers.Serializer):
         return value
 
 
-# class AssetSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         models = Asset
-#         fields = (
-
-
 class TokenSerializer(serializers.ModelSerializer):
     class Meta:
         model = Token
@@ -147,14 +141,13 @@ class CardCreateValidator(serializers.ModelSerializer):
         if not place:
             raise serializers.ValidationError("Place not found")
 
-        if not getattr(self, 'origin', None) :
+        if not getattr(self, 'origin', None):
             self.origin, created = Origin.objects.get_or_create(place=place, generation=value)
 
         if self.origin.generation != value:
             raise serializers.ValidationError("One generation per request")
 
         return value
-
 
     def create(self, validated_data):
         validated_data.pop('generation')
@@ -246,7 +239,6 @@ class AssetCreateValidator(serializers.Serializer):
             raise serializers.ValidationError("Asset creation failed")
 
 
-
 class PlaceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Place
@@ -261,8 +253,10 @@ class PlaceSerializer(serializers.ModelSerializer):
 
 class WalletCreateSerializer(serializers.Serializer):
     email = serializers.EmailField(required=False)
-    card_first_tag_id = serializers.SlugRelatedField(slug_field='first_tag_id', queryset=Card.objects.filter(user__isnull=True), required=False)
-    card_qrcode_uuid = serializers.SlugRelatedField(slug_field='qrcode_uuid', queryset=Card.objects.filter(user__isnull=True), required=False)
+    card_first_tag_id = serializers.SlugRelatedField(slug_field='first_tag_id',
+                                                     queryset=Card.objects.all(), required=False)
+    card_qrcode_uuid = serializers.SlugRelatedField(slug_field='qrcode_uuid',
+                                                    queryset=Card.objects.all(), required=False)
 
     def validate_email(self, value):
         ip = None
@@ -273,14 +267,18 @@ class WalletCreateSerializer(serializers.Serializer):
 
         return self.user.email
 
-
     def validate(self, attrs):
-        card: Card =  attrs.get('card_first_tag_id') or attrs.get('card_qrcode_uuid')
-        if card :
-            # La recherche s'effectue sur des cartes sans user.
-            # On ne peut écraser une carte avec un user existant, on link la carte a l'user
-            card.user = self.user
-            card.save()
+        card: Card = attrs.get('card_first_tag_id') or attrs.get('card_qrcode_uuid')
+        if card:
+            # On ne veut pas écraser une carte avec un user existant,
+            # on link la carte a l'user si None
+            if not card.user:
+                card.user = self.user
+                card.save()
+            elif card.user != self.user:
+                raise serializers.ValidationError("Card already linked to another user")
+
+            self.card = card
 
         return attrs
 
@@ -289,44 +287,6 @@ class WalletCreateSerializer(serializers.Serializer):
         representation = super().to_representation(instance)
         representation['wallet'] = f"{self.user.wallet.uuid}"
         return representation
-
-
-class NewTransactionFromCardToPlaceValidator(serializers.Serializer):
-    amount = serializers.IntegerField()
-    asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all())
-    primary_card = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all())
-    user_card = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all())
-
-    def validate_amount(self, value):
-        # Positive amount only
-        if value <= 0:
-            raise serializers.ValidationError("Amount must be positive")
-        return value
-
-    def validate_user_primary_card(self, value):
-        # Check if card is linked to user
-        if not value.user:
-            raise serializers.ValidationError("Card not linked to user")
-        return value
-
-    def validate_user_card(self, value):
-        # Check if card is linked to user
-        if not value.user:
-            raise serializers.ValidationError("Card not linked to user")
-        return value
-
-    def validate(self, attrs):
-        # Récupération de la place grâce a la permission HasKeyAndCashlessSignature
-        request = self.context.get('request')
-        place: Place = request.place
-        receiver: Wallet = place.wallet
-        card: Card = attrs.get('user_card')
-        sender: Wallet = card.user.wallet
-
-        self.receiver = receiver
-        self.sender = sender
-
-        return attrs
 
 
 class TransactionW2W(serializers.Serializer):
@@ -408,7 +368,7 @@ class TransactionW2W(serializers.Serializer):
             # Check if sender has enough value
             if token_sender.value < self.amount and action != Transaction.CREATION:
                 logger.error(f"{timezone.localtime()} ERROR sender not enough value - {request}")
-                raise serializers.ValidationError("Sender not enough value")
+                raise serializers.ValidationError("Not enough token on sender wallet")
         except Token.DoesNotExist:
             raise serializers.ValidationError("Sender token does not exist")
 
@@ -457,3 +417,4 @@ class TransactionSerializer(serializers.ModelSerializer):
             "comment",
             "verify_hash",
         )
+

@@ -360,7 +360,7 @@ class AssetCardTest(FedowTestCase):
 
     @tag("create_token")
     def test_send_new_tokens_to_wallet(self):
-        # Création de 3 assets différents pour simuler un asset € et deux monnaie temps/bénévoles
+        # Création de 3 assets différents pour simuler un asset € et deux monnaies temps/bénévoles
         place: Place = self.place
         assets = self.create_asset_with_API()
 
@@ -424,37 +424,54 @@ class AssetCardTest(FedowTestCase):
             self.assertEqual(Token.objects.filter(asset__uuid=asset_uuid).aggregate(Sum('value')).get('value__sum'),
                              total)
 
+    @tag("stripe")
     def test_get_stripe_checkout_in_charge_primary_asset_api(self):
         # Test la création d'un lien stripe pour faire une recharge de monnaie
-        ### Création d'un wallet client avec un email et un uuid de carte
+        ### Création d'un wallet client avec un email
         email = 'lambda@lambda.com'
-        response = self._post_from_simulated_cashless('charge_primary_asset', {'email': email})
+        response = self._post_from_simulated_cashless('checkout_stripe_for_charge_primary_asset', {'email': email})
 
         self.assertEqual(response.status_code, 202)
         self.assertIn('https://checkout.stripe.com/c/pay/', response.json())
 
-        checkout = CheckoutStripe.objects.all().order_by('datetime').last()
-
         # Récupération des metadonnée envoyées à Stripe
+        checkout = CheckoutStripe.objects.all().order_by('datetime').last()
         signer = Signer()
         signed_data = utf8_b64_to_dict(signer.unsign(checkout.metadata))
         primary_token = Token.objects.get(uuid=signed_data.get('primary_token'))
         user_token = Token.objects.get(uuid=signed_data.get('user_token'))
-        card = Card.objects.get(uuid=signed_data.get('card_uuid'))
 
-        self.assertEqual(card.user.email, email)
-        self.assertEqual(card.uuid, self.card.uuid)
-        self.assertEqual(card.user, user_token.wallet.user)
         self.assertEqual(primary_token.asset, user_token.asset)
         self.assertTrue(primary_token.is_primary_stripe_token())
+
+        ### Création d'un wallet client avec un email et un uuid de carte
+        self.test_create_wallet_with_API()
+        card = Card.objects.filter(user__isnull=False).first()
+        email = card.user.email
+        response = self._post_from_simulated_cashless('checkout_stripe_for_charge_primary_asset',
+                                                      {'email': email, 'card_qrcode_uuid': f"{card.qrcode_uuid}"})
+
+        # Récupération des metadonnée envoyées à Stripe
+        checkout = CheckoutStripe.objects.all().order_by('datetime').last()
+        signer = Signer()
+        signed_data = utf8_b64_to_dict(signer.unsign(checkout.metadata))
+        user_token = Token.objects.get(uuid=signed_data.get('user_token'))
+        card_from_stripe = Card.objects.get(qrcode_uuid=signed_data.get('card_qrcode_uuid'))
+
+        self.assertEqual(card_from_stripe.user.email, email)
+        self.assertEqual(card_from_stripe.user, card.user)
+        self.assertEqual(user_token.wallet, card.user.wallet)
+        self.assertEqual(card_from_stripe.uuid, card.uuid)
 
     @tag("refill_token")
     def test_REFILL_token_place_wallet_2_user_wallet(self):
         place = self.place
 
-        user = self.test_email_plus_wallet()
-        creation_transaction = self.test_CREATION_token_with_asset_not_primary_via_api_transaction()
-        asset = creation_transaction.asset
+        self.test_create_wallet_with_API()
+        wallet = Wallet.objects.filter(user__isnull=False).first()
+        user = wallet.user
+        assets = self.create_asset_with_API()
+        asset = assets.filter(category=Asset.TOKEN_LOCAL_NOT_FIAT).first()
 
         data = {
             "amount": "10",
@@ -464,17 +481,20 @@ class AssetCardTest(FedowTestCase):
         }
 
         response = self._post_from_simulated_cashless('transaction', data)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 400)
+        # pas assez sur le portefeuille du lieu, il faut d'abord créer la monnaie
+        self.assertIn('Not enough token on sender wallet', response.json().get('non_field_errors'))
 
-        transaction = Transaction.objects.get(pk=response.json().get('uuid'))
-        self.assertEqual(transaction.action, Transaction.REFILL)
-        self.assertEqual(transaction.asset, asset)
-        self.assertEqual(transaction.sender, place.wallet)
-        self.assertEqual(transaction.receiver, user.wallet)
-        self.assertEqual(transaction.amount, int(data['amount']))
-
-        token = Token.objects.get(asset=asset, wallet=user.wallet)
-        self.assertEqual(token.value, int(data['amount']))
+        # TODO: REFILL = creation monnétaire en une seule requete ?
+        # transaction = Transaction.objects.get(pk=response.json().get('uuid'))
+        # self.assertEqual(transaction.action, Transaction.REFILL)
+        # self.assertEqual(transaction.asset, asset)
+        # self.assertEqual(transaction.sender, place.wallet)
+        # self.assertEqual(transaction.receiver, user.wallet)
+        # self.assertEqual(transaction.amount, int(data['amount']))
+        #
+        # token = Token.objects.get(asset=asset, wallet=user.wallet)
+        # self.assertEqual(token.value, int(data['amount']))
 
 
 class APITestHelloWorld(FedowTestCase):

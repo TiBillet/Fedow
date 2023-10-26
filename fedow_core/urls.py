@@ -2,7 +2,7 @@ from django.urls import path, include
 
 from fedow_dashboard import urls as dashboard_urls
 from fedow_core.views import TransactionAPI, TestApiKey, HelloWorld, WalletAPI, PlaceAPI, Onboard_stripe_return, \
-    WebhookStripe, ChargePrimaryAsset, CardAPI, AssetAPI, get_new_place_token_for_test
+    WebhookStripe, CheckoutStripeForChargePrimaryAsset, CardAPI, AssetAPI, get_new_place_token_for_test
 # from django.conf import settings
 from rest_framework import routers
 
@@ -26,7 +26,7 @@ urlpatterns = [
     # Requete depuis le cashless pour le retour de l'onboarding stripe
     path('onboard_stripe_return/', Onboard_stripe_return.as_view()),
 
-    path('charge_primary_asset/', ChargePrimaryAsset.as_view()),
+    path('checkout_stripe_for_charge_primary_asset/', CheckoutStripeForChargePrimaryAsset.as_view()),
     path('webhook_stripe/', WebhookStripe.as_view()),
     path('', include(dashboard_urls)),
     path('', include(router.urls)),
