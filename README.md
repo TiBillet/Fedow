@@ -20,7 +20,7 @@ Vous pouvez trouver plus d'informations sur notre blog :
 [https://tibillet.org/blog/federation-part5-fedow](https://tibillet.org/blog/federation-part5-fedow)
 
 
-## Principtes
+## Principes
 
 ### Assets et Fédération
 
