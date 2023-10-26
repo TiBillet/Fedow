@@ -153,7 +153,7 @@ poetry run python manage.py create_asset Peaksu PKS
 
 ```bash
 # Create new place
-poetry run python manage.py new_place --name "Manapany Festival" --email = "contact@manap.org"
+poetry run python manage.py new_place
 # Copy the string and paste it to the TiBillet server administration.
 ```
 
