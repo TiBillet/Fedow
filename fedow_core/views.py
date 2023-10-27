@@ -114,14 +114,14 @@ class CardAPI(viewsets.ViewSet):
         card_serializer = CardCreateValidator(data=request.data, context={'request': request}, many=True)
         if card_serializer.is_valid():
             card_serializer.save()
-            return Response(request.data, status=status.HTTP_201_CREATED, content_type="application/json")
+            logger.info(f"{len(card_serializer.validated_data)} Cards created")
+            return Response(f"{len(card_serializer.validated_data)}", status=status.HTTP_201_CREATED,
+                            content_type="application/json")
         logger.error(f"Card create error : {card_serializer.errors}")
         return Response(card_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get_permissions(self):
         permission_classes = [HasKeyAndCashlessSignature]
-        # if self.action in ['list', 'retrieve']:
-        #     permission_classes = [HasAPIKey]
         return [permission() for permission in permission_classes]
 
 
@@ -383,8 +383,6 @@ class Onboard_stripe_return(APIView):
                 return Response("Compte stripe non valide", status=status.HTTP_406_NOT_ACCEPTABLE)
 
 
-
-
 @permission_classes([HasAPIKey])
 class CheckoutStripeForChargePrimaryAsset(APIView):
     def post(self, request):
@@ -461,6 +459,7 @@ class CheckoutStripeForChargePrimaryAsset(APIView):
 
         logger.error(f"CheckoutStripeForChargePrimaryAsset error : {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 class MembershipAPI(viewsets.ViewSet):
     def create(self, request):

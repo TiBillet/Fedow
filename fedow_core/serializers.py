@@ -135,6 +135,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 class CardCreateValidator(serializers.ModelSerializer):
     generation = serializers.IntegerField(required=True)
+    is_primary = serializers.BooleanField(required=True)
 
     def validate_generation(self, value):
         place = self.context.get('request').place
@@ -150,9 +151,15 @@ class CardCreateValidator(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
+        is_primary = validated_data.pop('is_primary', False)
         validated_data.pop('generation')
         validated_data['origin'] = self.origin
-        return Card.objects.create(**validated_data)
+
+        card = Card.objects.create(**validated_data)
+        if is_primary:
+            self.origin.place.primary_cards.add(card)
+        return card
+
 
     class Meta:
         model = Card
@@ -163,6 +170,7 @@ class CardCreateValidator(serializers.ModelSerializer):
             'qrcode_uuid',
             'number_printed',
             'generation',
+            'is_primary',
         )
 
 
@@ -178,6 +186,7 @@ class CardSerializer(serializers.ModelSerializer):
     class Meta:
         model = Card
         fields = (
+            'first_tag_id',
             'wallet',
         )
 
@@ -295,8 +304,14 @@ class TransactionW2W(serializers.Serializer):
     receiver = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
     asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all())
 
-    primary_card = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
-    user_card = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
+    primary_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
+    primary_card_fisrtTagId = serializers.SlugRelatedField(
+        queryset=Card.objects.all(),
+        required=False, slug_field='first_tag_id')
+    user_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
+    user_card_firstTagId = serializers.SlugRelatedField(
+        queryset=Card.objects.all(),
+        required=False, slug_field='first_tag_id')
 
     def validate_amount(self, value):
         # Positive amount only
@@ -306,9 +321,6 @@ class TransactionW2W(serializers.Serializer):
 
     def validate_primary_card(self, value):
         # TODO; Check carte primaire et lieux
-        return value
-
-    def validate_user_card(self, value):
         return value
 
     def get_action(self):
@@ -329,8 +341,14 @@ class TransactionW2W(serializers.Serializer):
 
         elif self.place.wallet == self.receiver:
             action = Transaction.SALE
+            if not self.primary_card:
+                raise serializers.ValidationError("Primary card is required for sale transaction")
+            if self.primary_card not in self.place.primary_cards.all():
+                raise serializers.ValidationError("Primary card must be in place primary cards")
+            if not self.user_card:
+                raise serializers.ValidationError("User card is required for sale transaction")
             # Si le lieu du wallet est dans la délégation d'autorité du wallet de la carte
-            if not self.receiver in self.sender.get_authority_delegation(card=self.card):
+            if not self.receiver in self.user_card.get_authority_delegation():
                 # Place must be in card user wallet authority delegation
                 logger.warning(f"{timezone.localtime()} WARNING sender not in receiver authority delegation")
                 raise serializers.ValidationError("Unauthorized")
@@ -347,7 +365,10 @@ class TransactionW2W(serializers.Serializer):
         self.receiver: Wallet = attrs.get('receiver')
         self.asset: Asset = attrs.get('asset')
         self.amount: int = attrs.get('amount')
-        self.card = attrs.get('user_card')
+
+        # Avons nous une carte user et/ou une carte primaire LaBoutik ?
+        self.primary_card = attrs.get('primary_card_uuid') or attrs.get('primary_card_fisrtTagId')
+        self.user_card = attrs.get('user_card_uuid') or attrs.get('user_card_firstTagId')
 
         action = self.get_action()
         if not action:
@@ -389,8 +410,8 @@ class TransactionW2W(serializers.Serializer):
             asset=self.asset,
             amount=self.amount,
             action=action,
-            primary_card=attrs.get('primary_card'),
-            card=attrs.get('user_card'),
+            primary_card=self.primary_card,
+            card=self.user_card,
         )
 
         if not transaction.verify_hash():
@@ -413,6 +434,8 @@ class TransactionSerializer(serializers.ModelSerializer):
             "sender",
             "receiver",
             "amount",
+            "card",
+            "primary_card",
             "previous_transaction",
             "comment",
             "verify_hash",

@@ -190,13 +190,7 @@ class Wallet(models.Model):
             return "Primary"
         return f"{str(self.uuid)[:8]}"
 
-    def get_authority_delegation(self, card=None):
-        card: Card = card
-        if card :
-            if self.user == card.user:
-                place_origin = card.origin.place
-                return place_origin.wallet_federated_with()
-        return []
+
 
     def is_primary(self):
         # primary is the related name of the Wallet Configuration foreign key
@@ -289,6 +283,9 @@ class Transaction(models.Model):
             'amount': f"{self.amount}",
             'date': f"{self.datetime.isoformat()}",
             'action': f"{self.action}",
+            'card': f"{self.card.uuid}" if self.card else None,
+            'primary_card': f"{self.primary_card.uuid}" if self.primary_card else None,
+            'comment': f"{self.comment}",
             'checkoupt_stripe': f"{self._checkout_session_id_stripe()}",
             'previous_asset_transaction_uuid': f"{self.previous_transaction.uuid}",
             'previous_asset_transaction_hash': f"{self.previous_transaction.hash}",
@@ -344,6 +341,7 @@ class Transaction(models.Model):
         if self.action == Transaction.REFILL:
             assert not self.receiver.is_primary(), "Receiver must be a user wallet"
             if self.card:
+                assert self.card.get_wallet() == self.receiver, "Card must be associated to receiver wallet"
                 if not self.card.wallet_ephemere:
                     assert self.receiver.user, "Receiver must be a user wallet"
             assert not self.receiver.is_place(), "Receiver must be a user wallet"
@@ -362,14 +360,15 @@ class Transaction(models.Model):
             assert not self.sender.is_place(), "Sender must be a user wallet"
 
             assert self.card, "Card must be set for sale."
+            assert self.card.get_wallet() == self.sender, "Card must be associated to sender wallet"
             if not self.card.wallet_ephemere:
                 assert self.sender.user, "Sender must be a user wallet"
 
             assert not self.sender.is_primary(), "Sender must be a user wallet"
 
             assert self.primary_card, "Primary card must be set for sale."
-            assert self.primary_card in self.receiver.place.primary_cards_cashless.all(), \
-                "Primary card must be set for sale and admin on place"
+            assert self.primary_card in self.receiver.place.primary_cards.all(), \
+                "Primary card must be set for place"
 
             # FILL TOKEN WALLET
             token_sender.value -= self.amount
@@ -478,7 +477,6 @@ class Place(models.Model):
                                              help_text="Encrypted API key of cashless server admin.")
 
     admins = models.ManyToManyField(FedowUser, related_name='admin_places')
-    primary_cards_cashless = models.ManyToManyField('Card', related_name='primary_cards_cashless')
 
     logo = JPEGField(upload_to='images/',
                      validators=[
@@ -567,6 +565,7 @@ class Card(models.Model):
 
     user = models.ForeignKey(FedowUser, on_delete=models.PROTECT, related_name='cards', blank=True, null=True)
     origin = models.ForeignKey(Origin, on_delete=models.PROTECT, related_name='cards')
+    primary_places = models.ManyToManyField(Place, related_name='primary_cards')
 
     # Dette technique pour les cartes qui ne possèdent pas d'utilisateur
     # TODO : Dès qu'un user se manifeste, fusionner les wallet
@@ -587,7 +586,10 @@ class Card(models.Model):
             self.save()
             return self.wallet_ephemere
 
-
+    def get_authority_delegation(self):
+        card: Card = self
+        place_origin = card.origin.place
+        return place_origin.wallet_federated_with()
 
 class OrganizationAPIKey(AbstractAPIKey):
     place = models.ForeignKey(

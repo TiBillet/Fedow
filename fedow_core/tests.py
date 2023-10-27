@@ -91,7 +91,7 @@ class FedowTestCase(TestCase):
         key = self.temp_key_place
         place: Place = self.place
 
-        # Signature de la requete : on signe le path
+        # Signature de la requete : on signe la clé
         signature = sign_message(
             key.encode('utf8'),
             self.private_cashless_rsa,
@@ -241,6 +241,7 @@ class AssetCardTest(FedowTestCase):
 
         return wallet
 
+    @tag("create_card")
     def test_create_multiple_card(self):
         # création d'une liste de 10 sans uuid avec gen 1
         cards = []
@@ -305,10 +306,10 @@ class AssetCardTest(FedowTestCase):
 
         # LOCAL FIAT (Monnaie EURO)
         message = {
+            "uuid": str(uuid4()),
             "name": faker.currency_name(),
             "currency_code": faker.currency_code(),
             "category": Asset.TOKEN_LOCAL_FIAT,
-            "uuid": str(uuid4()),
             "created_at": make_aware(faker.date_time_this_year()).isoformat()
         }
         response = self._post_from_simulated_cashless('asset', message)
@@ -316,10 +317,10 @@ class AssetCardTest(FedowTestCase):
 
         # LOCAL NON FIAT (monnaie temps, cadeau, bénévoles, june)
         message = {
+            "uuid": str(uuid4()),
             "name": faker.currency_name(),
             "currency_code": faker.currency_code(),
             "category": Asset.TOKEN_LOCAL_NOT_FIAT,
-            "uuid": str(uuid4()),
             "created_at": make_aware(faker.date_time_this_year()).isoformat()
         }
         response = self._post_from_simulated_cashless('asset', message)
@@ -379,13 +380,15 @@ class AssetCardTest(FedowTestCase):
                 amount = random.randint(10, 10000)
                 total_par_assets[f"{asset.uuid}"] += amount
 
+                # On fait un coup avec la card uuid
                 transaction_creation = {
                     "amount": amount,
                     "sender": f"{place.wallet.uuid}",
                     "receiver": f"{place.wallet.uuid}",
                     "asset": f"{asset.uuid}",
-                    "user_card": f"{card.uuid}",
+                    "user_card_uuid": f"{card.uuid}",
                 }
+
                 response = self._post_from_simulated_cashless('transaction', transaction_creation)
                 self.assertEqual(response.status_code, 201)
                 transaction = Transaction.objects.get(pk=response.json().get('uuid'))
@@ -399,12 +402,13 @@ class AssetCardTest(FedowTestCase):
 
                 # virement vers le portefeuille de la carte
                 wallet_card = card.get_wallet()
+                # ici on test avec le tagid de la carte
                 transaction_refill = {
                     "amount": amount,
                     "sender": f"{place.wallet.uuid}",
                     "receiver": f"{wallet_card.uuid}",
                     "asset": f"{asset.uuid}",
-                    "user_card": f"{card.uuid}",
+                    "user_card_firstTagId": f"{card.first_tag_id}",
                 }
                 response = self._post_from_simulated_cashless('transaction', transaction_refill)
                 self.assertEqual(response.status_code, 201)
@@ -496,6 +500,8 @@ class AssetCardTest(FedowTestCase):
         # token = Token.objects.get(asset=asset, wallet=user.wallet)
         # self.assertEqual(token.value, int(data['amount']))
 
+    def xtest_vente(self):
+        pass
 
 class APITestHelloWorld(FedowTestCase):
 
@@ -849,7 +855,7 @@ def test_transaction_from_card_to_place_without_API(self):
         "amount": "1000",
         "asset": f"{primary_asset.uuid}",
         "primary_card": f"{primary_card.uuid}",
-        "user_card": f"{card.uuid}",
+        "user_card_uuid": f"{card.uuid}",
     }
 
     self.place.cashless_rsa_pub_key = self.public_cashless_pem
