@@ -253,7 +253,8 @@ class AssetCardTest(FedowTestCase):
                 "complete_tag_id_uuid": complete_tag_id_uuid,
                 "qrcode_uuid": qrcode_uuid,
                 "number_printed": qrcode_uuid.split('-')[0],
-                "generation": "1",
+                "generation": 1,
+                "is_primary": False,
             })
 
         response = self._post_from_simulated_cashless('card', cards)
@@ -272,7 +273,8 @@ class AssetCardTest(FedowTestCase):
                 "complete_tag_id_uuid": uuid_nfc,
                 "qrcode_uuid": uuid_qrcode,
                 "number_printed": uuid_qrcode.split('-')[0],
-                "generation": "2",
+                "generation": 2,
+                "is_primary": False,
             })
 
         response = self._post_from_simulated_cashless('card', card_gen2)
