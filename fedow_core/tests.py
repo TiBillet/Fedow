@@ -235,6 +235,7 @@ class AssetCardTest(FedowTestCase):
         }
         response = self._post_from_simulated_cashless('wallet', data)
         self.assertEqual(response.status_code, 201)
+
         wallet = Wallet.objects.get(pk=response.data)
         self.assertEqual(wallet.user.email, email)
         self.assertIn(card, wallet.user.cards.all())
@@ -363,6 +364,7 @@ class AssetCardTest(FedowTestCase):
 
         return Asset.objects.all()
 
+
     @tag("create_token")
     def test_send_new_tokens_to_wallet(self):
         # Création de 3 assets différents pour simuler un asset € et deux monnaies temps/bénévoles
@@ -383,26 +385,6 @@ class AssetCardTest(FedowTestCase):
                 # entre 10 centimes et 100 euros
                 amount = random.randint(10, 10000)
                 total_par_assets[f"{asset.uuid}"] += amount
-
-                # # On fait un coup avec la card uuid
-                # transaction_creation = {
-                #     "amount": amount,
-                #     "sender": f"{place.wallet.uuid}",
-                #     "receiver": f"{place.wallet.uuid}",
-                #     "asset": f"{asset.uuid}",
-                #     "user_card_uuid": f"{card.uuid}",
-                # }
-                #
-                # response = self._post_from_simulated_cashless('transaction', transaction_creation)
-                # self.assertEqual(response.status_code, 201)
-                # transaction = Transaction.objects.get(pk=response.json().get('uuid'))
-                # self.assertEqual(transaction.action, Transaction.CREATION)
-                # self.assertEqual(transaction.asset, asset)
-                # self.assertEqual(transaction.sender, place.wallet)
-                # self.assertEqual(transaction.receiver, place.wallet)
-                # self.assertEqual(transaction.amount, amount)
-                # self.assertEqual(transaction.card, card)
-                # self.assertEqual(transaction.primary_card, None)
 
                 # virement vers le portefeuille de la carte
                 wallet_card = card.get_wallet()
@@ -434,6 +416,33 @@ class AssetCardTest(FedowTestCase):
         for asset_uuid, total in total_par_assets.items():
             self.assertEqual(Token.objects.filter(asset__uuid=asset_uuid).aggregate(Sum('value')).get('value__sum'),
                              total)
+
+
+        # SUBSCRIPTION : Il faut un wallet avec un user
+        self.test_create_wallet_with_API()
+        card = Card.objects.filter(user__isnull=False).first()
+        wallet_card = card.get_wallet()
+        sub = assets.filter(category=Asset.SUBSCRIPTION).first()
+        transaction_refill = {
+            "amount": 1000,
+            "sender": f"{place.wallet.uuid}",
+            "receiver": f"{wallet_card.uuid}",
+            "asset": f"{sub.uuid}",
+            "user_card_firstTagId": f"{card.first_tag_id}",
+        }
+        response_abonnement = self._post_from_simulated_cashless('transaction', transaction_refill)
+        if response_abonnement.status_code != 201:
+            import ipdb; ipdb.set_trace()
+
+        transaction = Transaction.objects.get(pk=response_abonnement.json().get('uuid'))
+        self.assertEqual(transaction.action, Transaction.SUBSCRIBE)
+        self.assertEqual(transaction.asset, sub)
+        self.assertEqual(transaction.sender, place.wallet)
+        self.assertEqual(transaction.receiver, wallet_card)
+        self.assertEqual(transaction.amount, 1000)
+        self.assertEqual(transaction.card, card)
+        self.assertEqual(transaction.primary_card, None)
+
 
     @tag("stripe")
     def test_get_stripe_checkout_in_charge_primary_asset_api(self):

@@ -216,7 +216,7 @@ class Wallet(models.Model):
         return get_private_key(self.private_pem)
 
     def __str__(self):
-        return f"{[(token.asset.name, token.value) for token in self.tokens.all()]}"
+        return f"{self.get_name()} - {[(token.asset.name, token.value) for token in self.tokens.all()]}"
 
 
 class Token(models.Model):
