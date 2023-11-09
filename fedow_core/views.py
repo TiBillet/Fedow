@@ -107,8 +107,15 @@ class CardAPI(viewsets.ViewSet):
 
     def retrieve(self, request, pk=None):
         # Utilisé par les serveurs cashless comme un check card
-        serializer = CardSerializer(Card.objects.get(first_tag_id=pk))
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        try :
+            card = Card.objects.get(first_tag_id=pk)
+            serializer = CardSerializer(card)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Card.DoesNotExist:
+            return Response("Carte inconnue", status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"{timezone.now()} Card retrieve error : {e}")
+            raise e
 
     def create(self, request):
         card_serializer = CardCreateValidator(data=request.data, context={'request': request}, many=True)

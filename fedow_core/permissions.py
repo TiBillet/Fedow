@@ -70,10 +70,17 @@ class HasKeyAndCashlessSignature(BaseHasAPIKey):
             logger.debug(f"HasKeyAndCashlessSignature : no key")
             return False
 
-        api_key = self.model.objects.get_from_key(key)
-        place = api_key.place
-        request.place = place
-        cashless_public_key = place.cashless_public_key()
+        try :
+            api_key = self.model.objects.get_from_key(key)
+            place = api_key.place
+            request.place = place
+            cashless_public_key = place.cashless_public_key()
+        except OrganizationAPIKey.DoesNotExist:
+            logger.warning(f"HasKeyAndCashlessSignature : no api key")
+            return False
+        except Exception as e:
+            logger.error(f"HasKeyAndCashlessSignature : {e}")
+            raise e
 
         signature = self.get_signature(request)
         if not signature:

@@ -79,6 +79,8 @@ class Asset(models.Model):
                     blank=True, null=True,
                     )
 
+    comment = models.TextField(blank=True, null=True)
+
     origin = models.ForeignKey('Wallet', on_delete=models.PROTECT,
                                # related_name='primary_asset',
                                related_name='assets_created',
@@ -89,13 +91,13 @@ class Asset(models.Model):
     TOKEN_LOCAL_FIAT = 'TLF'
     TOKEN_LOCAL_NOT_FIAT = 'TNF'
     STRIPE_FED_FIAT = 'FED'
-    MEMBERSHIP = 'MEM'
+    SUBSCRIPTION = 'SUB'
 
     CATEGORIES = [
         (TOKEN_LOCAL_FIAT, 'Fiduciary local token'),
         (TOKEN_LOCAL_NOT_FIAT, 'Token local non fiduciaire'),
         (STRIPE_FED_FIAT, 'Fiduciary and federated token on stripe'),
-        (MEMBERSHIP, 'Membership or subscription'),
+        (SUBSCRIPTION, 'Membership or subscription'),
     ]
 
     category = models.CharField(
@@ -262,16 +264,20 @@ class Transaction(models.Model):
 
     previous_transaction = models.ForeignKey('self', on_delete=models.PROTECT, related_name='next_transaction')
     datetime = models.DateTimeField()
-    amount = models.PositiveIntegerField()
-    comment = models.CharField(max_length=100, blank=True)
 
-    FIRST, SALE, CREATION, REFILL, TRANSFER = 'F', 'S', 'C', 'R', 'T'
+    amount = models.PositiveIntegerField()
+    comment = models.TextField(blank=True, null=True)
+
+    subscription_start_datetime = models.DateTimeField(blank=True, null=True)
+
+    FIRST, SALE, CREATION, REFILL, TRANSFER, SUBSCRIBE = 'F', 'S', 'C', 'R', 'T', 'B'
     TYPE_ACTION = (
         (FIRST, "Premier bloc"),
         (SALE, "Vente d'article"),
         (CREATION, 'Creation monétaire'),
         (REFILL, 'Recharge'),
         (TRANSFER, 'Transfert'),
+        (SUBSCRIBE, 'Abonnement ou adhésion'),
     )
     action = models.CharField(max_length=1, choices=TYPE_ACTION, default=SALE)
 
@@ -282,6 +288,7 @@ class Transaction(models.Model):
             'asset': f"{self.asset.uuid}",
             'amount': f"{self.amount}",
             'date': f"{self.datetime.isoformat()}",
+            'subscription_start_datetime': f"{self.subscription_start_datetime.isoformat()}" if self.subscription_start_datetime else None,
             'action': f"{self.action}",
             'card': f"{self.card.uuid}" if self.card else None,
             'primary_card': f"{self.primary_card.uuid}" if self.primary_card else None,
@@ -320,12 +327,12 @@ class Transaction(models.Model):
         token_sender, created = Token.objects.get_or_create(wallet=self.sender, asset=self.asset)
         token_receiver, created = Token.objects.get_or_create(wallet=self.receiver, asset=self.asset)
 
-        # Validator 0 : First must be unique
+        # Validator FIRST : First must be unique
         if self.action == Transaction.FIRST:
             assert not self.asset.transactions.filter(
                 action=Transaction.FIRST).exists(), "First transaction already exists."
 
-        # Validator 1 : IF CREATION
+        # Validator CREATION
         elif self.action == Transaction.CREATION:
             assert self.sender == self.receiver, "Sender and receiver must be the same for creation money."
             if self.asset.is_stripe_primary():
@@ -333,12 +340,25 @@ class Transaction(models.Model):
 
             # FILL TOKEN WALLET
             token_receiver.value += self.amount
-        else:
-            if not token_sender.value >= self.amount:
-                raise ValueError("amount too high")
+
+        # Validatr 4 : IF SUBSCRIBE
+        elif self.action == Transaction.SUBSCRIBE:
+            # Pas besoin de création monétaire, on charge directement le wallet client
+            assert self.asset.category == Asset.SUBSCRIPTION, "Asset must be a subscription asset"
+            assert self.sender.is_place(), "Sender must be a place wallet"
+            assert self.sender.place.wallet == self.asset.origin, "Subscription origin must be the place"
+            assert self.receiver.user, "Receiver must be a user wallet"
+
+            # On ajoute le montant de l'abonnement au wallet du client
+            token_receiver.value += self.amount
+
+
 
         # Validator 2 : IF REFILL
         if self.action == Transaction.REFILL:
+            # Nous avons besoin que le sender ait assez de token
+            if not token_sender.value >= self.amount:
+                raise ValueError("amount too high")
             assert not self.receiver.is_primary(), "Receiver must be a user wallet"
             if self.card:
                 assert self.card.get_wallet() == self.receiver, "Card must be associated to receiver wallet"
@@ -354,6 +374,10 @@ class Transaction(models.Model):
 
         # Validator 3 : IF SALE
         if self.action == Transaction.SALE:
+            # Nous avons besoin que le sender ait assez de token
+            if not token_sender.value >= self.amount:
+                raise ValueError("amount too high")
+
             assert self.receiver.is_place(), "Receiver must be a place wallet"
             assert self.receiver.place, "Receiver must be a place wallet"
             assert not self.receiver.is_primary(), "Receiver must be a place wallet"
@@ -373,6 +397,8 @@ class Transaction(models.Model):
             # FILL TOKEN WALLET
             token_sender.value -= self.amount
             token_receiver.value += self.amount
+
+
 
         ## Check previous transaction
         # Le hash ne peut se faire que si la transaction précédente est validée
@@ -539,19 +565,8 @@ class Origin(models.Model):
                     verbose_name='img',
                     )
 
-
-"""
-    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=False)
-
-    first_tag_id = models.CharField(max_length=8, editable=False, db_index=True)
-    complete_tag_id_uuid = models.UUIDField(editable=False, blank=True, null=True)
-
-    qrcode_uuid = models.UUIDField(editable=False)
-    number_printed = models.CharField(max_length=8, editable=False, db_index=True)
-
-    user = models.ForeignKey(FedowUser, on_delete=models.PROTECT, related_name='cards', blank=True, null=True)
-    origin = models.ForeignKey(Origin, on_delete=models.PROTECT, related_name='cards', blank=True, null=True)
-"""
+    def __str__(self):
+        return f"{self.place.name} - V{self.generation}"
 
 
 class Card(models.Model):
@@ -590,6 +605,7 @@ class Card(models.Model):
         card: Card = self
         place_origin = card.origin.place
         return place_origin.wallet_federated_with()
+
 
 class OrganizationAPIKey(AbstractAPIKey):
     place = models.ForeignKey(
@@ -656,7 +672,7 @@ def asset_creator(name: str = None,
         # Il ne peut y avoir qu'un seul asset de type STRIPE_FED_FIAT
         if Asset.objects.filter(category=Asset.STRIPE_FED_FIAT).exists():
             raise ValueError('Only one asset of type STRIPE_FED_FIAT can exist')
-    elif category not in [Asset.TOKEN_LOCAL_FIAT, Asset.TOKEN_LOCAL_NOT_FIAT, Asset.MEMBERSHIP]:
+    elif category not in [Asset.TOKEN_LOCAL_FIAT, Asset.TOKEN_LOCAL_NOT_FIAT, Asset.SUBSCRIPTION]:
         raise ValueError('Category not in choices')
 
     # Vérification que l'asset et/ou le code n'existe pas

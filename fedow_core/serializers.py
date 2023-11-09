@@ -174,21 +174,6 @@ class CardCreateValidator(serializers.ModelSerializer):
         )
 
 
-class CardSerializer(serializers.ModelSerializer):
-    # Un MethodField car le wallet peut être celui de l'user ou celui de la carte anonyme.
-    # Faut lancer la fonction get_wallet() pour avoir le bon wallet...
-    wallet = serializers.SerializerMethodField()
-
-    def get_wallet(self, obj: Card):
-        wallet = obj.get_wallet()
-        return WalletSerializer(wallet).data
-
-    class Meta:
-        model = Card
-        fields = (
-            'first_tag_id',
-            'wallet',
-        )
 
 
 class AssetSerializer(serializers.ModelSerializer):
@@ -248,6 +233,7 @@ class AssetCreateValidator(serializers.Serializer):
             raise serializers.ValidationError("Asset creation failed")
 
 
+
 class PlaceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Place
@@ -259,6 +245,15 @@ class PlaceSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         return attrs
 
+class OriginSerializer(serializers.ModelSerializer):
+    place = serializers.SlugField(source='place.name')
+    class Meta:
+        model = Origin
+        fields = (
+            'place',
+            'generation',
+            'img',
+        )
 
 class WalletCreateSerializer(serializers.Serializer):
     email = serializers.EmailField(required=False)
@@ -298,11 +293,37 @@ class WalletCreateSerializer(serializers.Serializer):
         return representation
 
 
+class CardSerializer(serializers.ModelSerializer):
+    # Un MethodField car le wallet peut être celui de l'user ou celui de la carte anonyme.
+    # Faut lancer la fonction get_wallet() pour avoir le bon wallet...
+    wallet = serializers.SerializerMethodField()
+    origin = OriginSerializer()
+
+    def get_place_origin(self, obj: Card):
+        return f"{obj.origin.place.name} V{obj.origin.generation}"
+
+    def get_wallet(self, obj: Card):
+        wallet = obj.get_wallet()
+        return WalletSerializer(wallet).data
+
+    class Meta:
+        model = Card
+        fields = (
+            'first_tag_id',
+            'wallet',
+            'origin',
+            'uuid',
+            'qrcode_uuid',
+            'number_printed',
+        )
+
+
 class TransactionW2W(serializers.Serializer):
     amount = serializers.IntegerField()
     sender = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
     receiver = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
     asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all())
+    subscription_start_datetime = serializers.DateTimeField(required=False)
 
     primary_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
     primary_card_fisrtTagId = serializers.SlugRelatedField(
@@ -329,15 +350,15 @@ class TransactionW2W(serializers.Serializer):
 
         if self.place.wallet == self.sender:
             # Un lieu envoi : c'est une recharge de carte
-            # ou une adhésion / abonnement
             action = Transaction.REFILL
+
+            if self.asset.category == Asset.SUBSCRIPTION:
+                # ou une adhésion / abonnement
+                action = Transaction.SUBSCRIBE
+
             if self.sender == self.receiver:
                 if self.asset.origin == self.place.wallet:
-                    # Le wallet du lieu est le sender ET le receiver
-                    # L'origine de l'asset est bien le lieu
-                    # C'est alors une création de token d'asset non FEDEREE PRIMAIRE (qui doit obligatoirement passer par stripe )
-                    # adhésion, monnaie temps, monnaie cadeau, etc ...
-                    action = Transaction.CREATION
+                    raise Exception('send REFILL instead')
 
         elif self.place.wallet == self.receiver:
             action = Transaction.SALE
@@ -356,7 +377,7 @@ class TransactionW2W(serializers.Serializer):
         return action
 
     def validate(self, attrs):
-        # Récupération de la place grâce a la permission HasKeyAndCashlessSignature
+        # Récupération de la place grâce à la permission HasKeyAndCashlessSignature
         request = self.context.get('request')
         self.place: Place = request.place
 
@@ -387,7 +408,7 @@ class TransactionW2W(serializers.Serializer):
         try:
             token_sender = Token.objects.get(wallet=self.sender, asset=self.asset)
             # Check if sender has enough value
-            if token_sender.value < self.amount and action != Transaction.CREATION:
+            if token_sender.value < self.amount and action in [Transaction.SALE, Transaction.TRANSFER]:
                 logger.error(f"{timezone.localtime()} ERROR sender not enough value - {request}")
                 raise serializers.ValidationError("Not enough token on sender wallet")
         except Token.DoesNotExist:
@@ -402,6 +423,25 @@ class TransactionW2W(serializers.Serializer):
             self.token_receiver = Token.objects.create(wallet=self.receiver, asset=self.asset, value=0)
 
         ### ALL CHECK OK ###
+
+        # Si c'est un refill, on génère la monnaie avant :
+        if action == Transaction.REFILL:
+            transaction = Transaction.objects.create(
+                ip=get_request_ip(request),
+                checkout_stripe=None,
+                sender=self.sender,
+                receiver=self.sender,
+                asset=self.asset,
+                amount=self.amount,
+                action=Transaction.CREATION,
+                primary_card=self.primary_card,
+                card=self.user_card,
+            )
+            if not transaction.verify_hash():
+                logger.error(
+                    f"{timezone.localtime()} ERROR NewTransactionWallet2WalletValidator : transaction hash is not valid on CREATION")
+                raise serializers.ValidationError("Transaction hash is not valid")
+
         transaction = Transaction.objects.create(
             ip=get_request_ip(request),
             checkout_stripe=None,
@@ -431,6 +471,7 @@ class TransactionSerializer(serializers.ModelSerializer):
             "action",
             "hash",
             "datetime",
+            "subscription_start_datetime",
             "sender",
             "receiver",
             "amount",

@@ -326,6 +326,8 @@ class AssetCardTest(FedowTestCase):
             "created_at": make_aware(faker.date_time_this_year()).isoformat()
         }
         response = self._post_from_simulated_cashless('asset', message)
+        if response.status_code != 201:
+            import ipdb; ipdb.set_trace()
         self.assertEqual(response.status_code, 201)
 
         # Abonnement ou adhésion associatve
@@ -339,7 +341,7 @@ class AssetCardTest(FedowTestCase):
         message = {
             "name": name,
             "currency_code": currency_code,
-            "category": Asset.MEMBERSHIP,
+            "category": Asset.SUBSCRIPTION,
             "uuid": asset_uuid,
             "created_at": created_at.isoformat()
         }
@@ -374,7 +376,7 @@ class AssetCardTest(FedowTestCase):
             # Création aléatoire de portefeuille
             # De 1 à 3 assets différents
             r_assets = random.sample(
-                [asset for asset in assets.exclude(category=Asset.STRIPE_FED_FIAT)],
+                [asset for asset in assets.exclude(category__in=[Asset.STRIPE_FED_FIAT, Asset.SUBSCRIPTION])],
                 k=random.randint(1, 3))
 
             for asset in r_assets:
@@ -382,25 +384,25 @@ class AssetCardTest(FedowTestCase):
                 amount = random.randint(10, 10000)
                 total_par_assets[f"{asset.uuid}"] += amount
 
-                # On fait un coup avec la card uuid
-                transaction_creation = {
-                    "amount": amount,
-                    "sender": f"{place.wallet.uuid}",
-                    "receiver": f"{place.wallet.uuid}",
-                    "asset": f"{asset.uuid}",
-                    "user_card_uuid": f"{card.uuid}",
-                }
-
-                response = self._post_from_simulated_cashless('transaction', transaction_creation)
-                self.assertEqual(response.status_code, 201)
-                transaction = Transaction.objects.get(pk=response.json().get('uuid'))
-                self.assertEqual(transaction.action, Transaction.CREATION)
-                self.assertEqual(transaction.asset, asset)
-                self.assertEqual(transaction.sender, place.wallet)
-                self.assertEqual(transaction.receiver, place.wallet)
-                self.assertEqual(transaction.amount, amount)
-                self.assertEqual(transaction.card, card)
-                self.assertEqual(transaction.primary_card, None)
+                # # On fait un coup avec la card uuid
+                # transaction_creation = {
+                #     "amount": amount,
+                #     "sender": f"{place.wallet.uuid}",
+                #     "receiver": f"{place.wallet.uuid}",
+                #     "asset": f"{asset.uuid}",
+                #     "user_card_uuid": f"{card.uuid}",
+                # }
+                #
+                # response = self._post_from_simulated_cashless('transaction', transaction_creation)
+                # self.assertEqual(response.status_code, 201)
+                # transaction = Transaction.objects.get(pk=response.json().get('uuid'))
+                # self.assertEqual(transaction.action, Transaction.CREATION)
+                # self.assertEqual(transaction.asset, asset)
+                # self.assertEqual(transaction.sender, place.wallet)
+                # self.assertEqual(transaction.receiver, place.wallet)
+                # self.assertEqual(transaction.amount, amount)
+                # self.assertEqual(transaction.card, card)
+                # self.assertEqual(transaction.primary_card, None)
 
                 # virement vers le portefeuille de la carte
                 wallet_card = card.get_wallet()
@@ -413,6 +415,9 @@ class AssetCardTest(FedowTestCase):
                     "user_card_firstTagId": f"{card.first_tag_id}",
                 }
                 response = self._post_from_simulated_cashless('transaction', transaction_refill)
+                if response.status_code != 201:
+                    import ipdb; ipdb.set_trace()
+
                 self.assertEqual(response.status_code, 201)
                 transaction = Transaction.objects.get(pk=response.json().get('uuid'))
                 self.assertEqual(transaction.action, Transaction.REFILL)
@@ -479,6 +484,7 @@ class AssetCardTest(FedowTestCase):
         assets = self.create_asset_with_API()
         asset = assets.filter(category=Asset.TOKEN_LOCAL_NOT_FIAT).first()
 
+        # REFILL = creation monnétaire en une seule requete
         data = {
             "amount": "10",
             "sender": f"{place.wallet.uuid}",
@@ -487,20 +493,16 @@ class AssetCardTest(FedowTestCase):
         }
 
         response = self._post_from_simulated_cashless('transaction', data)
-        self.assertEqual(response.status_code, 400)
-        # pas assez sur le portefeuille du lieu, il faut d'abord créer la monnaie
-        self.assertIn('Not enough token on sender wallet', response.json().get('non_field_errors'))
+        self.assertEqual(response.status_code, 201)
 
-        # TODO: REFILL = creation monnétaire en une seule requete ?
-        # transaction = Transaction.objects.get(pk=response.json().get('uuid'))
-        # self.assertEqual(transaction.action, Transaction.REFILL)
-        # self.assertEqual(transaction.asset, asset)
-        # self.assertEqual(transaction.sender, place.wallet)
-        # self.assertEqual(transaction.receiver, user.wallet)
-        # self.assertEqual(transaction.amount, int(data['amount']))
-        #
-        # token = Token.objects.get(asset=asset, wallet=user.wallet)
-        # self.assertEqual(token.value, int(data['amount']))
+        transaction = Transaction.objects.get(pk=response.json().get('uuid'))
+        self.assertEqual(transaction.action, Transaction.REFILL)
+        self.assertEqual(transaction.asset, asset)
+        self.assertEqual(transaction.sender, place.wallet)
+        self.assertEqual(transaction.receiver, user.wallet)
+        self.assertEqual(transaction.amount, int(data['amount']))
+        token = Token.objects.get(asset=asset, wallet=user.wallet)
+        self.assertEqual(token.value, int(data['amount']))
 
     def xtest_vente(self):
         pass

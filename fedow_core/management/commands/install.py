@@ -52,9 +52,13 @@ class Command(BaseCommand):
                          '--origin', f'{primary_wallet.uuid}',
                          '--category', 'FED')
 
-            assert Asset.objects.all().count() == 1, "There is more than one asset"
-            fed_asset = Asset.objects.all()[0]
-            assert fed_asset.origin == config.primary_wallet, "Fedow origin is not primary wallet"
+
+            if Asset.objects.all().count() > 1:
+                raise CommandError("There is more than one asset, it's not an install nor an empty database.")
+
+            fed_asset = Asset.objects.first()
+            if fed_asset.origin != config.primary_wallet:
+                raise CommandError("Fedow origin is not primary wallet")
 
             price_stripe_id_refill_fed = os.environ.get('PRICE_STRIPE_ID_FED')
             if not price_stripe_id_refill_fed:

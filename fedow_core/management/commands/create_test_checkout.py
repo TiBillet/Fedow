@@ -77,7 +77,9 @@ class Command(BaseCommand):
         primary_wallet = config.primary_wallet
         primary_stripe_asset = Asset.objects.get(origin=primary_wallet, category=Asset.STRIPE_FED_FIAT)
         id_price_stripe = primary_stripe_asset.get_id_price_stripe()
-        assert primary_stripe_asset.is_stripe_primary(), "Asset is not primary"
+
+        if not primary_stripe_asset.is_stripe_primary():
+            raise Exception("Asset is not primary")
 
         primary_token, created = Token.objects.get_or_create(
             wallet=primary_wallet,
