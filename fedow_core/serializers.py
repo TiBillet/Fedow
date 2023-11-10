@@ -425,6 +425,9 @@ class TransactionW2W(serializers.Serializer):
 
         # Si c'est un refill, on génère la monnaie avant :
         if action == Transaction.REFILL:
+            if not self.primary_card or not self.user_card:
+                raise serializers.ValidationError("Primary card and user card are required for refill transaction")
+
             transaction = Transaction.objects.create(
                 ip=get_request_ip(request),
                 checkout_stripe=None,
@@ -474,6 +477,7 @@ class TransactionSerializer(serializers.ModelSerializer):
             "subscription_start_datetime",
             "sender",
             "receiver",
+            "asset",
             "amount",
             "card",
             "primary_card",

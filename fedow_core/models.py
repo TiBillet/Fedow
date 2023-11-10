@@ -193,8 +193,6 @@ class Wallet(models.Model):
             return "Primary"
         return f"{str(self.uuid)[:8]}"
 
-
-
     def is_primary(self):
         # primary is the related name of the Wallet Configuration foreign key
         # On peux récupérer cet object dans les controleurs de cette façon : Wallet.objects.get(primary__isnull=False)
@@ -328,6 +326,12 @@ class Transaction(models.Model):
         token_sender, created = Token.objects.get_or_create(wallet=self.sender, asset=self.asset)
         token_receiver, created = Token.objects.get_or_create(wallet=self.receiver, asset=self.asset)
 
+        ## Check previous transaction
+        # Le hash ne peut se faire que si la transaction précédente est validée
+        self.previous_transaction = self._previous_asset_transaction()
+        assert self.previous_transaction.verify_hash(), "Previous transaction hash is not valid."
+        assert self.previous_transaction.datetime <= self.datetime, "Datetime must be after previous transaction."
+
         # Validator FIRST : First must be unique
         if self.action == Transaction.FIRST:
             assert not self.asset.transactions.filter(
@@ -337,8 +341,14 @@ class Transaction(models.Model):
         elif self.action == Transaction.CREATION:
             assert self.sender == self.receiver, "Sender and receiver must be the same for creation money."
             if self.asset.is_stripe_primary():
+                # Pas besoin de carte primaire, mais besoin d'un checkout stripe
+                # TODO: Chekout stripe must be unique
                 assert self.checkout_stripe != None, "Checkout stripe must be set for create federated money."
-
+            else:
+                # besoin d'une carte primaire pour création monétaire
+                assert self.primary_card, "Primary card must be set for creation money."
+                assert self.primary_card in self.receiver.place.primary_cards.all(), \
+                    "Primary card must be set for place"
             # FILL TOKEN WALLET
             token_receiver.value += self.amount
 
@@ -353,11 +363,12 @@ class Transaction(models.Model):
             # On ajoute le montant de l'abonnement au wallet du client
             token_receiver.value += self.amount
 
-
-
         # Validator 2 : IF REFILL
         if self.action == Transaction.REFILL:
-            # Nous avons besoin que le sender ait assez de token
+            # On vérifie que la transaction précédente soit bien une création monétaire
+            assert self.previous_transaction.action == Transaction.CREATION, "Previous transaction of Refill must be a creation money."
+
+            # Nous avons besoin que le sender possède assez de token
             if not token_sender.value >= self.amount:
                 raise ValueError("amount too high")
             assert not self.receiver.is_primary(), "Receiver must be a user wallet"
@@ -398,14 +409,6 @@ class Transaction(models.Model):
             # FILL TOKEN WALLET
             token_sender.value -= self.amount
             token_receiver.value += self.amount
-
-
-
-        ## Check previous transaction
-        # Le hash ne peut se faire que si la transaction précédente est validée
-        self.previous_transaction = self._previous_asset_transaction()
-        assert self.previous_transaction.verify_hash(), "Previous transaction hash is not valid."
-        assert self.previous_transaction.datetime <= self.datetime, "Datetime must be after previous transaction."
 
         # ALL VALIDATOR PASSED : HASH CREATION
         if not self.hash:
@@ -652,7 +655,6 @@ def asset_creator(name: str = None,
                   original_uuid: uuid4 = None,
                   created_at: timezone = None,
                   ip=None, ):
-
     """
     Create an asset with a first block
     Can be outdated if the creation date if before the creation of fedow instance
