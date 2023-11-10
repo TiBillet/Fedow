@@ -160,7 +160,6 @@ class CardCreateValidator(serializers.ModelSerializer):
             self.origin.place.primary_cards.add(card)
         return card
 
-
     class Meta:
         model = Card
         fields = (
@@ -172,8 +171,6 @@ class CardCreateValidator(serializers.ModelSerializer):
             'generation',
             'is_primary',
         )
-
-
 
 
 class AssetSerializer(serializers.ModelSerializer):
@@ -233,7 +230,6 @@ class AssetCreateValidator(serializers.Serializer):
             raise serializers.ValidationError("Asset creation failed")
 
 
-
 class PlaceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Place
@@ -245,8 +241,10 @@ class PlaceSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         return attrs
 
+
 class OriginSerializer(serializers.ModelSerializer):
     place = serializers.SlugField(source='place.name')
+
     class Meta:
         model = Origin
         fields = (
@@ -254,6 +252,7 @@ class OriginSerializer(serializers.ModelSerializer):
             'generation',
             'img',
         )
+
 
 class WalletCreateSerializer(serializers.Serializer):
     email = serializers.EmailField(required=False)
@@ -464,6 +463,7 @@ class TransactionW2W(serializers.Serializer):
 
 
 class TransactionSerializer(serializers.ModelSerializer):
+    card = CardSerializer(many=False)
     class Meta:
         model = Transaction
         fields = (
@@ -481,4 +481,3 @@ class TransactionSerializer(serializers.ModelSerializer):
             "comment",
             "verify_hash",
         )
-

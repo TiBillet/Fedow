@@ -430,6 +430,7 @@ class AssetCardTest(FedowTestCase):
             "asset": f"{sub.uuid}",
             "user_card_firstTagId": f"{card.first_tag_id}",
         }
+
         response_abonnement = self._post_from_simulated_cashless('transaction', transaction_refill)
         if response_abonnement.status_code != 201:
             import ipdb; ipdb.set_trace()
