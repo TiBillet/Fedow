@@ -9,6 +9,7 @@ https://docs.djangoproject.com/en/4.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
+
 import os
 from dotenv import load_dotenv
 from pathlib import Path
@@ -60,7 +61,6 @@ INSTALLED_APPS = [
 
 if DEBUG:
     INSTALLED_APPS += ['django_browser_reload']
-
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

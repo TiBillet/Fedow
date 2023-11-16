@@ -269,7 +269,7 @@ class Transaction(models.Model):
 
     subscription_start_datetime = models.DateTimeField(blank=True, null=True)
 
-    FIRST, SALE, CREATION, REFILL, TRANSFER, SUBSCRIBE = 'F', 'S', 'C', 'R', 'T', 'B'
+    FIRST, SALE, CREATION, REFILL, TRANSFER, SUBSCRIBE = 'F', 'S', 'C', 'R', 'T', 'M'
     TYPE_ACTION = (
         (FIRST, "Premier bloc"),
         (SALE, "Vente d'article"),

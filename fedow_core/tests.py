@@ -388,7 +388,7 @@ class AssetCardTest(FedowTestCase):
     def test_send_new_tokens_to_wallet(self):
         # Création de 3 assets différents pour simuler un asset € et deux monnaies temps/bénévoles
         place: Place = self.place
-        primary_card = self.place.
+        primary_card = self.place.primary_cards.all().first()
         assets = self.create_asset_with_API()
 
         total_par_assets = {f"{asset.uuid}": 0 for asset in assets}
@@ -541,6 +541,7 @@ class AssetCardTest(FedowTestCase):
 
         response = self._post_from_simulated_cashless('transaction', data)
 
+        #TODO : carte primaire
         import ipdb; ipdb.set_trace()
         self.assertEqual(response.status_code, 201)
 

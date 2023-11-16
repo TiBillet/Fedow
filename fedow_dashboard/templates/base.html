@@ -25,6 +25,15 @@
 <script src="{% static 'js/loading-states.js' %}"></script>
 <script src="{% static 'js/hyperscript.0.9.11.min.js' %}"></script>
 
+{% if DEBUG %}
+    <script src="https://unpkg.com/htmx.org/dist/ext/debug.js"></script>
+    <script type="application/javascript">
+        document.addEventListener("DOMContentLoaded", function (event) {
+            htmx.logAll();
+        });
+    </script>
+{% endif %}
+
 </body>
 
 </html>
