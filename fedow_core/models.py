@@ -716,17 +716,20 @@ def asset_creator(name: str = None,
     return asset
 
 
-def get_or_create_user(email, ip=None):
+def get_or_create_user(email, ip=None, wallet_uuid=None):
     User: FedowUser = get_user_model()
     try:
         user = User.objects.get(email=email.lower())
         created = False
         return user, created
     except User.DoesNotExist:
+        # Si on nous envoie le wallet dans la fonction (pour liaison de carte existante, par exemple)
+        wallet = Wallet.objects.get(pk=wallet_uuid) if wallet_uuid else wallet_creator(ip=ip)
+
         user = User.objects.create(
             email=email.lower(),
             username=email.lower(),
-            wallet=wallet_creator(ip=ip),
+            wallet=wallet,
         )
         created = True
 

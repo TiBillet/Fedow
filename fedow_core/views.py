@@ -149,7 +149,11 @@ class WalletAPI(viewsets.ViewSet):
     def create(self, request):
         wallet_create_serializer = WalletCreateSerializer(data=request.data, context={'request': request})
         if wallet_create_serializer.is_valid():
-            return Response(f"{wallet_create_serializer.user.wallet.uuid}", status=status.HTTP_201_CREATED)
+            try :
+                return Response(f"{wallet_create_serializer.user.wallet.uuid}", status=status.HTTP_201_CREATED)
+            except Exception as e:
+                import ipdb; ipdb.set_trace()
+
         return Response(wallet_create_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get_permissions(self):

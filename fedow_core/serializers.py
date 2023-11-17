@@ -255,34 +255,60 @@ class OriginSerializer(serializers.ModelSerializer):
 
 
 class WalletCreateSerializer(serializers.Serializer):
-    email = serializers.EmailField(required=False)
+    email = serializers.EmailField()
+
     card_first_tag_id = serializers.SlugRelatedField(slug_field='first_tag_id',
                                                      queryset=Card.objects.all(), required=False)
     card_qrcode_uuid = serializers.SlugRelatedField(slug_field='qrcode_uuid',
                                                     queryset=Card.objects.all(), required=False)
 
-    def validate_email(self, value):
+    def validate(self, attrs):
+        # On trace l'ip de la requete
         ip = None
         request = self.context.get('request')
         if request:
             ip = get_request_ip(request)
-        self.user, created = get_or_create_user(value, ip=ip)
 
-        return self.user.email
+        # Récupération de l'email
+        self.user = None
+        email = attrs.get('email')
+        user_exist = FedowUser.objects.filter(email=email).exists()
 
-    def validate(self, attrs):
+        # Avons nous une carte dans la requete ?
         card: Card = attrs.get('card_first_tag_id') or attrs.get('card_qrcode_uuid')
         if card:
             # On ne veut pas écraser une carte avec un user existant,
-            # on link la carte a l'user si None
-            if not card.user:
-                card.user = self.user
+            # ou un wallet ephemère présent
+
+            # Cas 1 : Carte anonyme mais avec un wallet_ephemere
+            # On le lie à l'user
+            if card.wallet_ephemere and not user_exist:
+                user, created = get_or_create_user(email, ip=ip, wallet_uuid=card.wallet_ephemere.uuid)
+                card.user = user
+                self.user = user
                 card.save()
-            elif card.user != self.user:
-                raise serializers.ValidationError("Card already linked to another user")
 
-            self.card = card
+            # Cas 2 : Carte vierge
+            elif not card.user and not card.wallet_ephemere:
+                user, created = get_or_create_user(email, ip=ip)
+                card.user = user
+                self.user = user
+                card.save()
 
+            # Cas 3 : User exist et carte avec wallet, erreur à gerer
+            # TODO: fusion de wallet
+            elif user_exist:
+                user = FedowUser.objects.get(email=email)
+                self.user = user
+                if card.wallet_ephemere :
+                    if card.wallet_ephemere != user.wallet:
+                        raise serializers.ValidationError("Card already linked to another user")
+                if card.user:
+                    if card.user != user:
+                        raise serializers.ValidationError("Card already linked to another user")
+
+        if not self.user:
+            self.user, created = get_or_create_user(email, ip=ip)
         return attrs
 
     def to_representation(self, instance):
@@ -386,6 +412,9 @@ class TransactionW2W(serializers.Serializer):
         self.asset: Asset = attrs.get('asset')
         self.amount: int = attrs.get('amount')
 
+        # Subscription :
+        self.subscription_start_datetime = attrs.get('subscription_start_datetime')
+
         # Avons nous une carte user et/ou une carte primaire LaBoutik ?
         self.primary_card = attrs.get('primary_card_uuid') or attrs.get('primary_card_fisrtTagId')
         self.user_card = attrs.get('user_card_uuid') or attrs.get('user_card_firstTagId')
@@ -428,33 +457,38 @@ class TransactionW2W(serializers.Serializer):
             if not self.primary_card or not self.user_card:
                 raise serializers.ValidationError("Primary card and user card are required for refill transaction")
 
-            transaction = Transaction.objects.create(
-                ip=get_request_ip(request),
-                checkout_stripe=None,
-                sender=self.sender,
-                receiver=self.sender,
-                asset=self.asset,
-                amount=self.amount,
-                action=Transaction.CREATION,
-                primary_card=self.primary_card,
-                card=self.user_card,
-            )
-            if not transaction.verify_hash():
+            crea_transac_dict = {
+                "ip": get_request_ip(request),
+                "checkout_stripe": None,
+                "sender": self.sender,
+                "receiver": self.sender,
+                "asset": self.asset,
+                "amount": self.amount,
+                "action": Transaction.CREATION,
+                "primary_card": self.primary_card,
+                "card": self.user_card,
+            }
+            crea_transaction = Transaction.objects.create(**crea_transac_dict)
+
+
+            if not crea_transaction.verify_hash():
                 logger.error(
                     f"{timezone.localtime()} ERROR NewTransactionWallet2WalletValidator : transaction hash is not valid on CREATION")
                 raise serializers.ValidationError("Transaction hash is not valid")
 
-        transaction = Transaction.objects.create(
-            ip=get_request_ip(request),
-            checkout_stripe=None,
-            sender=self.sender,
-            receiver=self.receiver,
-            asset=self.asset,
-            amount=self.amount,
-            action=action,
-            primary_card=self.primary_card,
-            card=self.user_card,
-        )
+        transaction_dict = {
+            "ip": get_request_ip(request),
+            "checkout_stripe": None,
+            "sender": self.sender,
+            "receiver": self.receiver,
+            "asset": self.asset,
+            "amount": self.amount,
+            "action": action,
+            "primary_card": self.primary_card,
+            "card": self.user_card,
+            "subscription_start_datetime": self.subscription_start_datetime
+        }
+        transaction = Transaction.objects.create(**transaction_dict)
 
         if not transaction.verify_hash():
             logger.error(
@@ -467,6 +501,7 @@ class TransactionW2W(serializers.Serializer):
 
 class TransactionSerializer(serializers.ModelSerializer):
     card = CardSerializer(many=False)
+
     class Meta:
         model = Transaction
         fields = (
