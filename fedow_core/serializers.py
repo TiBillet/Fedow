@@ -262,6 +262,7 @@ class WalletCreateSerializer(serializers.Serializer):
     card_qrcode_uuid = serializers.SlugRelatedField(slug_field='qrcode_uuid',
                                                     queryset=Card.objects.all(), required=False)
 
+    #TODO: Separer les cas d'usage
     def validate(self, attrs):
         # On trace l'ip de la requete
         ip = None
@@ -273,47 +274,63 @@ class WalletCreateSerializer(serializers.Serializer):
         self.user = None
         email = attrs.get('email')
         user_exist = FedowUser.objects.filter(email=email).exists()
+        if user_exist:
+            self.user = FedowUser.objects.get(email=email)
 
-        # Avons nous une carte dans la requete ?
         card: Card = attrs.get('card_first_tag_id') or attrs.get('card_qrcode_uuid')
-        if card:
-            # On ne veut pas écraser une carte avec un user existant,
-            # ou un wallet ephemère présent
+        self.card = card
 
-            # Cas 1 : Carte anonyme mais avec un wallet_ephemere
-            # On le lie à l'user
-            if card.wallet_ephemere and not user_exist:
-                user, created = get_or_create_user(email, ip=ip, wallet_uuid=card.wallet_ephemere.uuid)
-                card.user = user
-                self.user = user
-                card.save()
-
-            # Cas 2 : Carte vierge
-            elif not card.user and not card.wallet_ephemere:
-                user, created = get_or_create_user(email, ip=ip)
-                card.user = user
-                self.user = user
-                card.save()
-
-            # Cas 3 : User exist et carte avec wallet, erreur à gerer
-            # TODO: fusion de wallet
-            elif user_exist:
-                user = FedowUser.objects.get(email=email)
-                self.user = user
-                if card.wallet_ephemere :
-                    if card.wallet_ephemere != user.wallet:
-                        raise serializers.ValidationError("Card already linked to another user")
-                if card.user:
-                    if card.user != user:
-                        raise serializers.ValidationError("Card already linked to another user")
-
-        if not self.user:
+        # Si l'email ne donne aucun user, on le créé
+        if not card and not user_exist:
             self.user, created = get_or_create_user(email, ip=ip)
-        return attrs
+            return attrs
+
+        if card and not user_exist:
+            # Si une carte et un nouveau mail, liaison si carte vierge:
+            if not card.user and not card.wallet_ephemere:
+                user, created = get_or_create_user(email, ip=ip)
+                self.user = user
+                card.user = user
+                card.save()
+                return attrs
+            # Si la carte possède un wallet ephemere, nous créons l'e'user avec ce wallet.
+            elif not card.user and card.wallet_ephemere:
+                user, created = get_or_create_user(email, ip=ip, wallet_uuid=card.wallet_ephemere.uuid)
+                self.user = user
+                card.user = user
+                card.save()
+                return attrs
+            elif card.user or card.wallet_ephemere:
+                raise serializers.ValidationError("Card already linked to another user")
+
+        # Si la carte est liée à un user, on vérifie que c'est le même
+        if card and user_exist:
+            # Si carte vierge, on lie l'user
+            if not card.user and not card.wallet_ephemere:
+                card.user = self.user
+                card.save()
+                return attrs
+            if not card.user and card.wallet_ephemere:
+                # Si carte avec wallet ephemere, on lie l'user avec le wallet ephemere
+                if card.wallet_ephemere != self.user.wallet:
+                    #TODO: Fusion de wallet
+                    raise serializers.ValidationError("Card already linked to another user")
+                card.user = self.user
+                card.save()
+                return attrs
+            if card.user == self.user:
+                return attrs
+            else :
+                raise serializers.ValidationError("Card already linked to another user")
+
+        raise serializers.ValidationError("User not found ?")
 
     def to_representation(self, instance):
         # Add apikey user to representation
         representation = super().to_representation(instance)
+        if not self.user:
+            import ipdb; ipdb.set_trace()
+        self.wallet = self.user.wallet
         representation['wallet'] = f"{self.user.wallet.uuid}"
         return representation
 

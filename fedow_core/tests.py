@@ -194,10 +194,10 @@ class AssetCardTest(FedowTestCase):
     def create_wallet_with_API(self):
         ### Création d'un wallet client avec un email et un uuid de carte
         faker = Faker()
-        card = Card.objects.all()[0]
+        mail_set_list = set([faker.email() for x in range(100)])
 
         # Juste avec email :
-        email = faker.email()
+        email = mail_set_list.pop()
         response = self._post_from_simulated_cashless('wallet', {'email': email})
         self.assertEqual(response.status_code, 201)
         wallet = Wallet.objects.get(pk=response.data)
@@ -205,19 +205,23 @@ class AssetCardTest(FedowTestCase):
         self.assertEqual(wallet.user.cards.count(), 0)
 
         # Avec First Tag Id
-        email = faker.email()
+        email = mail_set_list.pop()
+        card = Card.objects.filter(user__isnull=True).first()
         data = {
             'email': email,
             'card_first_tag_id': f"{card.first_tag_id}",
         }
         response = self._post_from_simulated_cashless('wallet', data)
+        # if response.status_code != 201:
+        #     print(response.json())
+        #     import ipdb; ipdb.set_trace()
         self.assertEqual(response.status_code, 201)
         wallet = Wallet.objects.get(pk=response.data)
         self.assertEqual(wallet.user.email, email)
         self.assertIn(card, wallet.user.cards.all())
 
         # Avec le QRCode de la carte précédente :
-        email = faker.email()
+        email = mail_set_list.pop()
         data = {
             'email': email,
             'card_qrcode_uuid': f"{card.qrcode_uuid}",
@@ -225,8 +229,9 @@ class AssetCardTest(FedowTestCase):
         response = self._post_from_simulated_cashless('wallet', data)
         self.assertEqual(response.status_code, 400)
 
+
         # Avec le QRCode d'une carte qui n'a pas encore d'user :
-        email = faker.email()
+        email = mail_set_list.pop()
         card = Card.objects.filter(user__isnull=True).first()
         data = {
             'email': email,
@@ -310,9 +315,10 @@ class AssetCardTest(FedowTestCase):
         # UUID et DATETIME géré par le modèle
 
         faker = Faker()
-        name = faker.currency_name()
-        currency_code = faker.currency_code()
+        # Une liste de plusieurs monnaie uniques
+        set_list = set((faker.currency_name(),faker.currency_code()) for x in range(10))
 
+        name, currency_code = set_list.pop()
         message = {
             "name": name,
             "currency_code": currency_code,
@@ -327,10 +333,11 @@ class AssetCardTest(FedowTestCase):
         # avec UUID et DATETIME donné en paramètre
 
         # LOCAL FIAT (Monnaie EURO)
+        name, currency_code = set_list.pop()
         message = {
             "uuid": str(uuid4()),
-            "name": faker.currency_name(),
-            "currency_code": faker.currency_code(),
+            "name": name,
+            "currency_code": currency_code,
             "category": Asset.TOKEN_LOCAL_FIAT,
             "created_at": make_aware(faker.date_time_this_year()).isoformat()
         }
@@ -338,10 +345,11 @@ class AssetCardTest(FedowTestCase):
         self.assertEqual(response.status_code, 201)
 
         # LOCAL NON FIAT (monnaie temps, cadeau, bénévoles, june)
+        name, currency_code = set_list.pop()
         message = {
             "uuid": str(uuid4()),
-            "name": faker.currency_name(),
-            "currency_code": faker.currency_code(),
+            "name": name,
+            "currency_code": currency_code,
             "category": Asset.TOKEN_LOCAL_NOT_FIAT,
             "created_at": make_aware(faker.date_time_this_year()).isoformat()
         }
@@ -351,7 +359,6 @@ class AssetCardTest(FedowTestCase):
         self.assertEqual(response.status_code, 201)
 
         # Abonnement ou adhésion associatve
-
         # On garde les variables pour les asserts
         name = "Adhésion associative"
         currency_code = "ADH"
@@ -385,11 +392,11 @@ class AssetCardTest(FedowTestCase):
 
 
     @tag("create_token")
-    def test_send_new_tokens_to_wallet(self):
+    def send_new_tokens_to_wallet(self):
         # Création de 3 assets différents pour simuler un asset € et deux monnaies temps/bénévoles
         place: Place = self.place
         primary_card = self.place.primary_cards.all().first()
-        assets = self.create_asset_with_API()
+        assets = Asset.objects.all()
 
         total_par_assets = {f"{asset.uuid}": 0 for asset in assets}
 
@@ -415,11 +422,9 @@ class AssetCardTest(FedowTestCase):
                     "receiver": f"{wallet_card.uuid}",
                     "asset": f"{asset.uuid}",
                     "user_card_firstTagId": f"{card.first_tag_id}",
+                    "primary_card_fisrtTagId": f"{primary_card.first_tag_id}",
                 }
                 response = self._post_from_simulated_cashless('transaction', transaction_refill)
-
-                #TODO: Gerer les cartes primaires
-                import ipdb; ipdb.set_trace()
 
                 self.assertEqual(response.status_code, 201)
                 transaction = Transaction.objects.get(pk=response.json().get('uuid'))
@@ -429,7 +434,7 @@ class AssetCardTest(FedowTestCase):
                 self.assertEqual(transaction.receiver, wallet_card)
                 self.assertEqual(transaction.amount, amount)
                 self.assertEqual(transaction.card, card)
-                self.assertEqual(transaction.primary_card, None)
+                self.assertEqual(transaction.primary_card, primary_card)
 
                 self.assertEqual(Token.objects.get(asset=asset, wallet=wallet_card).value, amount)
 
@@ -467,7 +472,7 @@ class AssetCardTest(FedowTestCase):
 
 
     @tag("stripe")
-    def test_get_stripe_checkout_in_charge_primary_asset_api(self):
+    def get_stripe_checkout_in_charge_primary_asset_api(self):
         # Test la création d'un lien stripe pour faire une recharge de monnaie
         ### Création d'un wallet client avec un email
         email = 'lambda@lambda.com'
@@ -487,16 +492,18 @@ class AssetCardTest(FedowTestCase):
         self.assertTrue(primary_token.is_primary_stripe_token())
 
         ### Création d'un wallet client avec un email et un uuid de carte
-        self.create_wallet_with_API()
+        # self.create_wallet_with_API()
         card = Card.objects.filter(user__isnull=False).first()
         email = card.user.email
         response = self._post_from_simulated_cashless('checkout_stripe_for_charge_primary_asset',
                                                       {'email': email, 'card_qrcode_uuid': f"{card.qrcode_uuid}"})
 
+        self.assertEqual(response.status_code, 202)
         # Récupération des metadonnée envoyées à Stripe
         checkout = CheckoutStripe.objects.all().order_by('datetime').last()
         signer = Signer()
         signed_data = utf8_b64_to_dict(signer.unsign(checkout.metadata))
+
         user_token = Token.objects.get(uuid=signed_data.get('user_token'))
         card_from_stripe = Card.objects.get(qrcode_uuid=signed_data.get('card_qrcode_uuid'))
 
@@ -507,55 +514,12 @@ class AssetCardTest(FedowTestCase):
 
     @tag("cards")
     def test_all(self):
+        # TODO: Tout classer et lister ici proprement
         self.create_multiple_card()
         self.create_wallet_with_API()
-
-        wallet = Wallet.objects.filter(user__isnull=False, user__cards__isnull=False).first()
-        user = wallet.user
-
-        place = self.place
-
         assets = self.create_asset_with_API()
-        asset = assets.filter(category=Asset.TOKEN_LOCAL_NOT_FIAT).first()
-
-        # REFILL = creation monnétaire en une seule requete
-        data = {
-            "amount": "10",
-            "sender": f"{place.wallet.uuid}",
-            "receiver": f"{user.wallet.uuid}",
-            "asset": f"{asset.uuid}",
-        }
-
-        response = self._post_from_simulated_cashless('transaction', data)
-
-        # Pas de carte primaire ni user :
-        self.assertEqual(response.status_code, 400)
-
-        data = {
-            "amount": "10",
-            "sender": f"{place.wallet.uuid}",
-            "receiver": f"{user.wallet.uuid}",
-            "asset": f"{asset.uuid}",
-            "user_card_firstTagId": f"{wallet.user.cards.first().first_tag_id}",
-        }
-
-        response = self._post_from_simulated_cashless('transaction', data)
-
-        #TODO : carte primaire
-        import ipdb; ipdb.set_trace()
-        self.assertEqual(response.status_code, 201)
-
-        transaction = Transaction.objects.get(pk=response.json().get('uuid'))
-        self.assertEqual(transaction.action, Transaction.REFILL)
-        self.assertEqual(transaction.asset, asset)
-        self.assertEqual(transaction.sender, place.wallet)
-        self.assertEqual(transaction.receiver, user.wallet)
-        self.assertEqual(transaction.amount, int(data['amount']))
-        token = Token.objects.get(asset=asset, wallet=user.wallet)
-        self.assertEqual(token.value, int(data['amount']))
-
-    def xtest_vente(self):
-        pass
+        self.send_new_tokens_to_wallet()
+        self.get_stripe_checkout_in_charge_primary_asset_api()
 
 class APITestHelloWorld(FedowTestCase):
 

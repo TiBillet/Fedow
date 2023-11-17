@@ -149,10 +149,8 @@ class WalletAPI(viewsets.ViewSet):
     def create(self, request):
         wallet_create_serializer = WalletCreateSerializer(data=request.data, context={'request': request})
         if wallet_create_serializer.is_valid():
-            try :
-                return Response(f"{wallet_create_serializer.user.wallet.uuid}", status=status.HTTP_201_CREATED)
-            except Exception as e:
-                import ipdb; ipdb.set_trace()
+            wallet_uuid = wallet_create_serializer.data['wallet']
+            return Response(f"{wallet_uuid}", status=status.HTTP_201_CREATED)
 
         return Response(wallet_create_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -406,7 +404,9 @@ class CheckoutStripeForChargePrimaryAsset(APIView):
             config = Configuration.get_solo()
 
             # Vérification que l'email soit bien présent pour l'envoyer a Stripe
-            user: FedowUser = serializer.user
+            wallet_uuid = serializer.data['wallet']
+            wallet = serializer.wallet
+            email = wallet.user.email
 
             primary_wallet = config.primary_wallet
             stripe_asset = Asset.objects.get(origin=primary_wallet, category=Asset.STRIPE_FED_FIAT)
@@ -418,7 +418,7 @@ class CheckoutStripeForChargePrimaryAsset(APIView):
             )
 
             user_token, created = Token.objects.get_or_create(
-                wallet=user.wallet,
+                wallet=wallet,
                 asset=stripe_asset,
             )
 
@@ -447,13 +447,13 @@ class CheckoutStripeForChargePrimaryAsset(APIView):
                 'success_url': 'https://127.0.0.1:8000/checkout_stripe/',
                 'cancel_url': 'https://127.0.0.1:8000/checkout_stripe/',
                 'payment_method_types': ["card"],
-                'customer_email': f'{user.email}',
+                'customer_email': f'{email}',
                 'line_items': line_items,
                 'mode': 'payment',
                 'metadata': {
                     'signed_data': f'{signed_data}',
                 },
-                'client_reference_id': f"{user.pk}",
+                'client_reference_id': f"{wallet.user.pk}",
             }
             checkout_session = stripe.checkout.Session.create(**data_checkout)
 
@@ -462,7 +462,7 @@ class CheckoutStripeForChargePrimaryAsset(APIView):
                 checkout_session_id_stripe=checkout_session.id,
                 asset=user_token.asset,
                 status=CheckoutStripe.OPEN,
-                user=user,
+                user=wallet.user,
                 metadata=signed_data,
             )
 
