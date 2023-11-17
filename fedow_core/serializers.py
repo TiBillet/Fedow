@@ -470,7 +470,6 @@ class TransactionW2W(serializers.Serializer):
             }
             crea_transaction = Transaction.objects.create(**crea_transac_dict)
 
-
             if not crea_transaction.verify_hash():
                 logger.error(
                     f"{timezone.localtime()} ERROR NewTransactionWallet2WalletValidator : transaction hash is not valid on CREATION")
