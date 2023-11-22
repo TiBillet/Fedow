@@ -7,6 +7,8 @@ from cryptography.fernet import Fernet
 from django.conf import settings
 from django.core import signing
 from django.core.management import call_command
+from django.core.serializers import serialize
+from django.core.serializers.json import DjangoJSONEncoder
 from django.core.signing import Signer
 from django.core.validators import URLValidator
 from django.http import Http404, JsonResponse
@@ -14,7 +16,7 @@ from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from faker import Faker
 from rest_framework import viewsets, status, serializers
-from rest_framework.decorators import permission_classes
+from rest_framework.decorators import permission_classes, action
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -24,7 +26,7 @@ from fedow_core.models import Transaction, Place, Configuration, Asset, Checkout
 from fedow_core.permissions import HasKeyAndCashlessSignature, HasAPIKey, IsStripe
 from fedow_core.serializers import TransactionSerializer, WalletCreateSerializer, HandshakeValidator, \
     TransactionW2W, CardSerializer, CardCreateValidator, \
-    AssetCreateValidator, OnboardSerializer, AssetSerializer
+    AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator
 from rest_framework.pagination import PageNumberPagination
 
 from fedow_core.utils import get_request_ip, fernet_encrypt, fernet_decrypt, dict_to_b64_utf8, dict_to_b64, \
@@ -105,6 +107,17 @@ class AssetAPI(viewsets.ViewSet):
 
 class CardAPI(viewsets.ViewSet):
 
+    @action(detail=False, methods=['post'])
+    def refund(self, request):
+        # VOID ou REFUND, on vide la carte des assets non adhésion avec le lieu comme origine
+        validator = CardRefundOrVoidValidator(data=request.data, context={'request': request})
+        if validator.is_valid():
+            token_refunded = validator.token_refunded
+            json_response = json.dumps(token_refunded, cls=DjangoJSONEncoder)
+            return Response(json_response, status=status.HTTP_200_OK)
+        logger.error(f"{timezone.now()} Card update error : {validator.errors}")
+        return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)
+
     def retrieve(self, request, pk=None):
         # Utilisé par les serveurs cashless comme un check card
         try :
@@ -142,9 +155,9 @@ class WalletAPI(viewsets.ViewSet):
     #     serializer = WalletSerializer(Wallet.objects.all(), many=True)
     #     return Response(serializer.data)
 
-    # def retrieve(self, request, pk=None):
-    #     serializer = WalletSerializer(Wallet.objects.get(pk=pk))
-    #     return Response(serializer.data)
+    def retrieve(self, request, pk=None):
+        serializer = WalletSerializer(Wallet.objects.get(pk=pk))
+        return Response(serializer.data)
 
     def create(self, request):
         wallet_create_serializer = WalletCreateSerializer(data=request.data, context={'request': request})
@@ -155,7 +168,7 @@ class WalletAPI(viewsets.ViewSet):
         return Response(wallet_create_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get_permissions(self):
-        permission_classes = [HasAPIKey]
+        permission_classes = [HasKeyAndCashlessSignature]
         return [permission() for permission in permission_classes]
 
 

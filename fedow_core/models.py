@@ -269,7 +269,7 @@ class Transaction(models.Model):
 
     subscription_start_datetime = models.DateTimeField(blank=True, null=True)
 
-    FIRST, SALE, CREATION, REFILL, TRANSFER, SUBSCRIBE = 'F', 'S', 'C', 'R', 'T', 'M'
+    FIRST, SALE, CREATION, REFILL, TRANSFER, SUBSCRIBE, FUSION, REFUND, VOID = 'F', 'S', 'C', 'R', 'T', 'M' ,'U', 'Z', 'V'
     TYPE_ACTION = (
         (FIRST, "Premier bloc"),
         (SALE, "Vente d'article"),
@@ -277,6 +277,9 @@ class Transaction(models.Model):
         (REFILL, 'Recharge'),
         (TRANSFER, 'Transfert'),
         (SUBSCRIBE, 'Abonnement ou adhésion'),
+        (FUSION, 'Fusion de deux wallets'),
+        (REFUND, 'Remboursement'),
+        (VOID, 'Dissocciation de la carte et du wallet user'),
     )
     action = models.CharField(max_length=1, choices=TYPE_ACTION, default=SALE)
 
@@ -409,6 +412,17 @@ class Transaction(models.Model):
             # FILL TOKEN WALLET
             token_sender.value -= self.amount
             token_receiver.value += self.amount
+
+        if self.action == Transaction.FUSION:
+            assert self.amount == token_sender.value, "Amount must be equal to token sender value, we clear the ephemeral wallet"
+            assert self.card.wallet_ephemere, "Card must be associated to ephemeral wallet"
+            assert not hasattr(self.card.wallet_ephemere, 'user'), "Wallet ephemere must not be associated to user"
+            assert not self.card.user, "Card must not be associated to user"
+            assert self.receiver.user, "Receiver must be a user wallet"
+
+            token_sender.value -= self.amount
+            token_receiver.value += self.amount
+            # import ipdb; ipdb.set_trace()
 
         # ALL VALIDATOR PASSED : HASH CREATION
         if not self.hash:
@@ -604,6 +618,11 @@ class Card(models.Model):
             self.wallet_ephemere = wallet_ephemere
             self.save()
             return self.wallet_ephemere
+
+    def is_wallet_ephemere(self):
+        if self.wallet_ephemere and not self.user:
+            return True
+        return False
 
     def get_authority_delegation(self):
         card: Card = self

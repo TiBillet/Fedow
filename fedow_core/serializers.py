@@ -133,6 +133,73 @@ class UserSerializer(serializers.ModelSerializer):
         )
 
 
+class CardRefundOrVoidValidator(serializers.Serializer):
+    primary_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
+    primary_card_fisrtTagId = serializers.SlugRelatedField(
+        queryset=Card.objects.all(),
+        required=False, slug_field='first_tag_id')
+    user_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
+    user_card_firstTagId = serializers.SlugRelatedField(
+        queryset=Card.objects.all(),
+        required=False, slug_field='first_tag_id')
+    action = serializers.ChoiceField(choices=Transaction.TYPE_ACTION, required=False, allow_null=True)
+
+    def validate_action(self, value):
+        if value not in [Transaction.REFUND, Transaction.VOID]:
+            raise serializers.ValidationError("Action must be REFUND or VOID")
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        self.place: Place = request.place
+        # Avons nous une carte user et/ou une carte primaire LaBoutik ?
+        self.primary_card = attrs.get('primary_card_uuid') or attrs.get('primary_card_fisrtTagId')
+        self.user_card: Card = attrs.get('user_card_uuid') or attrs.get('user_card_firstTagId')
+
+        if self.primary_card not in self.place.primary_cards.all():
+            raise serializers.ValidationError("Primary card must be in place primary cards")
+
+        if not self.user_card:
+            raise serializers.ValidationError("User card is required for void or refund")
+
+        self.token_refunded = {}
+        wallet: Wallet = self.user_card.get_wallet()
+        for token in wallet.tokens.all():
+            if (token.asset.origin == self.place.wallet
+                    and token.asset.category in
+                    [Asset.TOKEN_LOCAL_FIAT,
+                     Asset.TOKEN_LOCAL_NOT_FIAT]):
+
+                if token.asset.category == Asset.TOKEN_LOCAL_FIAT:
+                    self.token_refunded[f"{token.uuid}"] = {
+                        'category': token.asset.category,
+                        'asset_uuid': f"{token.asset.uuid}",
+                        'asset': f"{token.asset_name()}",
+                        'value': f"{token.value}",
+                    }
+
+                transaction_dict = {
+                    "ip": get_request_ip(request),
+                    "checkout_stripe": None,
+                    "sender": self.user_card.get_wallet(),
+                    "receiver": self.place.wallet,
+                    "asset": token.asset,
+                    "amount": token.value,
+                    "action": Transaction.REFUND,
+                    "primary_card": self.primary_card,
+                    "card": self.user_card,
+                    "subscription_start_datetime": None
+                }
+                transaction = Transaction.objects.create(**transaction_dict)
+
+        if attrs.get('action') == Transaction.VOID:
+            self.user_card.user = None
+            self.user_card.wallet_ephemere = None
+            self.user_card.save()
+
+        return attrs
+
+
 class CardCreateValidator(serializers.ModelSerializer):
     generation = serializers.IntegerField(required=True)
     is_primary = serializers.BooleanField(required=True)
@@ -262,7 +329,7 @@ class WalletCreateSerializer(serializers.Serializer):
     card_qrcode_uuid = serializers.SlugRelatedField(slug_field='qrcode_uuid',
                                                     queryset=Card.objects.all(), required=False)
 
-    #TODO: Separer les cas d'usage
+    # TODO: Separer les cas d'usage
     def validate(self, attrs):
         # On trace l'ip de la requete
         ip = None
@@ -313,14 +380,33 @@ class WalletCreateSerializer(serializers.Serializer):
             if not card.user and card.wallet_ephemere:
                 # Si carte avec wallet ephemere, on lie l'user avec le wallet ephemere
                 if card.wallet_ephemere != self.user.wallet:
-                    #TODO: Fusion de wallet
-                    raise serializers.ValidationError("Card already linked to another user")
-                card.user = self.user
-                card.save()
-                return attrs
+                    # On vide le wallet ephemere en faveur du wallet de l'user
+                    for token in card.wallet_ephemere.tokens.all():
+                        data = {
+                            "amount": token.value,
+                            "asset": f"{token.asset.pk}",
+                            "sender": f"{card.wallet_ephemere.pk}",
+                            "receiver": f"{self.user.wallet.pk}",
+                            "user_card_uuid": f"{card.pk}",
+                            "action": Transaction.FUSION,
+                        }
+                        transaction_validator = TransactionW2W(data=data, context={'request': self.context['request']})
+                        if not transaction_validator.is_valid():
+                            logger.error(
+                                f"{timezone.localtime()} ERROR FUSION WalletCreateSerializer : {transaction_validator.errors}")
+                            raise serializers.ValidationError(transaction_validator.errors)
+
+                    card.user = self.user
+                    # card.wallet_ephemere = None
+                    card.save()
+                    return attrs
+
+                # if card.wallet_ephemere == self.user.wallet:
+                raise serializers.ValidationError("Strange case")
+
             if card.user == self.user:
                 return attrs
-            else :
+            else:
                 raise serializers.ValidationError("Card already linked to another user")
 
         raise serializers.ValidationError("User not found ?")
@@ -329,7 +415,8 @@ class WalletCreateSerializer(serializers.Serializer):
         # Add apikey user to representation
         representation = super().to_representation(instance)
         if not self.user:
-            import ipdb; ipdb.set_trace()
+            import ipdb;
+            ipdb.set_trace()
         self.wallet = self.user.wallet
         representation['wallet'] = f"{self.user.wallet.uuid}"
         return representation
@@ -357,6 +444,7 @@ class CardSerializer(serializers.ModelSerializer):
             'uuid',
             'qrcode_uuid',
             'number_printed',
+            'is_wallet_ephemere',
         )
 
 
@@ -366,6 +454,7 @@ class TransactionW2W(serializers.Serializer):
     receiver = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
     asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all())
     subscription_start_datetime = serializers.DateTimeField(required=False)
+    action = serializers.ChoiceField(choices=Transaction.TYPE_ACTION, required=False, allow_null=True)
 
     primary_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
     primary_card_fisrtTagId = serializers.SlugRelatedField(
@@ -386,24 +475,23 @@ class TransactionW2W(serializers.Serializer):
         # TODO; Check carte primaire et lieux
         return value
 
-    def get_action(self):
+    def get_action(self, attrs):
         # Quel type de transaction ?
         action = None
 
         if self.place.wallet == self.sender:
             # Un lieu envoi : c'est une recharge de carte
-            action = Transaction.REFILL
-
             if self.asset.category == Asset.SUBSCRIPTION:
                 # ou une adhésion / abonnement
-                action = Transaction.SUBSCRIBE
+                return Transaction.SUBSCRIBE
 
             if self.sender == self.receiver:
                 if self.asset.origin == self.place.wallet:
-                    raise Exception('send REFILL instead')
+                    raise serializers.ValidationError('no longuer implemented for REFILL. Send user wallet instead')
+                raise serializers.ValidationError("Unauthorized origin")
+            return Transaction.REFILL
 
         elif self.place.wallet == self.receiver:
-            action = Transaction.SALE
             if not self.primary_card:
                 raise serializers.ValidationError("Primary card is required for sale transaction")
             if self.primary_card not in self.place.primary_cards.all():
@@ -416,7 +504,24 @@ class TransactionW2W(serializers.Serializer):
                 logger.warning(f"{timezone.localtime()} WARNING sender not in receiver authority delegation")
                 raise serializers.ValidationError("Unauthorized")
 
-        return action
+            # Toute validation passée, c'est une vente
+            return Transaction.SALE
+
+
+        elif attrs.get('action') == Transaction.FUSION:
+            # Liaison entre une carte avec wallet ephemere et un wallet user -> Fusion !
+            sender: Wallet = attrs.get('sender')
+            receiver: Wallet = attrs.get('receiver')
+            if (not getattr(sender, 'user', None)
+                    and sender.card_ephemere
+                    and not hasattr(receiver, 'card_ephemere')
+                    and receiver.user):
+                # Uniquement avec une clé api de place pour le moment.
+                # Pour que l'user puisse le faire en autonomie -> auth forte (tel, double auth, etc ...)
+                if sender.card_ephemere.origin.place == self.place:
+                    return Transaction.FUSION
+
+        raise serializers.ValidationError("No action authorized")
 
     def validate(self, attrs):
         # Récupération de la place grâce à la permission HasKeyAndCashlessSignature
@@ -436,15 +541,15 @@ class TransactionW2W(serializers.Serializer):
         self.primary_card = attrs.get('primary_card_uuid') or attrs.get('primary_card_fisrtTagId')
         self.user_card = attrs.get('user_card_uuid') or attrs.get('user_card_firstTagId')
 
-        action = self.get_action()
+        action = self.get_action(attrs)
         if not action:
             # Si aucune des conditions d'action n'est remplie, c'est une erreur
             logger.error(
-                f"{timezone.localtime()} ERROR sender nor receiver are Unauthorized - ZERO ACTION FOUND - {request}")
+                f"{timezone.localtime()} ERROR ZERO ACTION FOUND - {request}")
             raise serializers.ValidationError("Unauthorized")
 
-        # Check if sender or receiver are authorized
-        if not self.place.wallet == self.sender and not self.place.wallet == self.receiver:
+        # Check if sender or receiver are a place
+        if not self.place.wallet == self.sender and not self.place.wallet == self.receiver and not action == Transaction.FUSION:
             # Place must be sender or receiver
             logger.error(f"{timezone.localtime()} ERROR sender nor receiver are Unauthorized - {request}")
             raise serializers.ValidationError("Unauthorized")
