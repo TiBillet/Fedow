@@ -32,10 +32,9 @@ if len(FERNET_KEY) != 44:
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [os.environ.get('DOMAIN'),]
 if DEBUG:
     ALLOWED_HOSTS.append('*')
-ALLOWED_HOSTS.append(os.environ.get('DOMAIN', 'https://fedow.tibillet.ovh/'))
 
 # Application definition
 

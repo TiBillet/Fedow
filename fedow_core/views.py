@@ -112,15 +112,18 @@ class CardAPI(viewsets.ViewSet):
         # VOID ou REFUND, on vide la carte des assets non adhésion avec le lieu comme origine
         validator = CardRefundOrVoidValidator(data=request.data, context={'request': request})
         if validator.is_valid():
-            token_refunded = validator.token_refunded
-            json_response = json.dumps(token_refunded, cls=DjangoJSONEncoder)
-            return Response(json_response, status=status.HTTP_200_OK)
+            refund_data = {
+                "serialized_card": CardSerializer(validator.user_card).data,
+                "before_refund_serialized_wallet": validator.ex_wallet_serialized,
+                "serialized_transactions": validator.transactions,
+            }
+            return Response(refund_data, status=status.HTTP_205_RESET_CONTENT)
         logger.error(f"{timezone.now()} Card update error : {validator.errors}")
         return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def retrieve(self, request, pk=None):
         # Utilisé par les serveurs cashless comme un check card
-        try :
+        try:
             card = Card.objects.get(first_tag_id=pk)
             serializer = CardSerializer(card)
             return Response(serializer.data, status=status.HTTP_200_OK)

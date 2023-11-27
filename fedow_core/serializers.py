@@ -144,12 +144,16 @@ class CardRefundOrVoidValidator(serializers.Serializer):
         required=False, slug_field='first_tag_id')
     action = serializers.ChoiceField(choices=Transaction.TYPE_ACTION, required=False, allow_null=True)
 
+    transactions = list()
+
     def validate_action(self, value):
         if value not in [Transaction.REFUND, Transaction.VOID]:
             raise serializers.ValidationError("Action must be REFUND or VOID")
         return value
 
     def validate(self, attrs):
+        transactions = list()
+
         request = self.context.get('request')
         self.place: Place = request.place
         # Avons nous une carte user et/ou une carte primaire LaBoutik ?
@@ -162,42 +166,36 @@ class CardRefundOrVoidValidator(serializers.Serializer):
         if not self.user_card:
             raise serializers.ValidationError("User card is required for void or refund")
 
-        self.token_refunded = {}
         wallet: Wallet = self.user_card.get_wallet()
-        for token in wallet.tokens.all():
-            if (token.asset.origin == self.place.wallet
-                    and token.asset.category in
-                    [Asset.TOKEN_LOCAL_FIAT,
-                     Asset.TOKEN_LOCAL_NOT_FIAT]):
+        self.ex_wallet_serialized = WalletSerializer(wallet).data
 
-                if token.asset.category == Asset.TOKEN_LOCAL_FIAT:
-                    self.token_refunded[f"{token.uuid}"] = {
-                        'category': token.asset.category,
-                        'asset_uuid': f"{token.asset.uuid}",
-                        'asset': f"{token.asset_name()}",
-                        'value': f"{token.value}",
-                    }
+        for token in wallet.tokens.filter(
+                value__gt=0,
+                asset__origin=self.place.wallet,
+                asset__category__in=[Asset.TOKEN_LOCAL_FIAT, Asset.TOKEN_LOCAL_NOT_FIAT]):
+            transaction_dict = {
+                "ip": get_request_ip(request),
+                "checkout_stripe": None,
+                "sender": self.user_card.get_wallet(),
+                "receiver": self.place.wallet,
+                "asset": token.asset,
+                "amount": token.value,
+                "action": Transaction.REFUND,
+                "primary_card": self.primary_card,
+                "card": self.user_card,
+                "subscription_start_datetime": None
+            }
+            transaction = Transaction.objects.create(**transaction_dict)
+            transactions.append(TransactionSerializer(transaction).data)
 
-                transaction_dict = {
-                    "ip": get_request_ip(request),
-                    "checkout_stripe": None,
-                    "sender": self.user_card.get_wallet(),
-                    "receiver": self.place.wallet,
-                    "asset": token.asset,
-                    "amount": token.value,
-                    "action": Transaction.REFUND,
-                    "primary_card": self.primary_card,
-                    "card": self.user_card,
-                    "subscription_start_datetime": None
-                }
-                transaction = Transaction.objects.create(**transaction_dict)
-
+        self.transactions = transactions
         if attrs.get('action') == Transaction.VOID:
             self.user_card.user = None
             self.user_card.wallet_ephemere = None
             self.user_card.save()
 
         return attrs
+
 
 
 class CardCreateValidator(serializers.ModelSerializer):
@@ -329,7 +327,6 @@ class WalletCreateSerializer(serializers.Serializer):
     card_qrcode_uuid = serializers.SlugRelatedField(slug_field='qrcode_uuid',
                                                     queryset=Card.objects.all(), required=False)
 
-    # TODO: Separer les cas d'usage
     def validate(self, attrs):
         # On trace l'ip de la requete
         ip = None

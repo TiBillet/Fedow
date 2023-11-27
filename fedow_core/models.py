@@ -424,6 +424,13 @@ class Transaction(models.Model):
             token_receiver.value += self.amount
             # import ipdb; ipdb.set_trace()
 
+        if self.action == Transaction.REFUND:
+            assert self.amount == token_sender.value, "Amount must be equal to token sender value, we clear the ephemeral wallet"
+            assert self.receiver.is_place(), "Receiver must be a place wallet"
+            assert self.asset.origin == self.receiver, "Asset origin must be the place"
+
+            token_sender.value -= self.amount
+
         # ALL VALIDATOR PASSED : HASH CREATION
         if not self.hash:
             self.hash = self.create_hash()

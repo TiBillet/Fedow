@@ -6,7 +6,7 @@
 
 rm db.sqlite3
 rm fedow_core/migrations/00*
-./manage.py makemigrations
-./manage.py migrate
-./manage.py install
-./manage.py runserver_plus 0.0.0.0:80
+poetry run ./manage.py makemigrations
+poetry run ./manage.py migrate
+poetry run ./manage.py install
+poetry run ./manage.py runserver_plus 0.0.0.0:80
