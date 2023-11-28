@@ -72,6 +72,12 @@ Vous pouvez trouver plus d'informations sur notre blog :
 - [ ] Transaction User wallet <-> User wallet (need double auth)
 - [ ] Transaction Place wallet <-> Place wallet (Compensation algorithm)
 - [ ] Webhook
+- [x] Wallet on NFC Card (Cashless)
+- [x] Refund wallet 
+- [x] Void card (disconnect card from wallet)
+- [x] Scan NFC Card for payment
+- [x] Scan NFC Card for subscription
+- [x] Scan NFC Card for refill wallet
 
 ## Server install
 
