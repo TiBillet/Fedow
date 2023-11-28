@@ -76,10 +76,13 @@ Vous pouvez trouver plus d'informations sur notre blog :
 ## Server install
 
 ```bash
+# Clone the repo :
+git clone https://github.com/TiBillet/Fedow && cd Fedow
+
 # Set your secret :
 cp env_example .env && nano .env
 
-# Pull and lauch the server :
+# Pull and launch the server :
 docker compose up -d
 
 # Dashboard :

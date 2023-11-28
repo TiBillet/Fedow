@@ -11,3 +11,5 @@ services:
       - 8442:80
     volumes:
       - ./database:/home/fedow/Fedow/database
+      # For dev' purposes only :
+#      - ./:/home/fedow/Fedow
