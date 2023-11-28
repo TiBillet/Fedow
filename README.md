@@ -2,11 +2,7 @@
 
 > [!WARNING]  
 > Work in progress. ALPHA RELEASE.
-> Go talk with us on :
->   [Discord](https://discord.gg/ecb5jtP7vY) / 
->   [Tiers-lieux.org](https://chat.tiers-lieux.org/channel/TiBillet) / 
->   [Communecter](https://chat.communecter.org/channel/Tibillet) /
->   [mail](mailto:contact@tibillet.re) /
+> Go talk with us !
 
 ## Presentation (EN)
 
@@ -59,12 +55,23 @@ Vous pouvez trouver plus d'informations sur notre blog :
 - [x] Handshake with TiBillet/LaBoutik
 - [x] Create place
 - [x] Create link (or not) with another place
-- [x] Hash consensus and validation
+- [x] Hash validation
+- [x] Proof of authority (PoA) consensus
+- [x] HTTP Signature for transaction auth (rsa asymetrical algorithm)
+- [x] Authority delegation for wallet ( user -> place )
 - [x] Create fiat asset (ex : euro)
 - [x] Create no fiat asset (ex : ticket resto, time currency)
 - [x] Create subscription asset (ex : membership)
+- [ ] Create time asset (ex : time spent in a place)
+- [x] Primary Card authentifier (NFC/RFID)
 - [x] Create a new user and new wallet with email or FirstTag of a NFC/RFID card
 - [ ] Double authentification
+- [x] Transaction Place wallet <-> User wallet
+- [x] Transaction Fedow primary wallet (Stripe Connect) <-> User wallet
+- [x] Transaction Fedow primary wallet (Stripe Connect) <-> Place wallet
+- [ ] Transaction User wallet <-> User wallet (need double auth)
+- [ ] Transaction Place wallet <-> Place wallet (Compensation algorithm)
+- [ ] Webhook
 
 ## Server install
 
@@ -130,6 +137,7 @@ coverage html
 
 ## Contact :
 
-- https://discord.gg/ecb5jtP7vY
-- https://chat.tiers-lieux.org/channel/TiBillet
-- https://chat.communecter.org/channel/Tibillet
+- [Discord](https://discord.gg/ecb5jtP7vY)
+- [Rocket Chat Tiers Lieux.org](https://chat.tiers-lieux.org/channel/TiBillet)
+- [Rocket Chat Communecter](https://chat.communecter.org/channel/Tibillet)
+- [mail](mailto:contact@tibillet.re)
