@@ -23,7 +23,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get('SECRET_KEY')
-print(SECRET_KEY)
 if len(SECRET_KEY) != 50:
     raise ValueError('SECRET_KEY must be 50 characters long. run "./manage.py generate_secret_key"')
 

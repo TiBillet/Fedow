@@ -82,8 +82,11 @@ git clone https://github.com/TiBillet/Fedow && cd Fedow
 # Set your secret :
 cp env_example .env && nano .env
 
-# Pull and launch the server :
+# Launch the server :
 docker compose up -d
+
+# Logs :
+docker compose logs -f 
 
 # Dashboard :
 http://localhost:8442/ 
@@ -91,23 +94,21 @@ http://localhost:8442/
 
 ## Python client usage
 
-### Create a new asset
-
-```bash
-# Create new asset
-# arg1 = Asset name
-# arg2 = Asset code (len 3 max)
-poetry run python manage.py create_asset Peaksu PKS
-# return the private key.
-```
-
-### Connect a TiBillet server
+### Connect a TiBillet/LaBoutik server
 
 ```bash
 # Create new place
 poetry run python manage.py new_place
 # Copy the string and paste it to the TiBillet server administration.
 ```
+
+### Python Client
+
+coming soon
+
+### HTTP API
+
+coming soon
 
 ## Test
 
@@ -119,16 +120,18 @@ coverage report
 coverage html
 ```
 
-### Made by, with and for :
+## Made by, with and for :
 
 - [Coopérative Code Commun](https://codecommun.coop)
 - [la Réunion des Tiers-lieux](https://www.communecter.org/costum/co/index/slug/LaReunionDesTiersLieux/#welcome)
 - [La Raffinerie](https://www.laraffinerie.re/)
 - [Communecter](https://www.communecter.org/)
-- [Jetbrain](https://www.jetbrains.com/community/opensource/#support) supports non-commercial open source projects.
 - Le Manapany Festival
 - Le Demeter
 
+## Special thanks to :
+
+- [Jetbrain](https://www.jetbrains.com/community/opensource/#support) supports non-commercial open source projects.
 
 ## Contact :
 
