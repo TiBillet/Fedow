@@ -3,10 +3,10 @@
 > [!WARNING]  
 > Work in progress. ALPHA RELEASE.
 > Go talk with us on :
->   [Discord](https://discord.gg/ecb5jtP7vY) 
->   [Tiers-lieux](https://chat.tiers-lieux.org/channel/TiBillet) 
->   [Communecter](https://chat.communecter.org/channel/Tibillet)
->   [mail](mailto:contact@tibillet.re)
+>   [Discord](https://discord.gg/ecb5jtP7vY) / 
+>   [Tiers-lieux.org](https://chat.tiers-lieux.org/channel/TiBillet) / 
+>   [Communecter](https://chat.communecter.org/channel/Tibillet) /
+>   [mail](mailto:contact@tibillet.re) /
 
 ## Presentation (EN)
 
@@ -16,7 +16,7 @@ of local, complementary and citizen currencies (MLCC) within a federated network
 _Fedow_ has been designed to connect different TiBillet point-of-sale servers so that they can share the cashless
 payment cards of their respective users.
 
-_Fedow_ integrates with [TiBillet] tools (https://tibillet.org), it enables the use of dematerialised wallets (
+_Fedow_ integrates with [https://tibillet.org tools](https://tibillet.org), it enables the use of dematerialised wallets (
 cashless ), in various community, cooperative and/or commercial venues that can be used directly on the cash register.
 
 _Fedow_ can also be used on its own via a python client or an HTTP API.
@@ -66,7 +66,12 @@ Vous pouvez trouver plus d'informations sur notre blog :
 
 ## Server install
 
+
 ```bash
+# Set your secret :
+cp env_example .env && nano .env
+
+# Pull and lauch the server :
 docker compose up -d
 ```
 

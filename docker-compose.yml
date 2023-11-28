@@ -1,21 +1,10 @@
 version: '3'
 services:
   fedow:
+    image: tibillet/fedow:alpha1
     hostname: fedow
     container_name: fedow
-    build: .
     env_file: .env
     user: fedow
     restart: unless-stopped
-    volumes:
-      - "./:/fedow"
-      - "./bashrc:/home/fedow/.bashrc"
-    working_dir: /fedow
-    command: "bash ./launcher_dev.sh"
-#    command: "sleep infinity"
-#    labels:
-#      - "traefik.enable=true"
-#      - "traefik.http.routers.fedow.rule=Host(`fedow.traefik.me`)"
-#      - "traefik.http.routers.fedow-tls.tls.domains[0].main=fedow.traefik.me"
-#      - "traefik.http.routers.fedow-tls.tls.domains[0].sans=fedow-*.traefik.me"
 

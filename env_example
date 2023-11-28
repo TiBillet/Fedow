@@ -1,12 +1,14 @@
+# ./manage.py generate_secret_key
 SECRET_KEY=""
-DOMAIN=""
+
+# ./manage.py generate_fernet
+FERNET_KEY=""
 
 # Stripe
+STRIPE_TEST="True"
 STRIPE_KEY=""
 STRIPE_KEY_TEST=""
-STRIPE_TEST=True
+STRIPE_ENDPOINT_SECRET_TEST=""
 
-# Postgres
-POSTGRES_USER=""
-POSTGRES_PASSWORD=""
-POSTGRES_DB=""
+# Domain
+DOMAIN="fedow.localhost"
