@@ -54,15 +54,17 @@ Vous pouvez trouver plus d'informations sur notre blog :
 
 [https://codecommun.coop/blog/federation-part5-fedow](https://codecommun.coop/blog/federation-part5-fedow)
 
-### Made by, with and for :
+## Features and roadmap
 
-- [Coopérative Code Commun](https://codecommun.coop)
-- [la Réunion des Tiers-lieux](https://www.communecter.org/costum/co/index/slug/LaReunionDesTiersLieux/#welcome)
-- [La Raffinerie](https://www.laraffinerie.re/)
-- [Communecter](https://www.communecter.org/)
-- [Jetbrain](https://www.jetbrains.com/community/opensource/#support) supports non-commercial open source projects.
-- Le Manapany Festival
-- Le Demeter
+- [x] Handshake with TiBillet/LaBoutik
+- [x] Create place
+- [x] Create link (or not) with another place
+- [x] Hash consensus and validation
+- [x] Create fiat asset (ex : euro)
+- [x] Create no fiat asset (ex : ticket resto, time currency)
+- [x] Create subscription asset (ex : membership)
+- [x] Create a new user and new wallet with email or FirstTag of a NFC/RFID card
+- [ ] Double authentification
 
 ## Server install
 
@@ -114,6 +116,17 @@ coverage report
 # or 
 coverage html
 ```
+
+### Made by, with and for :
+
+- [Coopérative Code Commun](https://codecommun.coop)
+- [la Réunion des Tiers-lieux](https://www.communecter.org/costum/co/index/slug/LaReunionDesTiersLieux/#welcome)
+- [La Raffinerie](https://www.laraffinerie.re/)
+- [Communecter](https://www.communecter.org/)
+- [Jetbrain](https://www.jetbrains.com/community/opensource/#support) supports non-commercial open source projects.
+- Le Manapany Festival
+- Le Demeter
+
 
 ## Contact :
 
