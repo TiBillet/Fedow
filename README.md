@@ -1,41 +1,72 @@
-> [!WARNING]  
-> Work in progress. ALPHA RELEASE.
-
 # TiBillet/FEDOW : **FED**erated and **O**pen **W**allet.
 
-## C'est quoi FEDOW ?
+> [!WARNING]  
+> Work in progress. ALPHA RELEASE.
+> Go talk with us on :
+>   [Discord](https://discord.gg/ecb5jtP7vY) 
+>   [Tiers-lieux](https://chat.tiers-lieux.org/channel/TiBillet) 
+>   [Communecter](https://chat.communecter.org/channel/Tibillet)
+>   [mail](mailto:contact@tibillet.re)
 
-Résumé : 
+## Presentation (EN)
 
-Outil [FLOSS](https://fr.wikipedia.org/wiki/Free/Libre_Open_Source_Software) de création et de gestion d'un groupement de monnaies locales, complémentaire et citoyenne (MLCC) au sein d'un réseau fédéré, 
-_Fedow_ a été conçu pour connecter différents serveurs de points de vente TiBillet afin qu'ils puissent partager les cartes de leurs utilisateurs respectifs.
+[FLOSS Tool](https://fr.wikipedia.org/wiki/Free/Libre_Open_Source_Software) for the creation and management of a
+grouping
+of local, complementary and citizen currencies (MLCC) within a federated network,
+_Fedow_ has been designed to connect different TiBillet point-of-sale servers so that they can share the cashless
+payment cards of their respective users.
 
-S'intégrant aux outils [TiBillet](https://tibillet.org) il permet l'utilisation de portefeuilles dématérialisés dans différents lieux associatifs, coopératifs et/ou commerciaux.
+_Fedow_ integrates with [TiBillet] tools (https://tibillet.org), it enables the use of dematerialised wallets (
+cashless ), in various community, cooperative and/or commercial venues that can be used directly on the cash register.
 
-Enfin, Fedow intègre des principes de [monnaie fondantes](https://fr.wikipedia.org/wiki/Monnaie_fondante) dans une chaine de blocs par preuve d'autorité, transparente, non spéculative et non énergivore.
+_Fedow_ can also be used on its own via a python client or an HTTP API.
 
-Vous pouvez trouver plus d'informations sur notre blog : 
+It can be used to create a festival cashless system, a loyalty system, a local currency, subscriptions and memberships,
+and a badge reader that keeps track of time used for space location, a time clock that tracks time spent, all for one or more venues.
 
-[https://tibillet.org/blog/federation-part5-fedow](https://tibillet.org/blog/federation-part5-fedow)
+Finally, Fedow incorporates the principles of [fiat currencies](https://fr.wikipedia.org/wiki/Monnaie_fondante) into a
+transparent, non-speculative and energy-efficient blockchain.
 
+You can find out more on our french blog :
 
-### Projet construit, financé et testé avec l'aide de :
+[https://codecommun.coop/blog/federation-part5-fedow](https://codecommun.coop/blog/federation-part5-fedow)
+
+## Présentation (FR)
+
+Outil [FLOSS](https://fr.wikipedia.org/wiki/Free/Libre_Open_Source_Software) de création et de gestion d'un groupement
+de monnaies locales, complémentaire et citoyenne (MLCC) au sein d'un réseau fédéré,
+_Fedow_ a été conçu pour connecter différents serveurs de points de vente TiBillet afin qu'ils puissent partager les
+cartes de leurs utilisateurs respectifs.
+
+S'intégrant aux outils [TiBillet](https://tibillet.org) il permet l'utilisation de portefeuilles dématérialisés (
+cashless ), dans
+différents lieux associatifs, coopératifs et/ou commerciaux directement utilisable sur la caisse enregistreuse.
+
+_Fedow_ peut aussi être utilisé seul via un client python ou une API HTTP.
+
+Il peut être utilisé pour créer un cashless de festival, un système de fidélité, une monnaie locale, des abonnements et
+adhésions, une badgeuse qui comptabilise le temps utilisé pour une location d'espace, le tout pour un ou plusieurs lieux.
+
+Enfin, Fedow intègre des principes de [monnaie fondantes](https://fr.wikipedia.org/wiki/Monnaie_fondante) dans une
+chaine de blocs par preuve d'autorité, transparente, non spéculative et non énergivore.
+
+Vous pouvez trouver plus d'informations sur notre blog :
+
+[https://codecommun.coop/blog/federation-part5-fedow](https://codecommun.coop/blog/federation-part5-fedow)
+
+### Made by, with and for :
 
 - [Coopérative Code Commun](https://codecommun.coop)
 - [la Réunion des Tiers-lieux](https://www.communecter.org/costum/co/index/slug/LaReunionDesTiersLieux/#welcome)
 - [La Raffinerie](https://www.laraffinerie.re/)
 - [Communecter](https://www.communecter.org/)
-- [Le Bisik](https://bisik.re)
 - [Jetbrain](https://www.jetbrains.com/community/opensource/#support) supports non-commercial open source projects.
 - Le Manapany Festival
 - Le Demeter
 
-## Install
-
-### With docker compose (Production environment)
+## Server install
 
 ```bash
-cp env_example .env && nano .env # or Vim ? -> edit .env 
 docker compose up -d
 ```
 
@@ -68,7 +99,6 @@ poetry run python manage.py create_asset Peaksu PKS
 poetry run python manage.py new_place
 # Copy the string and paste it to the TiBillet server administration.
 ```
-
 
 ## Test
 
