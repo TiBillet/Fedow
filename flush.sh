@@ -4,7 +4,7 @@
 #cat non_existent_file.txt
 #echo "caca"
 
-rm db.sqlite3
+rm database/db.sqlite3
 rm fedow_core/migrations/00*
 poetry run ./manage.py makemigrations
 poetry run ./manage.py migrate

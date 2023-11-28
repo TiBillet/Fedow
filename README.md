@@ -75,26 +75,18 @@ Vous pouvez trouver plus d'informations sur notre blog :
 
 ## Server install
 
-
 ```bash
 # Set your secret :
 cp env_example .env && nano .env
 
 # Pull and lauch the server :
 docker compose up -d
+
+# Dashboard :
+http://localhost:8442/ 
 ```
 
-### Without docker compose (Development environment)
-
-```bash
-poetry install # or poetry update if you have already installed it.
-poetry shell
-./manage.py migrate
-./manage.py install
-./manage.py runserver
-```
-
-## Usage
+## Python client usage
 
 ### Create a new asset
 

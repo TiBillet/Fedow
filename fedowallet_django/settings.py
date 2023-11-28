@@ -23,6 +23,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get('SECRET_KEY')
+print(SECRET_KEY)
 if len(SECRET_KEY) != 50:
     raise ValueError('SECRET_KEY must be 50 characters long. run "./manage.py generate_secret_key"')
 
@@ -32,7 +33,7 @@ if len(FERNET_KEY) != 44:
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
-ALLOWED_HOSTS = [os.environ.get('DOMAIN'),]
+ALLOWED_HOSTS = [os.environ.get('DOMAIN', 'fedow.localhost'),]
 if DEBUG:
     ALLOWED_HOSTS.append('*')
 
@@ -101,7 +102,7 @@ ASGI_APPLICATION = "fedowallet_django.asgi.application"
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': BASE_DIR / 'database/db.sqlite3',
     }
 }
 
