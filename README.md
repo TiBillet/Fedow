@@ -4,7 +4,7 @@
 > Work in progress. ALPHA RELEASE.
 > Go talk with us !
 
-[!dashboard demo image](https://raw.githubusercontent.com/TiBillet/Fedow/main/fedow_dashboard/static/img/img.png)
+![dashboard demo image](https://raw.githubusercontent.com/TiBillet/Fedow/main/fedow_dashboard/static/img/img.png)
 
 ## Presentation (EN)
 
