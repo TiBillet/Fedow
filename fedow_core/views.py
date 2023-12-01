@@ -181,13 +181,13 @@ def get_new_place_token_for_test(request):
             out = StringIO()
             faker = Faker()
             name = faker.company()
-            federation = Federation.objects.create(
-                name=f"FED {name}",
-            )
-            call_command('new_place',
+            call_command('create_federation',
+                            '--name', f'{name} FED',
+                            '--description', f'{faker.email()}',
+                            stdout=out)
+            call_command('create_place',
                          '--name', f'{name}',
                          '--email', f'{faker.email()}',
-                         '--federation', f'{federation.name}',
                          stdout=out)
             encoded_data = out.getvalue().split('\n')[-2]
             return JsonResponse({"encoded_data": encoded_data})

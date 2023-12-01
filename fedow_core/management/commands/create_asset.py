@@ -36,17 +36,21 @@ class Command(BaseCommand):
         parser.add_argument('--category', type=str)
 
     def handle(self, *args, **options):
-        asset_name = options['name']
-        category = options['category']
-        currency_code = options['currency_code'].upper()
-        origin = Wallet.objects.get(uuid=options['origin'])
+        try :
+            asset_name = options['name']
+            category = options['category']
+            currency_code = options['currency_code'].upper()
+            origin = Wallet.objects.get(uuid=options['origin'])
 
-        asset = asset_creator(
-            name=asset_name,
-            currency_code=currency_code,
-            category=category,
-            origin=origin
-        )
+            asset = asset_creator(
+                name=asset_name,
+                currency_code=currency_code,
+                category=category,
+                origin=origin
+            )
 
-        self.stdout.write(self.style.SUCCESS(
-            f"Asset succesfully created : NAME : {asset.name} - CURRENCY CODE : {asset.currency_code}"), ending='\n')
+            self.stdout.write(self.style.SUCCESS(
+                f"Asset succesfully created\nNAME : {asset.name} - CURRENCY CODE : {asset.currency_code}\nUUID : {asset.uuid}"), ending='\n')
+
+        except Exception as e:
+            raise CommandError(e)

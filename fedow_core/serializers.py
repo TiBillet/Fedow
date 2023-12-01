@@ -1,6 +1,4 @@
-import uuid, re
 from collections import OrderedDict
-from datetime import datetime
 from django.utils import timezone
 from rest_framework import serializers
 from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction, OrganizationAPIKey, Asset, Token, \
@@ -105,9 +103,11 @@ class TokenSerializer(serializers.ModelSerializer):
         fields = (
             'uuid',
             'asset',
-            'asset_name',
             'name',
             'value',
+            'asset_name',
+            'asset_category',
+            'is_primary_stripe_token',
         )
 
 
@@ -411,9 +411,6 @@ class WalletCreateSerializer(serializers.Serializer):
     def to_representation(self, instance):
         # Add apikey user to representation
         representation = super().to_representation(instance)
-        if not self.user:
-            import ipdb;
-            ipdb.set_trace()
         self.wallet = self.user.wallet
         representation['wallet'] = f"{self.user.wallet.uuid}"
         return representation

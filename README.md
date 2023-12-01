@@ -12,13 +12,15 @@ of local, complementary and citizen currencies (MLCC) within a federated network
 _Fedow_ has been designed to connect different TiBillet point-of-sale servers so that they can share the cashless
 payment cards of their respective users.
 
-_Fedow_ integrates with [https://tibillet.org tools](https://tibillet.org), it enables the use of dematerialised wallets (
+_Fedow_ integrates with [https://tibillet.org tools](https://tibillet.org), it enables the use of dematerialised
+wallets (
 cashless ), in various community, cooperative and/or commercial venues that can be used directly on the cash register.
 
 _Fedow_ can also be used on its own via a python client or an HTTP API.
 
 It can be used to create a festival cashless system, a loyalty system, a local currency, subscriptions and memberships,
-and a badge reader that keeps track of time used for space location, a time clock that tracks time spent, all for one or more venues.
+and a badge reader that keeps track of time used for space location, a time clock that tracks time spent, all for one or
+more venues.
 
 Finally, Fedow incorporates the principles of [fiat currencies](https://fr.wikipedia.org/wiki/Monnaie_fondante) into a
 transparent, non-speculative and energy-efficient blockchain.
@@ -41,7 +43,8 @@ différents lieux associatifs, coopératifs et/ou commerciaux directement utilis
 _Fedow_ peut aussi être utilisé seul via un client python ou une API HTTP.
 
 Il peut être utilisé pour créer un cashless de festival, un système de fidélité, une monnaie locale, des abonnements et
-adhésions, une badgeuse qui comptabilise le temps utilisé pour une location d'espace, le tout pour un ou plusieurs lieux.
+adhésions, une badgeuse qui comptabilise le temps utilisé pour une location d'espace, le tout pour un ou plusieurs
+lieux.
 
 Enfin, Fedow intègre des principes de [monnaie fondantes](https://fr.wikipedia.org/wiki/Monnaie_fondante) dans une
 chaine de blocs par preuve d'autorité, transparente, non spéculative et non énergivore.
@@ -73,13 +76,18 @@ Vous pouvez trouver plus d'informations sur notre blog :
 - [ ] Transaction Place wallet <-> Place wallet (Compensation algorithm)
 - [ ] Webhook
 - [x] Wallet on NFC Card (Cashless)
-- [x] Refund wallet 
+- [x] Refund wallet
 - [x] Void card (disconnect card from wallet)
 - [x] Scan NFC Card for payment
 - [x] Scan NFC Card for subscription
 - [x] Scan NFC Card for refill wallet
 
-## Server install
+# Server 
+
+## install
+
+For any help, don't hesitate to join us on [Discord](https://discord.gg/ecb5jtP7vY)
+or [Rocket Chat](https://chat.communecter.org/channel/Tibillet)
 
 ```bash
 # Clone the repo :
@@ -98,25 +106,78 @@ docker compose logs -f
 http://localhost:8442/ 
 ```
 
-## Python client usage
+## Server usage
 
-### Connect a TiBillet/LaBoutik server
+Some actions can only be performed on the server itself. The creation of a new federation, a new location and new assets
+are all under the control of the network animator.
+
+### Create a new place
 
 ```bash
-# Create new place
-poetry run python manage.py new_place
-# Copy the string and paste it to the TiBillet server administration.
+docker compose exec fedow poetry run python manage.py create_place --name "Manapany" --email "admin@manap.org" --description "Manapany Festival Cashless"
 ```
 
-### Python Client
+### Create assets
+
+If you already have a cash register server, cashless and membership [TiBillet/LaBoutik](https://tibillet.org), asset
+creation is done automatically during the handshake. Simply enter the key given when creating the location in your
+administration interface.
+
+To create assets manually, you'll need the uuid of the place of origin.
+arg :
+
+- name : String
+- currency_code : String (3 letters)
+- origin : String (uuid of the place)
+- category : String
+    - 'TLF' for local and fiat currency token. (e.g.: Euro equivalent cashless payment system)
+    - 'TNF' for local and non fiat currency token. (e.g.: cashless payment system for valuing volunteer work, time
+      currency, free cryptocurrency, etc...)
+    - 'SUB' for membership or subscription. Can return an additional boolean in the api if the user is up to date.)
+
+```bash
+docker compose exec fedow poetry run python manage.py create_asset --name "My local and federated City Currency" --currency_code "MLC" --origin "place.wallet.uuid" --category "TLF"
+```
+
+### Create a new federation
+
+A federation brings together assets from different locations so that they can be seen by one another. Example: a common
+subscription to access a set of different co-working spaces, a cashless payment system shared between several music
+festivals or associations, a shareable time currency, etc...
+
+```bash
+docker compose exec fedow poetry run python manage.py create_federation --name "The ESS federation" --description "The federation of social and solidarity-based economy associations."
+```
+
+### Add an asset to a federation
+
+Once the federation has been created, you need to add the assets that will be read by all network users, and modifiable
+by all network locations, authenticated via their rsa key and signature.
+
+Each location in the federation has delegated authority to modify the assets of each user's wallet. This enables the
+asset to be accepted at the location's point of sale.
+
+The location is authenticated via its rsa key, along with its point-of-sale opening manager. Every transaction is
+precisely traced.
+
+```bash
+docker compose exec fedow poetry run python manage.py add_asset_to_federation --asset_uuid "<asset_uuid>" --federation_uuid "<federation_uuid>"
+```
+
+Congratulations, you've created a federation of places around a local, complementary and citizen currency!
+
+# Client
+
+## Python client usage
 
 coming soon
 
-### HTTP API
+## HTTP API
 
 coming soon
 
-## Test
+
+# Test
 
 ```bash
 poetry shell

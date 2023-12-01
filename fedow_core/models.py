@@ -95,7 +95,7 @@ class Asset(models.Model):
     SUBSCRIPTION = 'SUB'
 
     CATEGORIES = [
-        (TOKEN_LOCAL_FIAT, 'Fiduciary local token'),
+        (TOKEN_LOCAL_FIAT, 'Token équivalent euro'),
         (TOKEN_LOCAL_NOT_FIAT, 'Token local non fiduciaire'),
         (STRIPE_FED_FIAT, 'Fiduciary and federated token on stripe'),
         (SUBSCRIPTION, 'Membership or subscription'),
@@ -231,8 +231,9 @@ class Token(models.Model):
     def asset_name(self):
         return self.asset.name
 
-    # def __str__(self):
-    #     return f"{self.wallet.name} {self.asset.name} {self.value}"
+    def asset_category(self):
+        return self.asset.category
+
     def is_primary_stripe_token(self):
         if self.asset.is_stripe_primary() and self.wallet.is_primary():
             return True
@@ -458,6 +459,8 @@ class Federation(models.Model):
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=False)
     name = models.CharField(max_length=100, unique=True)
     places = models.ManyToManyField('Place', related_name='federations')
+    assets = models.ManyToManyField('Asset', related_name='federations')
+    description = models.TextField(blank=True, null=True)
 
     def __str__(self):
         return f"{self.name} : {','.join([place.name for place in self.places.all()])}"
@@ -513,6 +516,7 @@ class FedowUser(AbstractUser):
 class Place(models.Model):
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=False)
     name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True, null=True)
 
     # User with Stripe connect and cashless federated server
     wallet = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='place')
