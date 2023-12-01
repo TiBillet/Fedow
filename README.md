@@ -11,7 +11,7 @@ grouping of local, complementary and citizen currencies (MLCC) within a federate
 
 _Fedow_ has been designed to connect different [TiBillet/LaBoutik](https://tibillet.org) point-of-sale servers for a place federation.
 
-They can share the cashless payment and membership cards of their respective users in a open and secure network.
+They can share the NFC / RFID / QRCODE cashless payment and membership cards of their respective users in a open and secure network.
 
 _Fedow_ integrates with [https://tibillet.org tools](https://tibillet.org), it enables the use of dematerialised
 wallets (
