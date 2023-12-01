@@ -556,6 +556,12 @@ class Place(models.Model):
                 places.append(place)
         return places
 
+    def assets_federated_with(self):
+        assets = []
+        for place in self.federated_with():
+            assets += place.assets.all()
+        return assets
+
     def wallet_federated_with(self):
         wallets = []
         for place in self.federated_with():
