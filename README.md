@@ -4,6 +4,8 @@
 > Work in progress. ALPHA RELEASE.
 > Go talk with us !
 
+[!dashboard demo image](https://raw.githubusercontent.com/TiBillet/Fedow/main/fedow_dashboard/static/img/img.png)
+
 ## Presentation (EN)
 
 [Free and open source software](https://fr.wikipedia.org/wiki/Free/Libre_Open_Source_Software) for cashless payment, creation and management of a
