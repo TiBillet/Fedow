@@ -8,16 +8,16 @@
 
 ## Presentation (EN)
 
-[Free and open source software](https://fr.wikipedia.org/wiki/Free/Libre_Open_Source_Software) for cashless payment, creation and management of a
+[Free and open source software](https://fr.wikipedia.org/wiki/Free/Libre_Open_Source_Software) for cashless payment,
+creation and management of a
 grouping of local, complementary and citizen currencies (MLCC) within a federated network.
 
-_Fedow_ has been designed to connect different [TiBillet/LaBoutik](https://tibillet.org) point-of-sale servers for a place federation.
+_Fedow_ has been designed to connect different [TiBillet/LaBoutik](https://tibillet.org) point-of-sale servers for a
+place federation. it enables the use of dematerialised wallets (cashless ), 
+in various community, cooperative and/or commercial venues that can be used directly on the cash register.
 
-They can share the NFC / RFID / QRCODE cashless payment and membership cards of their respective users in a open and secure network.
-
-_Fedow_ integrates with [https://tibillet.org tools](https://tibillet.org), it enables the use of dematerialised
-wallets (
-cashless ), in various community, cooperative and/or commercial venues that can be used directly on the cash register.
+They can share the NFC / RFID / QRCODE cashless payment and membership cards of their respective users in a open and
+secure network.
 
 _Fedow_ can also be used on its own via a python client or an HTTP API.
 
@@ -86,7 +86,7 @@ Vous pouvez trouver plus d'informations sur notre blog :
 - [x] Scan NFC Card for subscription
 - [x] Scan NFC Card for refill wallet
 
-# Server 
+# Server
 
 ## install
 
@@ -179,7 +179,6 @@ coming soon
 ## HTTP API
 
 coming soon
-
 
 # Test
 
