@@ -350,6 +350,7 @@ class Transaction(models.Model):
                 assert self.checkout_stripe != None, "Checkout stripe must be set for create federated money."
             else:
                 # besoin d'une carte primaire pour création monétaire
+                assert self.asset.origin == self.sender, "Asset origin must be the place"
                 assert self.primary_card, "Primary card must be set for creation money."
                 assert self.primary_card in self.receiver.place.primary_cards.all(), \
                     "Primary card must be set for place"
@@ -380,9 +381,12 @@ class Transaction(models.Model):
                 assert self.card.get_wallet() == self.receiver, "Card must be associated to receiver wallet"
                 if not self.card.wallet_ephemere:
                     assert self.receiver.user, "Receiver must be a user wallet"
+
             assert not self.receiver.is_place(), "Receiver must be a user wallet"
             if self.asset.is_stripe_primary():
                 assert self.checkout_stripe != None, "Checkout stripe must be set for refill."
+            else :
+                assert self.asset.origin == self.receiver, "Asset origin must be the place"
 
             # FILL TOKEN WALLET
             token_sender.value -= self.amount
@@ -396,6 +400,7 @@ class Transaction(models.Model):
 
             assert self.receiver.is_place(), "Receiver must be a place wallet"
             assert self.receiver.place, "Receiver must be a place wallet"
+            assert self.asset in self.receiver.place.accepted_asset(), "Asset must be accepted by place"
             assert not self.receiver.is_primary(), "Receiver must be a place wallet"
             assert not self.sender.is_place(), "Sender must be a user wallet"
 
@@ -550,23 +555,22 @@ class Place(models.Model):
                      )
 
     def federated_with(self):
-        places = []
+        places = [self,]
         for federation in self.federations.all():
             for place in federation.places.all():
                 places.append(place)
-        return places
+        return set(places)
 
-    def assets_federated_with(self):
-        assets = []
-        for place in self.federated_with():
-            assets += place.assets.all()
-        return assets
+    def accepted_asset(self):
+        assets = [asset for asset in self.wallet.assets_created.all()]
+        assets_federated = [fed.asset for fed in self.federations.all()]
+        return set(assets + assets_federated)
 
     def wallet_federated_with(self):
-        wallets = []
+        wallets = [self.wallet,]
         for place in self.federated_with():
             wallets.append(place.wallet)
-        return wallets
+        return set(wallets)
 
     def logo_variations(self):
         return self.logo.variations

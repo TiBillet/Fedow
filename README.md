@@ -34,7 +34,7 @@ You can find out more on our french blog :
 
 ## Présentation (FR)
 
-Outil [FLOSS](https://fr.wikipedia.org/wiki/Free/Libre_Open_Source_Software) de création et de gestion d'un groupement
+Outil [FLOSS](https://fr.wikipedia.org/wiki/Free/Libre_Open_Source_Software) de création et de gestion d'un groupement*
 de monnaies locales, complémentaire et citoyenne (MLCC) au sein d'un réseau fédéré,
 _Fedow_ a été conçu pour connecter différents serveurs de points de vente TiBillet afin qu'ils puissent partager les
 cartes de leurs utilisateurs respectifs.

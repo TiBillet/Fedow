@@ -497,7 +497,8 @@ class TransactionW2W(serializers.Serializer):
                 # Place must be in card user wallet authority delegation
                 logger.warning(f"{timezone.localtime()} WARNING sender not in receiver authority delegation")
                 raise serializers.ValidationError("Unauthorized")
-
+            if self.asset not in self.place.accepted_asset():
+                raise serializers.ValidationError("Asset not accepted")
             # Toute validation passée, c'est une vente
             return Transaction.SALE
 
