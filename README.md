@@ -73,10 +73,11 @@ Vous pouvez trouver plus d'informations sur notre blog :
 - [x] Transaction Place wallet <-> User wallet
 - [x] Transaction Fedow primary wallet (Stripe Connect) <-> User wallet
 - [x] Transaction Fedow primary wallet (Stripe Connect) <-> Place wallet
-- [ ] Transaction User wallet <-> User wallet (need double auth)
+- [ ] Transaction User wallet <-> User wallet via QRCode (need double auth)
 - [ ] Transaction Place wallet <-> Place wallet (Compensation algorithm)
 - [ ] Webhook
 - [x] Wallet on NFC Card (Cashless)
+- [ ] Wallet on QRCode (soon, need double auth)
 - [x] Refund wallet
 - [x] Void card (disconnect card from wallet)
 - [x] Scan NFC Card for payment
