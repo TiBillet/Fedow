@@ -45,7 +45,7 @@ _Fedow_ peut aussi être utilisé seul via un client python ou une API HTTP.
 
 Il peut être utilisé pour créer un cashless de festival, un système de fidélité, une monnaie locale, des abonnements et
 adhésions, une badgeuse qui comptabilise le temps utilisé pour une location d'espace, le tout pour un ou plusieurs
-lieux.
+lieux. Avec des cartes NFC / RFID et bientôt avec un simple scan de QRCode.
 
 Enfin, Fedow intègre des principes de [monnaie fondantes](https://fr.wikipedia.org/wiki/Monnaie_fondante) dans une
 chaine de blocs par preuve d'autorité, transparente, non spéculative et non énergivore.
