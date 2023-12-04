@@ -100,6 +100,11 @@ class AssetAPI(viewsets.ViewSet):
         logger.error(f"Asset create error : {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    def list(self, request):
+        accepted_assets = request.place.accepted_assets()
+        serializers = AssetSerializer(accepted_assets, many=True)
+        return Response(serializers.data)
+
     def get_permissions(self):
         permission_classes = [HasKeyAndCashlessSignature]
         return [permission() for permission in permission_classes]
@@ -471,7 +476,10 @@ class CheckoutStripeForChargePrimaryAsset(APIView):
                 },
                 'client_reference_id': f"{wallet.user.pk}",
             }
-            checkout_session = stripe.checkout.Session.create(**data_checkout)
+            try :
+                checkout_session = stripe.checkout.Session.create(**data_checkout)
+            except :
+                import ipdb; ipdb.set_trace()
 
             # Enregistrement du checkout Stripe dans la base de donnée
             checkout_db = CheckoutStripe.objects.create(

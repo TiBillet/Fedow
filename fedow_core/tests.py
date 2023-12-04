@@ -516,9 +516,10 @@ class AssetCardTest(FedowTestCase):
         # TODO: Tout classer et lister ici proprement
         self.create_multiple_card()
         self.create_wallet_with_API()
-        assets = self.create_asset_with_API()
+        self.create_asset_with_API()
         self.send_new_tokens_to_wallet()
-        self.get_stripe_checkout_in_charge_primary_asset_api()
+        # TODO: Stripe
+        # self.get_stripe_checkout_in_charge_primary_asset_api()
 
 class APITestHelloWorld(FedowTestCase):
 

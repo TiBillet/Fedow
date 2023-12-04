@@ -386,8 +386,7 @@ class Transaction(models.Model):
             if self.asset.is_stripe_primary():
                 assert self.checkout_stripe != None, "Checkout stripe must be set for refill."
             else :
-                assert self.asset.origin == self.receiver, "Asset origin must be the place"
-
+                assert self.asset.origin == self.sender, "Asset origin must be the place"
             # FILL TOKEN WALLET
             token_sender.value -= self.amount
             token_receiver.value += self.amount
@@ -400,7 +399,7 @@ class Transaction(models.Model):
 
             assert self.receiver.is_place(), "Receiver must be a place wallet"
             assert self.receiver.place, "Receiver must be a place wallet"
-            assert self.asset in self.receiver.place.accepted_asset(), "Asset must be accepted by place"
+            assert self.asset in self.receiver.place.accepted_assets(), "Asset must be accepted by place"
             assert not self.receiver.is_primary(), "Receiver must be a place wallet"
             assert not self.sender.is_place(), "Sender must be a user wallet"
 
@@ -561,7 +560,7 @@ class Place(models.Model):
                 places.append(place)
         return set(places)
 
-    def accepted_asset(self):
+    def accepted_assets(self):
         assets = [asset for asset in self.wallet.assets_created.all()]
         assets_federated = [fed.asset for fed in self.federations.all()]
         return set(assets + assets_federated)
