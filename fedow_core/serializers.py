@@ -1,5 +1,8 @@
 from collections import OrderedDict
+from datetime import timedelta
+
 from django.utils import timezone
+from django.utils.timezone import localtime
 from rest_framework import serializers
 from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction, OrganizationAPIKey, Asset, Token, \
     get_or_create_user, Origin, asset_creator, Configuration
@@ -98,6 +101,14 @@ class OnboardSerializer(serializers.Serializer):
 
 
 class TokenSerializer(serializers.ModelSerializer):
+    is_sub_valid = serializers.SerializerMethodField()
+
+    def get_is_sub_valid(self, obj: Token):
+        if obj.asset.category == Asset.SUBSCRIPTION:
+            if obj.last_transaction_datetime() > (localtime() - timedelta(days=365)):
+                return True
+        return False
+
     class Meta:
         model = Token
         fields = (
@@ -108,11 +119,25 @@ class TokenSerializer(serializers.ModelSerializer):
             'asset_name',
             'asset_category',
             'is_primary_stripe_token',
+            'last_transaction_datetime',
+            'is_sub_valid',
         )
 
 
 class WalletSerializer(serializers.ModelSerializer):
-    tokens = TokenSerializer(many=True)
+    # tokens = TokenSerializer(many=True)
+    tokens = serializers.SerializerMethodField()
+
+    def get_tokens(self, obj: Wallet):
+        # On ne pousse que les tokens acceptés par le lieu
+        if self.context.get('request') :
+            request = self.context.get('request')
+            place = request.place
+            if place :
+                assets = place.accepted_assets()
+                return TokenSerializer(obj.tokens.filter(wallet=obj, asset__in=assets),many=True).data
+
+        raise serializers.ValidationError("Place not found")
 
     class Meta:
         model = Wallet
@@ -167,7 +192,7 @@ class CardRefundOrVoidValidator(serializers.Serializer):
             raise serializers.ValidationError("User card is required for void or refund")
 
         wallet: Wallet = self.user_card.get_wallet()
-        self.ex_wallet_serialized = WalletSerializer(wallet).data
+        self.ex_wallet_serialized = WalletSerializer(wallet, context=self.context).data
 
         for token in wallet.tokens.filter(
                 value__gt=0,
@@ -186,7 +211,7 @@ class CardRefundOrVoidValidator(serializers.Serializer):
                 "subscription_start_datetime": None
             }
             transaction = Transaction.objects.create(**transaction_dict)
-            transactions.append(TransactionSerializer(transaction).data)
+            transactions.append(TransactionSerializer(transaction, context=self.context).data)
 
         self.transactions = transactions
         if attrs.get('action') == Transaction.VOID:
@@ -239,6 +264,8 @@ class CardCreateValidator(serializers.ModelSerializer):
 
 
 class AssetSerializer(serializers.ModelSerializer):
+
+
     class Meta:
         model = Asset
         fields = (
@@ -427,7 +454,7 @@ class CardSerializer(serializers.ModelSerializer):
 
     def get_wallet(self, obj: Card):
         wallet = obj.get_wallet()
-        return WalletSerializer(wallet).data
+        return WalletSerializer(wallet, context=self.context).data
 
     class Meta:
         model = Card

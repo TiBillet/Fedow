@@ -94,7 +94,7 @@ class AssetAPI(viewsets.ViewSet):
 
         if serializer.is_valid():
             # Sérialisation de l'asset
-            asset_seralized = AssetSerializer(serializer.asset)
+            asset_seralized = AssetSerializer(serializer.asset, context={'request': request})
             return Response(asset_seralized.data, status=status.HTTP_201_CREATED)
 
         logger.error(f"Asset create error : {serializer.errors}")
@@ -102,7 +102,7 @@ class AssetAPI(viewsets.ViewSet):
 
     def list(self, request):
         accepted_assets = request.place.accepted_assets()
-        serializers = AssetSerializer(accepted_assets, many=True)
+        serializers = AssetSerializer(accepted_assets, many=True, context={'request': request})
         return Response(serializers.data)
 
     def get_permissions(self):
@@ -118,7 +118,7 @@ class CardAPI(viewsets.ViewSet):
         validator = CardRefundOrVoidValidator(data=request.data, context={'request': request})
         if validator.is_valid():
             refund_data = {
-                "serialized_card": CardSerializer(validator.user_card).data,
+                "serialized_card": CardSerializer(validator.user_card, context={'request': request}).data,
                 "before_refund_serialized_wallet": validator.ex_wallet_serialized,
                 "serialized_transactions": validator.transactions,
             }
@@ -130,7 +130,7 @@ class CardAPI(viewsets.ViewSet):
         # Utilisé par les serveurs cashless comme un check card
         try:
             card = Card.objects.get(first_tag_id=pk)
-            serializer = CardSerializer(card)
+            serializer = CardSerializer(card, context={'request': request})
             return Response(serializer.data, status=status.HTTP_200_OK)
         except Card.DoesNotExist:
             return Response("Carte inconnue", status=status.HTTP_404_NOT_FOUND)
@@ -164,7 +164,7 @@ class WalletAPI(viewsets.ViewSet):
     #     return Response(serializer.data)
 
     def retrieve(self, request, pk=None):
-        serializer = WalletSerializer(Wallet.objects.get(pk=pk))
+        serializer = WalletSerializer(Wallet.objects.get(pk=pk), context={'request': request})
         return Response(serializer.data)
 
     def create(self, request):
@@ -510,18 +510,18 @@ class TransactionAPI(viewsets.ViewSet):
     pagination_class = StandardResultsSetPagination
 
     def list(self, request):
-        serializer = TransactionSerializer(Transaction.objects.all(), many=True)
+        serializer = TransactionSerializer(Transaction.objects.all(), many=True, context={'request': request})
         return Response(serializer.data)
 
     def retrieve(self, request, pk=None):
-        serializer = TransactionSerializer(Transaction.objects.get(pk=pk))
+        serializer = TransactionSerializer(Transaction.objects.get(pk=pk), context={'request': request})
         return Response(serializer.data)
 
     def create(self, request):
         transaction_validator = TransactionW2W(data=request.data, context={'request': request})
         if transaction_validator.is_valid():
             transaction: Transaction = transaction_validator.transaction
-            transaction_serialized = TransactionSerializer(transaction)
+            transaction_serialized = TransactionSerializer(transaction, context={'request': request})
             return Response(transaction_serialized.data, status=status.HTTP_201_CREATED)
 
         logger.error(f"{timezone.localtime()} ERROR - Transaction create error : {transaction_validator.errors}")

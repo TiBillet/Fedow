@@ -1,5 +1,4 @@
 {% extends 'base.html' %}
-
 {% block content %}
     <button class="btn btn-dark btn-sm mt-5"
             _="on click toggle .dark-version on body
@@ -8,7 +7,7 @@
         Dark
     </button>
     <hr class="dark horizontal my-3">
-    <p>{{ assets.count }} monnaie(s) en circulation</p>
+    <p>{{ assets.count }} monnaie(s) acceptées</p>
     <div class="row">
         {% for asset in assets %}
             {% include 'index/asset_card.html' %}

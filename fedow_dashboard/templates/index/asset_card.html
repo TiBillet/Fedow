@@ -12,7 +12,7 @@
         </div>
         <hr class="dark horizontal my-0">
         <div class="card-footer p-3">
-            <p class="mb-0">Origine : {{ asset.origin.get_name | capfirst }}</p>
+            <a href="/dashboard/place/{{ asset.origin.place.uuid }}/"><p class="mb-0">Origine : {{ asset.origin.get_name | capfirst }}</p></a>
         </div>
     </div>
 </div>

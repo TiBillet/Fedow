@@ -225,6 +225,12 @@ class Token(models.Model):
     wallet = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name='tokens')
     asset = models.ForeignKey(Asset, on_delete=models.PROTECT, related_name='tokens')
 
+    def last_transaction_datetime(self):
+        last_transaction = self.asset.transactions.all().order_by('datetime').last()
+        if last_transaction:
+            return last_transaction.datetime
+        return None
+
     def name(self):
         return self.asset.name
 
@@ -561,7 +567,11 @@ class Place(models.Model):
         return set(places)
 
     def accepted_assets(self):
+        # Les assets créé par le lieu
         assets = [asset for asset in self.wallet.assets_created.all()]
+        # L'asset primaire de stripe
+        assets.append(Asset.objects.get(category=Asset.STRIPE_FED_FIAT))
+        # Les assets fédérés
         assets_federated = [fed.asset for fed in self.federations.all()]
         return set(assets + assets_federated)
 

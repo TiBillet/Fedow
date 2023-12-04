@@ -19,7 +19,7 @@
             </button>
         </div>
         <h5 class="font-weight-normal mt-3">
-            <a href="javascript:;">{{ place.name | default:'Place Name' }}</a>
+            <a href="/{{ place.uuid }}">{{ place.name | default:'Place Name' }}</a>
         </h5>
         <p class="mb-0">
             {{ place.name | default:'Place description' }}
