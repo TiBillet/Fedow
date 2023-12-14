@@ -116,6 +116,7 @@ class TokenSerializer(serializers.ModelSerializer):
             'asset',
             'name',
             'value',
+            'asset_uuid',
             'asset_name',
             'asset_category',
             'is_primary_stripe_token',
@@ -477,10 +478,14 @@ class TransactionW2W(serializers.Serializer):
     subscription_start_datetime = serializers.DateTimeField(required=False)
     action = serializers.ChoiceField(choices=Transaction.TYPE_ACTION, required=False, allow_null=True)
 
+    comment = serializers.CharField(required=False, allow_null=True)
+    metadata = serializers.JSONField(required=False, allow_null=True)
+
     primary_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
     primary_card_fisrtTagId = serializers.SlugRelatedField(
         queryset=Card.objects.all(),
         required=False, slug_field='first_tag_id')
+
     user_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
     user_card_firstTagId = serializers.SlugRelatedField(
         queryset=Card.objects.all(),
@@ -555,7 +560,8 @@ class TransactionW2W(serializers.Serializer):
         self.receiver: Wallet = attrs.get('receiver')
         self.asset: Asset = attrs.get('asset')
         self.amount: int = attrs.get('amount')
-
+        self.comment: str = attrs.get('comment')
+        self.metadata : str = attrs.get('metadata')
         # Subscription :
         self.subscription_start_datetime = attrs.get('subscription_start_datetime')
 
@@ -607,6 +613,8 @@ class TransactionW2W(serializers.Serializer):
                 "sender": self.sender,
                 "receiver": self.sender,
                 "asset": self.asset,
+                "comment" : self.comment,
+                "metadata" : self.metadata,
                 "amount": self.amount,
                 "action": Transaction.CREATION,
                 "primary_card": self.primary_card,
@@ -625,6 +633,8 @@ class TransactionW2W(serializers.Serializer):
             "sender": self.sender,
             "receiver": self.receiver,
             "asset": self.asset,
+            "comment": self.comment,
+            "metadata": self.metadata,
             "amount": self.amount,
             "action": action,
             "primary_card": self.primary_card,
@@ -657,6 +667,8 @@ class TransactionSerializer(serializers.ModelSerializer):
             "receiver",
             "asset",
             "amount",
+            "comment",
+            "metadata",
             "card",
             "primary_card",
             "previous_transaction",

@@ -234,6 +234,9 @@ class Token(models.Model):
     def name(self):
         return self.asset.name
 
+    def asset_uuid(self):
+        return self.asset.uuid
+
     def asset_name(self):
         return self.asset.name
 
@@ -272,7 +275,9 @@ class Transaction(models.Model):
     datetime = models.DateTimeField()
 
     amount = models.PositiveIntegerField()
+
     comment = models.TextField(blank=True, null=True)
+    metadata = models.JSONField(blank=True, null=True)
 
     subscription_start_datetime = models.DateTimeField(blank=True, null=True)
 
@@ -302,6 +307,7 @@ class Transaction(models.Model):
             'card': f"{self.card.uuid}" if self.card else None,
             'primary_card': f"{self.primary_card.uuid}" if self.primary_card else None,
             'comment': f"{self.comment}",
+            'metadata': f"{self.metadata}",
             'checkoupt_stripe': f"{self._checkout_session_id_stripe()}",
             'previous_asset_transaction_uuid': f"{self.previous_transaction.uuid}",
             'previous_asset_transaction_hash': f"{self.previous_transaction.hash}",

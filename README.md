@@ -25,7 +25,7 @@ It can be used to create a festival cashless system, a loyalty system, a local c
 and a badge reader that keeps track of time used for space location, a time clock that tracks time spent, all for one or
 more venues.
 
-Finally, Fedow incorporates the principles of [fiat currencies](https://fr.wikipedia.org/wiki/Monnaie_fondante) into a
+Finally, Fedow incorporates the principles of [melting fiat currencies](https://fr.wikipedia.org/wiki/Monnaie_fondante) into a
 transparent, non-speculative and energy-efficient blockchain.
 
 You can find out more on our french blog :
