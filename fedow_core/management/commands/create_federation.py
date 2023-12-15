@@ -19,12 +19,18 @@ class Command(BaseCommand):
 
             if not federation_name:
                 raise CommandError('Please provide a federation name')
-            if Federation.objects.filter(name=federation_name).exists():
-                raise CommandError('Federation already exists')
+            # if Federation.objects.filter(name=federation_name).exists():
+            #     raise CommandError('Federation already exists')
 
-            federation = Federation.objects.create(name=federation_name, description=description)
+            try:
+                federation = Federation.objects.get(name=federation_name)
+                self.stdout.write(self.style.WARNING(
+                    f"Federation already exist : {federation.name}"), ending='\n')
+            except Federation.DoesNotExist:
+                federation = Federation.objects.create(name=federation_name, description=description)
+                self.stdout.write(self.style.SUCCESS(
+                    f"Federation succesfully created.\nNAME : {federation.name}\nUUID : {federation.uuid}"),
+                    ending='\n')
 
-            self.stdout.write(self.style.SUCCESS(
-                f"Federation succesfully created.\nNAME : {federation.name}\nUUID : {federation.uuid}"), ending='\n')
         except Exception as e:
             raise CommandError(e)

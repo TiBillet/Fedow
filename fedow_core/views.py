@@ -187,12 +187,13 @@ def get_new_place_token_for_test(request):
             faker = Faker()
             name = faker.company()
             call_command('create_federation',
-                            '--name', f'{name} FED',
-                            '--description', f'{faker.email()}',
+                            '--name', f'TEST FED',
+                            '--description', f'test@fed.coop',
                             stdout=out)
             call_command('create_place',
                          '--name', f'{name}',
                          '--email', f'{faker.email()}',
+                         '--test', f'TEST FED',
                          stdout=out)
             encoded_data = out.getvalue().split('\n')[-2]
             return JsonResponse({"encoded_data": encoded_data})

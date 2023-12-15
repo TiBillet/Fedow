@@ -425,8 +425,8 @@ class AssetCardTest(FedowTestCase):
                 }
                 response = self._post_from_simulated_cashless('transaction', transaction_refill)
 
-                if response.status_code != 201:
-                    import ipdb; ipdb.set_trace()
+                # if response.status_code != 201:
+                #     import ipdb; ipdb.set_trace()
                 self.assertEqual(response.status_code, 201)
                 transaction = Transaction.objects.get(pk=response.json().get('uuid'))
                 self.assertEqual(transaction.action, Transaction.REFILL)

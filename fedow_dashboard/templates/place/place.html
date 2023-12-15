@@ -7,7 +7,7 @@
         Dark
     </button>
     <hr class="dark horizontal my-3">
-    <p>{{ assets.count }} monnaie(s) acceptées</p>
+    <p>{{ assets.count }} Asset(s) acceptées</p>
     <div class="row">
         {% for asset in assets %}
             {% include 'index/asset_card.html' %}
@@ -17,6 +17,28 @@
     <p>{{ cards.count }} cartes de paiements en circulation</p>
     <hr class="dark horizontal my-3">
     <p>{{ wallets.count }} portefeuilles en circulation</p>
+
+    <hr class="dark horizontal my-3">
+    <p>{{ federations.count }} Fédération(s)</p>
+    <div class="card-group">
+        <ul>
+            {% for fed in federations %}
+                <li>{{ fed.name | title }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <hr class="dark horizontal my-3">
+    <p>{{ federated_assets.count }} Assets fédérés</p>
+    <div class="card-group">
+        <ul>
+            {% for asset in federated_assets %}
+                <li>{{ asset.name | title }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+
+
     <hr class="dark horizontal my-3">
     <p>{{ places.count }} Lieu(x)</p>
     <div class="card-group">

@@ -1,4 +1,4 @@
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from rest_framework import viewsets
 from rest_framework.permissions import AllowAny
 
@@ -8,12 +8,14 @@ from fedow_core.models import Asset, Place, Wallet, Card
 # Create your views here.
 class PlaceAPI(viewsets.ViewSet):
     def retrieve(self, request, pk=None):
-        place = Place.objects.get(pk=pk)
+        place = get_object_or_404(Place, pk=pk)
         accepted_assets = place.accepted_assets()
         place_federated_with = place.federated_with()
 
         context = {
             'assets': accepted_assets,
+            'federated_assets': place.federated_assets(),
+            'federations': place.federations.all(),
             'places': place_federated_with,
             'wallets': Wallet.objects.all(),
             'cards': Card.objects.all(),

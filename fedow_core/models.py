@@ -293,9 +293,11 @@ class Transaction(models.Model):
     subscription_type = models.CharField(max_length=3, choices=TYPE_SUB, default=NONE)
     subscription_first_datetime = models.DateTimeField(blank=True, null=True)
     subscription_start_datetime = models.DateTimeField(blank=True, null=True)
-    last_check = models.DateTimeField(blank=True, null=True, auto_now=True)
 
-    FIRST, SALE, CREATION, REFILL, TRANSFER, SUBSCRIBE, BADGE, FUSION, REFUND, VOID = 'FST', 'SAL', 'CRE', 'REF', 'TRF', 'MEM', 'BDG' ,'FUS', 'RFD', 'VID'
+    # auto_now dans la fonction save. Si on utilise auto_now, le verify hash n'aura pas la même date car il est créé après le save, donc après le hash.
+    last_check = models.DateTimeField(blank=True, null=True)
+
+    FIRST, SALE, CREATION, REFILL, TRANSFER, SUBSCRIBE, BADGE, FUSION, REFUND, VOID = 'FST', 'SAL', 'CRE', 'REF', 'TRF', 'SUB', 'BDG' ,'FUS', 'RFD', 'VID'
     TYPE_ACTION = (
         (FIRST, "Premier bloc"),
         (SALE, "Vente d'article"),
@@ -318,8 +320,8 @@ class Transaction(models.Model):
             'amount': f"{self.amount}",
             'datetime': f"{self.datetime.isoformat()}",
             'subscription_type': f"{self.subscription_type}",
-            'subscription_start_datetime': f"{self.subscription_start_datetime.isoformat()}" if self.subscription_start_datetime else None,
             'subscription_first_datetime': f"{self.subscription_first_datetime.isoformat()}" if self.subscription_first_datetime else None,
+            'subscription_start_datetime': f"{self.subscription_start_datetime.isoformat()}" if self.subscription_start_datetime else None,
             'last_check': f"{self.last_check.isoformat()}" if self.last_check else None,
             'action': f"{self.action}",
             'card': f"{self.card.uuid}" if self.card else None,
@@ -357,6 +359,11 @@ class Transaction(models.Model):
     def save(self, *args, **kwargs):
         if not self.datetime:
             self.datetime = timezone.localtime()
+
+        # auto_now simulé dans la fonction save pour lash check.
+        # Si on utilise auto_now, le verify hash n'aura pas la même date car il est créé après le save, donc après le hash.
+        self.last_check = timezone.localtime()
+
         token_sender, created = Token.objects.get_or_create(wallet=self.sender, asset=self.asset)
         token_receiver, created = Token.objects.get_or_create(wallet=self.receiver, asset=self.asset)
 
@@ -590,14 +597,19 @@ class Place(models.Model):
                 places.append(place)
         return set(places)
 
+    def federated_assets(self):
+        federations = self.federations.all()
+        liste_de_listes_d_assets = [ fed.assets.all() for fed in federations]
+        assets_federated = [asset for asset in liste_de_listes_d_assets]
+        return []
+
     def accepted_assets(self):
         # Les assets créé par le lieu
         assets = [asset for asset in self.wallet.assets_created.all()]
         # L'asset primaire de stripe
         assets.append(Asset.objects.get(category=Asset.STRIPE_FED_FIAT))
-        # Les assets fédérés
-        assets_federated = [fed.asset for fed in self.federations.all()]
-        return set(assets + assets_federated)
+
+        return set(assets + self.federated_assets())
 
     def wallet_federated_with(self):
         wallets = [self.wallet,]
