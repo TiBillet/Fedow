@@ -279,9 +279,23 @@ class Transaction(models.Model):
     comment = models.TextField(blank=True, null=True)
     metadata = models.JSONField(blank=True, null=True)
 
-    subscription_start_datetime = models.DateTimeField(blank=True, null=True)
+    NONE, ANNUAL, CIVIL, MONTHLY, WEEKLY, DAILY, HOURLY = 'NO', 'YEA', 'CIV', 'MON', 'WEK', 'DAY', 'HOR'
+    TYPE_SUB = (
+        (NONE, 'None'),
+        (ANNUAL, 'Annuel'),
+        (CIVIL, 'Civil'),
+        (MONTHLY, 'Mensuel'),
+        (WEEKLY, 'Hebdomadaire'),
+        (DAILY, 'Journalier'),
+        (HOURLY, 'Horaire'),
+    )
 
-    FIRST, SALE, CREATION, REFILL, TRANSFER, SUBSCRIBE, FUSION, REFUND, VOID = 'F', 'S', 'C', 'R', 'T', 'M' ,'U', 'Z', 'V'
+    subscription_type = models.CharField(max_length=3, choices=TYPE_SUB, default=NONE)
+    subscription_first_datetime = models.DateTimeField(blank=True, null=True)
+    subscription_start_datetime = models.DateTimeField(blank=True, null=True)
+    last_check = models.DateTimeField(blank=True, null=True, auto_now=True)
+
+    FIRST, SALE, CREATION, REFILL, TRANSFER, SUBSCRIBE, BADGE, FUSION, REFUND, VOID = 'FST', 'SAL', 'CRE', 'REF', 'TRF', 'MEM', 'BDG' ,'FUS', 'RFD', 'VID'
     TYPE_ACTION = (
         (FIRST, "Premier bloc"),
         (SALE, "Vente d'article"),
@@ -289,11 +303,12 @@ class Transaction(models.Model):
         (REFILL, 'Recharge'),
         (TRANSFER, 'Transfert'),
         (SUBSCRIBE, 'Abonnement ou adhésion'),
+        (BADGE, 'Badgeuse'),
         (FUSION, 'Fusion de deux wallets'),
         (REFUND, 'Remboursement'),
         (VOID, 'Dissocciation de la carte et du wallet user'),
     )
-    action = models.CharField(max_length=1, choices=TYPE_ACTION, default=SALE)
+    action = models.CharField(max_length=3, choices=TYPE_ACTION, default=SALE)
 
     def dict_for_hash(self):
         dict_for_hash = {
@@ -301,8 +316,11 @@ class Transaction(models.Model):
             'receiver': f"{self.receiver.uuid}",
             'asset': f"{self.asset.uuid}",
             'amount': f"{self.amount}",
-            'date': f"{self.datetime.isoformat()}",
+            'datetime': f"{self.datetime.isoformat()}",
+            'subscription_type': f"{self.subscription_type}",
             'subscription_start_datetime': f"{self.subscription_start_datetime.isoformat()}" if self.subscription_start_datetime else None,
+            'subscription_first_datetime': f"{self.subscription_first_datetime.isoformat()}" if self.subscription_first_datetime else None,
+            'last_check': f"{self.last_check.isoformat()}" if self.last_check else None,
             'action': f"{self.action}",
             'card': f"{self.card.uuid}" if self.card else None,
             'primary_card': f"{self.primary_card.uuid}" if self.primary_card else None,
