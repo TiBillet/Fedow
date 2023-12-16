@@ -135,6 +135,7 @@ class WalletSerializer(serializers.ModelSerializer):
             request = self.context.get('request')
             place = request.place
             if place :
+                # import ipdb; ipdb.set_trace()
                 assets = place.accepted_assets()
                 return TokenSerializer(obj.tokens.filter(wallet=obj, asset__in=assets),many=True).data
 
@@ -240,6 +241,7 @@ class CardCreateValidator(serializers.ModelSerializer):
             raise serializers.ValidationError("One generation per request")
 
         return value
+
 
     def create(self, validated_data):
         is_primary = validated_data.pop('is_primary', False)

@@ -609,7 +609,10 @@ class Place(models.Model):
         # L'asset primaire de stripe
         assets.append(Asset.objects.get(category=Asset.STRIPE_FED_FIAT))
 
-        return set(assets + self.federated_assets())
+        # return set(assets + self.federated_assets())
+
+        #TODO: Pour test
+        return Asset.objects.all()
 
     def wallet_federated_with(self):
         wallets = [self.wallet,]
