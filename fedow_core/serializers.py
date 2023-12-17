@@ -126,18 +126,16 @@ class TokenSerializer(serializers.ModelSerializer):
 
 
 class WalletSerializer(serializers.ModelSerializer):
-    # tokens = TokenSerializer(many=True)
     tokens = serializers.SerializerMethodField()
 
     def get_tokens(self, obj: Wallet):
         # On ne pousse que les tokens acceptés par le lieu
-        if self.context.get('request') :
+        if self.context.get('request'):
             request = self.context.get('request')
             place = request.place
-            if place :
-                # import ipdb; ipdb.set_trace()
+            if place:
                 assets = place.accepted_assets()
-                return TokenSerializer(obj.tokens.filter(wallet=obj, asset__in=assets),many=True).data
+                return TokenSerializer(obj.tokens.filter(wallet=obj, asset__in=assets), many=True).data
 
         raise serializers.ValidationError("Place not found")
 
@@ -224,7 +222,6 @@ class CardRefundOrVoidValidator(serializers.Serializer):
         return attrs
 
 
-
 class CardCreateValidator(serializers.ModelSerializer):
     generation = serializers.IntegerField(required=True)
     is_primary = serializers.BooleanField(required=True)
@@ -241,7 +238,6 @@ class CardCreateValidator(serializers.ModelSerializer):
             raise serializers.ValidationError("One generation per request")
 
         return value
-
 
     def create(self, validated_data):
         is_primary = validated_data.pop('is_primary', False)
@@ -267,8 +263,6 @@ class CardCreateValidator(serializers.ModelSerializer):
 
 
 class AssetSerializer(serializers.ModelSerializer):
-
-
     class Meta:
         model = Asset
         fields = (
@@ -563,7 +557,7 @@ class TransactionW2W(serializers.Serializer):
         self.asset: Asset = attrs.get('asset')
         self.amount: int = attrs.get('amount')
         self.comment: str = attrs.get('comment')
-        self.metadata : str = attrs.get('metadata')
+        self.metadata: str = attrs.get('metadata')
         # Subscription :
         self.subscription_start_datetime = attrs.get('subscription_start_datetime')
 
@@ -615,8 +609,8 @@ class TransactionW2W(serializers.Serializer):
                 "sender": self.sender,
                 "receiver": self.sender,
                 "asset": self.asset,
-                "comment" : self.comment,
-                "metadata" : self.metadata,
+                "comment": self.comment,
+                "metadata": self.metadata,
                 "amount": self.amount,
                 "action": Transaction.CREATION,
                 "primary_card": self.primary_card,

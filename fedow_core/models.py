@@ -6,6 +6,7 @@ import stripe
 from cryptography.hazmat.primitives.asymmetric import rsa
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.db.models import UniqueConstraint, Q
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
@@ -591,34 +592,39 @@ class Place(models.Model):
                      )
 
     def federated_with(self):
-        places = [self,]
+        logger.info(f'federated_with_{self.uuid} called')
+        # print(f'federated_with_{self.uuid} called')
+        places, assets, wallets = set(), set(), set()
         for federation in self.federations.all():
-            for place in federation.places.all():
-                places.append(place)
-        return set(places)
+            places.update(federation.places.all())
+            assets.update(federation.assets.all())
+            wallets.update([place.wallet for place in federation.places.all()])
 
-    def federated_assets(self):
-        federations = self.federations.all()
-        liste_de_listes_d_assets = [ fed.assets.all() for fed in federations]
-        assets_federated = [asset for asset in liste_de_listes_d_assets]
-        return []
+        # On s'assure d'avoir l'asset fédéré par STRIPE
+        assets.add(Asset.objects.get(category=Asset.STRIPE_FED_FIAT))
+        # Les assets créé par le lieu
+        assets.update(self.wallet.assets_created.all())
+        return places, assets, wallets
+
+    def cached_federated_with(self):
+        feds = cache.get(f'federated_with_{self.uuid}')
+        if feds:
+            logger.info(f'federated_with_{self.uuid} GET from cache')
+        else :
+            feds = self.federated_with()
+            logger.info(f'federated_with_{self.uuid} SET in cache')
+            cache.set(f'federated_with_{self.uuid}', feds, 120)
+
+        places, assets, wallets = feds
+        return places, assets, wallets
 
     def accepted_assets(self):
-        # Les assets créé par le lieu
-        assets = [asset for asset in self.wallet.assets_created.all()]
-        # L'asset primaire de stripe
-        assets.append(Asset.objects.get(category=Asset.STRIPE_FED_FIAT))
-
-        # return set(assets + self.federated_assets())
-
-        #TODO: Pour test
-        return Asset.objects.all()
+        place, assets, wallets = self.cached_federated_with()
+        return assets
 
     def wallet_federated_with(self):
-        wallets = [self.wallet,]
-        for place in self.federated_with():
-            wallets.append(place.wallet)
-        return set(wallets)
+        place, assets, wallets = self.cached_federated_with()
+        return wallets
 
     def logo_variations(self):
         return self.logo.variations

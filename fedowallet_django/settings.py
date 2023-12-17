@@ -32,7 +32,7 @@ if len(FERNET_KEY) != 44:
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
-ALLOWED_HOSTS = [os.environ.get('DOMAIN', 'fedow.localhost'),]
+ALLOWED_HOSTS = [os.environ.get('DOMAIN', 'fedow.localhost'), ]
 if DEBUG:
     ALLOWED_HOSTS.append('*')
 
@@ -162,3 +162,21 @@ if os.environ.get('STRIPE_TEST') == 'False':
     STRIPE_TEST = False
     if STRIPE_KEY is None:
         raise ValueError('STRIPE_KEY must be set in production')
+
+# -------------------------------------/
+# LOGGING
+# -------------------------------------/
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "INFO",
+    },
+}
