@@ -43,7 +43,7 @@ class Command(BaseCommand):
         except Place.DoesNotExist:
             out = StringIO()
             primary_federation = Federation.objects.all()[0]
-            call_command('places', '--create'
+            call_command('places', '--create',
                          '--name', 'TestPlace',
                          '--email', 'place@place.coop',
                          stdout=out)

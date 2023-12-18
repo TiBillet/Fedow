@@ -50,7 +50,7 @@ class Command(BaseCommand):
                          '--create',
                          '--name', 'Primary Asset',
                          '--currency_code', 'FED',
-                         '--origin', f'{primary_wallet.uuid}',
+                         '--wallet_origin', f'{primary_wallet.uuid}',
                          '--category', 'FED')
 
             if Asset.objects.all().count() > 1:

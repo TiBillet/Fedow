@@ -41,7 +41,7 @@ class Command(BaseCommand):
             try:
                 asset_name = options['name']
                 category = options['category']
-                if category not in [Asset.TOKEN_LOCAL_FIAT, Asset.TOKEN_LOCAL_NOT_FIAT, Asset.SUBSCRIPTION]:
+                if category not in [Asset.TOKEN_LOCAL_FIAT, Asset.TOKEN_LOCAL_NOT_FIAT, Asset.SUBSCRIPTION, Asset.STRIPE_FED_FIAT]:
                     raise CommandError('Please provide a valid category')
                 currency_code = options['currency_code'].upper()
 
