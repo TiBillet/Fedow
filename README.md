@@ -117,6 +117,14 @@ http://localhost:8442/
 Some actions can only be performed on the server itself. The creation of a new federation, a new location and new assets
 are all under the control of the network animator.
 
+```bash
+# Use compose or poetry command like that :
+# Inside the poetry shell 
+python manage.py federations [OPTIONS]
+# Outsite of docker 
+docker compose exec fedow poetry run python manage.py federations [OPTIONS]
+```
+
 ## Create and manage Federations
 
 A federation brings together assets from different locations so that they can be seen by one another. Example: a common
@@ -125,13 +133,6 @@ festivals or associations, a shareable time currency, etc...
 
 Fedow use the command-line tool of Django for managing federations. It provides several options to add or remove assets
 and places from a federation, as well as listing all assets in the database.
-
-```bash
-# Inside the poetry shell :
-python manage.py federations [OPTIONS]
-# Outsite of docker :
-docker compose exec fedow poetry run python manage.py federations [OPTIONS]
-```
 
 ### Options
 
@@ -164,6 +165,10 @@ python manage.py federations --remove_place --fed_uuid <FEDERATION_UUID> --place
 
 ## Create and manage Places
 
+```bash
+python manage.py places [OPTIONS]
+```
+
 A place is a location that can be part of a federation. It can be a co-working space, a music festival, a shop, a
 associative bar...
 
@@ -178,13 +183,7 @@ Congratulations, these cards will be readable throughout the federation network!
 You can then link the location assets created by the TiBillet/Fedow handshake to a federation to share a local currency,
 a time currency or subscriptions throughout the federation.
 
-## Usage
-
-```bash
-python manage.py places [OPTIONS]
-```
-
-## Options
+### Options
 
 - `--create`: Create a new place. Requires `--name` and `--email`. Optional `--description` and `--test`.
 - `--list`: List all places in the database.
@@ -193,27 +192,14 @@ python manage.py places [OPTIONS]
 - `--description`: Description of the place.
 - `--test`: If provided with "TEST FED", the place will be automatically added to the test federation.
 
-## Examples
-
-To create a place:
+### Examples
 
 ```bash
+# Create a place:
 python manage.py places --create --name <PLACE_NAME> --email <ADMIN_EMAIL> --description <DESCRIPTION>
-```
-
-To list all places in the database:
-
-```bash
+# List all places in the database:
 python manage.py places --list
 ```
-
-Please replace `<PLACE_NAME>`, `<ADMIN_EMAIL>`, `<DESCRIPTION>`, and `<TEST_FED>` with the actual values.
-
-## Error Handling
-
-The script will raise an error if the required arguments are not provided or if the provided arguments are not valid.
-For example, if the `--name` or `--email` is not provided when creating a place, an error will be raised. Similarly, an
-error will be raised if the place name already exists in the database.
 
 ## Create and manage Assets
 
@@ -224,18 +210,13 @@ administration interface.
 Please note that once the locations and assets have been configured, you must also validate them on the
 TiBillet/LaBoutik side.
 
-# Documentation for `assets.py`
-
-`assets.py` is a command-line tool for managing assets in federations. It provides several options to create assets and
-list all assets in the database.
-
-## Usage
+### Usage
 
 ```bash
 python manage.py assets [OPTIONS]
 ```
 
-## Options
+### Options
 
 - `--create`: Create an asset. Requires `--name`, `--currency_code`, `--category`, and either `--place_origin`
   or `--wallet_origin`.
@@ -247,27 +228,14 @@ python manage.py assets [OPTIONS]
   fiat currency, 'SUB' for subscription.
 - `--list`: List all assets in the database.
 
-## Examples
-
-To create an asset:
+### Examples
 
 ```bash
+# Create an asset:
 python manage.py assets --create --name <ASSET_NAME> --currency_code <CURRENCY_CODE> --category <CATEGORY> --place_origin <PLACE_ORIGIN_UUID>
-```
-
-To list all assets in the database:
-
-```bash
+# List all assets in the database:
 python manage.py assets --list
 ```
-
-Please replace `<ASSET_NAME>`, `<CURRENCY_CODE>`, `<CATEGORY>`, and `<PLACE_ORIGIN_UUID>` with the actual values.
-
-## Error Handling
-
-The script will raise an error if the required arguments are not provided or if the provided arguments are not valid.
-For example, if the `--category` is not one of the valid categories (TLF, TNF, SUB), an error will be raised. Similarly,
-an error will be raised if either `--place_origin` or `--wallet_origin` is not provided when creating an asset.
 
 Congratulations, you've created a federation of places around a local, complementary and citizen currency!
 
