@@ -147,10 +147,11 @@ class CardAPI(viewsets.ViewSet):
             logger.info(f"{len(card_serializer.validated_data)} Cards created")
             return Response(f"{len(card_serializer.validated_data)}", status=status.HTTP_201_CREATED,
                             content_type="application/json")
-        else :
+        else:
             cards_from_cashless = []
             for card in request.data:
-                if not Card.objects.filter(first_tag_id=card.get('first_tag_id'), number_printed=card.get('number_printed')).exists():
+                if not Card.objects.filter(first_tag_id=card.get('first_tag_id'),
+                                           number_printed=card.get('number_printed')).exists():
                     cards_from_cashless.append(card)
             """
             # Test si carte déjà existante. Mais mieux vaut faire une erreur et gérer ça sur la cashless avant.
@@ -202,10 +203,10 @@ def get_new_place_token_for_test(request):
             out = StringIO()
             faker = Faker()
             name = faker.company()
-            call_command('create_federation',
-                            '--name', f'TEST FED',
-                            '--description', f'test@fed.coop',
-                            stdout=out)
+            call_command('federations',
+                         '--create',
+                         '--name', f'TEST FED',
+                         stdout=out)
             call_command('create_place',
                          '--name', f'{name}',
                          '--email', f'{faker.email()}',
@@ -228,6 +229,7 @@ class FederationAPI(viewsets.ViewSet):
     def get_permissions(self):
         permission_classes = [HasKeyAndCashlessSignature]
         return [permission() for permission in permission_classes]
+
 
 class PlaceAPI(viewsets.ViewSet):
     """
@@ -508,10 +510,11 @@ class CheckoutStripeForChargePrimaryAsset(APIView):
                 },
                 'client_reference_id': f"{wallet.user.pk}",
             }
-            try :
+            try:
                 checkout_session = stripe.checkout.Session.create(**data_checkout)
-            except :
-                import ipdb; ipdb.set_trace()
+            except:
+                import ipdb;
+                ipdb.set_trace()
 
             # Enregistrement du checkout Stripe dans la base de donnée
             checkout_db = CheckoutStripe.objects.create(

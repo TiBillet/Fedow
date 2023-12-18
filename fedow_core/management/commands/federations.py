@@ -9,6 +9,8 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         # Positional arguments
+        parser.add_argument('--create', action='store_true',
+                            help='Create a federation. Need --name')
         parser.add_argument('--add_asset', action='store_true',
                             help='Add an asset on federation. Need --fed_uuid adn --asset_uuid')
         parser.add_argument('--remove_asset', action='store_true',
@@ -20,6 +22,8 @@ class Command(BaseCommand):
 
         parser.add_argument('--fed_uuid',
                             help='Federation uuid')
+        parser.add_argument('--name',
+                            help='Federation name')
         parser.add_argument('--asset_uuid',
                             help='Federation uuid')
 
@@ -29,6 +33,19 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         print(options)
+        if options.get('create'):
+            if not options.get('name'):
+                raise CommandError('Please provide a federation name')
+            try:
+                federation = Federation.objects.get(name=options['name'])
+                self.stdout.write(self.style.WARNING(
+                    f"Federation already exist : {federation.name}"), ending='\n')
+            except Federation.DoesNotExist:
+                federation = Federation.objects.create(name=options['name'])
+                self.stdout.write(self.style.SUCCESS(
+                    f"Federation succesfully created.\nNAME : {federation.name}\nUUID : {federation.uuid}"),
+                    ending='\n')
+
         if options.get('list'):
             for fed in Federation.objects.all():
                 self.stdout.write(self.style.SUCCESS(
