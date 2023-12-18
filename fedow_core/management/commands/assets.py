@@ -12,6 +12,8 @@ class Command(BaseCommand):
         parser.add_argument('--create', action='store_true',
                             help='Create an asset. Need --name --currency_code --category. Need  --place_origin OR --wallet_origin')
 
+        parser.add_argument('--name',
+                            help='Asset name')
         parser.add_argument('--place_origin',
                             help='Place origin uuid')
         parser.add_argument('--wallet_origin',
@@ -34,7 +36,7 @@ class Command(BaseCommand):
                 raise CommandError('Please provide a currency code')
             if not options.get('category'):
                 raise CommandError('Please provide a category')
-            if not options.get('place_origin') or not options.get('wallet_origin'):
+            if not options.get('place_origin') and not options.get('wallet_origin'):
                 raise CommandError('Please provide a place origin uuid or a wallet origin uuid')
 
             try:

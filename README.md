@@ -212,6 +212,7 @@ python manage.py assets [OPTIONS]
 - `--place_origin`: UUID of the place origin.
 - `--wallet_origin`: UUID of the wallet origin.
 - `--currency_code`: Currency code (max 3 characters).
+- `--name`: Currency name.
 - `--category`: Category of the asset. The choices are 'TLF' for token local fiat currency, 'TNF' for token local non
   fiat currency, 'SUB' for subscription.
 - `--list`: List all assets in the database.
