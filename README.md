@@ -4,7 +4,10 @@
 > Work in progress. ALPHA RELEASE.
 > Go talk with us !
 
-## TiBillet/Fedow, a post capitalist tools for collaborative finance and subscriptions.
+## TiBillet/Fedow, FLOSS tools for collaborative finance.
+
+- Part of the [TiBillet Tools](https://tibillet.org)
+- Made by [Coopérative Code Commun](https://codecommun.coop)
 
 ![dashboard demo image](https://raw.githubusercontent.com/TiBillet/Fedow/main/fedow_dashboard/static/img/img.png)
 
