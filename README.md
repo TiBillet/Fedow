@@ -275,4 +275,4 @@ coverage html
 - [Discord](https://discord.gg/ecb5jtP7vY)
 - [Rocket Chat Tiers Lieux.org](https://chat.tiers-lieux.org/channel/TiBillet)
 - [Rocket Chat Communecter](https://chat.communecter.org/channel/Tibillet)
-- [mail](mailto:contact@tibillet.re)
+- [e-mail](mailto:contact@tibillet.re)
