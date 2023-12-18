@@ -627,6 +627,7 @@ class Place(models.Model):
             feds = self.federated_with()
 
         places, assets, wallets = feds
+        logger.info(feds)
         return places, assets, wallets
 
     def accepted_assets(self):

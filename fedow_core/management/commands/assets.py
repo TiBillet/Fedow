@@ -5,7 +5,7 @@ from fedow_core.models import Federation, Asset, Place, Wallet, asset_creator
 
 
 class Command(BaseCommand):
-    help = 'Federation management. add_asset, remove_asset, add_place, remove_place'
+    help = 'Asset management. create'
 
     def add_arguments(self, parser):
         # Positional arguments

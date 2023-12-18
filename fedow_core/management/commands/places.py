@@ -88,7 +88,6 @@ class Command(BaseCommand):
                 )
 
                 place.admins.add(user)
-                place.save()
 
                 api_key, key = OrganizationAPIKey.objects.create_key(
                     name=f"temp_{place_name}:{user.email}",
@@ -105,8 +104,12 @@ class Command(BaseCommand):
 
                 # Pour test, on le lie à la fedération de test :
                 if test == "TEST FED":
+                    # On le met dans la fédération de test
                     federation = Federation.objects.get(name='TEST FED')
                     federation.places.add(place)
+                    place.stripe_connect_valid = True
+
+                place.save()
 
                 # TODO: Envoyer la clé par email
                 self.stdout.write(self.style.SUCCESS(

@@ -2,7 +2,8 @@ from django.core.management.base import BaseCommand, CommandError
 from rest_framework_api_key.models import APIKey
 
 from fedow_core.models import Federation, Asset, Place
-
+from django.core.cache import cache
+cache.clear()
 
 class Command(BaseCommand):
     help = 'Federation management. add_asset, remove_asset, add_place, remove_place'
@@ -32,7 +33,7 @@ class Command(BaseCommand):
                             help='List all assets on the database')
 
     def handle(self, *args, **options):
-        print(options)
+        cache.clear()
         if options.get('create'):
             if not options.get('name'):
                 raise CommandError('Please provide a federation name')
