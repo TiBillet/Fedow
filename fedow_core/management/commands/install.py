@@ -46,12 +46,12 @@ class Command(BaseCommand):
 
             config.save()
 
-            call_command("create_asset",
+            call_command("assets",
+                         '--create',
                          '--name', 'Primary Asset',
                          '--currency_code', 'FED',
                          '--origin', f'{primary_wallet.uuid}',
                          '--category', 'FED')
-
 
             if Asset.objects.all().count() > 1:
                 raise CommandError("There is more than one asset, it's not an install nor an empty database.")

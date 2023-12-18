@@ -28,10 +28,9 @@ class Command(BaseCommand):
                             help='List all assets on the database')
 
     def handle(self, *args, **options):
-        print(options)
         if options.get('create'):
             if not options.get('name'):
-                raise CommandError('Please provide a federation name')
+                raise CommandError('Please provide the asset name')
             if not options.get('currency_code'):
                 raise CommandError('Please provide a currency code')
             if not options.get('category'):

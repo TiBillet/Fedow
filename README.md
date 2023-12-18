@@ -188,6 +188,57 @@ Please replace `<FEDERATION_UUID>`, `<ASSET_UUID>`, and `<PLACE_UUID>` with the 
 
 ## Create and manage Places
 
+A place is a location that can be part of a federation. It can be a co-working space, a music festival, a shop, a
+associative bar...
+
+After creating the place, Fedow gives you a key to make a handshake with the TiBillet/LaBoutik engine.
+
+Enter this key in your admin interface -> federation.
+
+The handshake will automatically link the assets and NFC cards entered in the TiBillet/LaBoutik engine.
+
+Congratulations, these cards will be readable throughout the federation network!
+
+You can then link the location assets created by the TiBillet/Fedow handshake to a federation to share a local currency,
+a time currency or subscriptions throughout the federation.
+
+## Usage
+
+```bash
+python manage.py places [OPTIONS]
+```
+
+## Options
+
+- `--create`: Create a new place. Requires `--name` and `--email`. Optional `--description` and `--test`.
+- `--list`: List all places in the database.
+- `--name`: Name of the place.
+- `--email`: Email of the admin.
+- `--description`: Description of the place.
+- `--test`: If provided with "TEST FED", the place will be automatically added to the test federation.
+
+## Examples
+
+To create a place:
+
+```bash
+python manage.py places --create --name <PLACE_NAME> --email <ADMIN_EMAIL> --description <DESCRIPTION>
+```
+
+To list all places in the database:
+
+```bash
+python manage.py places --list
+```
+
+Please replace `<PLACE_NAME>`, `<ADMIN_EMAIL>`, `<DESCRIPTION>`, and `<TEST_FED>` with the actual values.
+
+## Error Handling
+
+The script will raise an error if the required arguments are not provided or if the provided arguments are not valid.
+For example, if the `--name` or `--email` is not provided when creating a place, an error will be raised. Similarly, an
+error will be raised if the place name already exists in the database.
+
 ## Create and manage Assets
 
 If you already have a cash register server, cashless and membership [TiBillet/LaBoutik](https://tibillet.org), asset
