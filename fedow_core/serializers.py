@@ -5,7 +5,7 @@ from django.utils import timezone
 from django.utils.timezone import localtime
 from rest_framework import serializers
 from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction, OrganizationAPIKey, Asset, Token, \
-    get_or_create_user, Origin, asset_creator, Configuration
+    get_or_create_user, Origin, asset_creator, Configuration, Federation
 from fedow_core.utils import get_request_ip, get_public_key, dict_to_b64, verify_signature
 from cryptography.hazmat.primitives.asymmetric import rsa
 import stripe
@@ -317,6 +317,7 @@ class AssetCreateValidator(serializers.Serializer):
             return attrs
         else:
             raise serializers.ValidationError("Asset creation failed")
+
 
 
 class PlaceSerializer(serializers.ModelSerializer):
@@ -674,3 +675,19 @@ class TransactionSerializer(serializers.ModelSerializer):
             "comment",
             "verify_hash",
         )
+
+
+class FederationSerializer(serializers.ModelSerializer):
+    places = PlaceSerializer(many=True)
+    assets = AssetSerializer(many=True)
+
+    class Meta:
+        model = Federation
+        fields = (
+            'uuid',
+            'name',
+            'places',
+            'assets',
+            'description',
+        )
+

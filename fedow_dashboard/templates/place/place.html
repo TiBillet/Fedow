@@ -1,11 +1,12 @@
 {% extends 'base.html' %}
 {% block content %}
-    <button class="btn btn-dark btn-sm mt-5"
-            _="on click toggle .dark-version on body
-            then toggle .btn-light on me
-            then toggle .btn-dark on me">
-        Dark
-    </button>
+
+    <hr class="dark horizontal my-3">
+    <p>{{ cards.count }} cartes de paiements en circulation</p>
+    <hr class="dark horizontal my-3">
+    <p>{{ wallets.count }} portefeuilles en circulation</p>
+
+
     <hr class="dark horizontal my-3">
     <p>{{ assets.count }} Asset(s) acceptées</p>
     <div class="row">
@@ -13,10 +14,6 @@
             {% include 'index/asset_card.html' %}
         {% endfor %}
     </div>
-    <hr class="dark horizontal my-3">
-    <p>{{ cards.count }} cartes de paiements en circulation</p>
-    <hr class="dark horizontal my-3">
-    <p>{{ wallets.count }} portefeuilles en circulation</p>
 
     <hr class="dark horizontal my-3">
     <p>{{ federations.count }} Fédération(s)</p>

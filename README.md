@@ -13,7 +13,7 @@ creation and management of a
 grouping of local, complementary and citizen currencies (MLCC) within a federated network.
 
 _Fedow_ has been designed to connect different [TiBillet/LaBoutik](https://tibillet.org) point-of-sale servers for a
-place federation. it enables the use of dematerialised wallets (cashless ), 
+place federation. it enables the use of dematerialised wallets (cashless ),
 in various community, cooperative and/or commercial venues that can be used directly on the cash register.
 
 They can share the NFC / RFID / QRCODE cashless payment and membership cards of their respective users in a open and
@@ -25,7 +25,8 @@ It can be used to create a festival cashless system, a loyalty system, a local c
 and a badge reader that keeps track of time used for space location, a time clock that tracks time spent, all for one or
 more venues.
 
-Finally, Fedow incorporates the principles of [melting fiat currencies](https://fr.wikipedia.org/wiki/Monnaie_fondante) into a
+Finally, Fedow incorporates the principles of [melting fiat currencies](https://fr.wikipedia.org/wiki/Monnaie_fondante)
+into a
 transparent, non-speculative and energy-efficient blockchain.
 
 You can find out more on our french blog :
@@ -55,6 +56,64 @@ chaine de blocs par preuve d'autorité, transparente, non spéculative et non é
 Vous pouvez trouver plus d'informations sur notre blog :
 
 [https://codecommun.coop/blog/federation-part5-fedow](https://codecommun.coop/blog/federation-part5-fedow)
+
+# Usage
+
+# Documentation for `federations.py`
+
+`federations.py` is a command-line tool for managing federations. It provides several options to add or remove assets
+and places from a federation, as well as listing all assets in the database.
+
+## Manage Federations
+
+```bash
+python manage.py federations [OPTIONS]
+```
+
+### Options
+
+- `--add_asset`: Add an asset to a federation. Requires `--fed_uuid` and `--asset_uuid`.
+- `--remove_asset`: Remove an asset from a federation. Requires `--fed_uuid` and `--asset_uuid`.
+- `--add_place`: Add a place to a federation. Requires `--fed_uuid` and `--place_uuid`.
+- `--remove_place`: Remove a place from a federation. Requires `--fed_uuid` and `--place_uuid`.
+- `--fed_uuid`: The UUID of the federation.
+- `--asset_uuid`: The UUID of the asset.
+- `--place_uuid`: The UUID of the place.
+- `--list`: List all assets in the database.
+
+### Examples
+
+To add an asset to a federation:
+
+```bash
+python manage.py federations --add_asset --fed_uuid <FEDERATION_UUID> --asset_uuid <ASSET_UUID>
+```
+
+To remove an asset from a federation:
+
+```bash
+python manage.py federations --remove_asset --fed_uuid <FEDERATION_UUID> --asset_uuid <ASSET_UUID>
+```
+
+To add a place to a federation:
+
+```bash
+python manage.py federations --add_place --fed_uuid <FEDERATION_UUID> --place_uuid <PLACE_UUID>
+```
+
+To remove a place from a federation:
+
+```bash
+python manage.py federations --remove_place --fed_uuid <FEDERATION_UUID> --place_uuid <PLACE_UUID>
+```
+
+To list all assets in the database:
+
+```bash
+python manage.py federations --list
+```
+
+Please replace `<FEDERATION_UUID>`, `<ASSET_UUID>`, and `<PLACE_UUID>` with the actual UUIDs.
 
 ## Features and roadmap
 

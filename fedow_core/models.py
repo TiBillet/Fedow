@@ -504,6 +504,12 @@ class Federation(models.Model):
     assets = models.ManyToManyField('Asset', related_name='federations')
     description = models.TextField(blank=True, null=True)
 
+    def assets_list(self):
+        return " - ".join([asset.name for asset in self.assets.all()])
+
+    def places_list(self):
+        return " - ".join([place.name for place in self.places.all()])
+
     def __str__(self):
         return f"{self.name} : {','.join([place.name for place in self.places.all()])}"
 
@@ -601,10 +607,17 @@ class Place(models.Model):
             wallets.update([place.wallet for place in federation.places.all()])
 
         # On s'assure d'avoir l'asset fédéré par STRIPE
-        assets.add(Asset.objects.get(category=Asset.STRIPE_FED_FIAT))
+        if self.stripe_connect_valid:
+            assets.add(Asset.objects.get(category=Asset.STRIPE_FED_FIAT))
         # Les assets créé par le lieu
         assets.update(self.wallet.assets_created.all())
-        return places, assets, wallets
+
+        # Mise en cache :
+        feds = places, assets, wallets
+        cache.set(f'federated_with_{self.uuid}', feds, 120)
+        logger.info(f'federated_with_{self.uuid} SET in cache')
+
+        return feds
 
     def cached_federated_with(self):
         feds = cache.get(f'federated_with_{self.uuid}')
@@ -612,8 +625,6 @@ class Place(models.Model):
             logger.info(f'federated_with_{self.uuid} GET from cache')
         else :
             feds = self.federated_with()
-            logger.info(f'federated_with_{self.uuid} SET in cache')
-            cache.set(f'federated_with_{self.uuid}', feds, 120)
 
         places, assets, wallets = feds
         return places, assets, wallets

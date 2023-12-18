@@ -9,10 +9,18 @@
     <link rel="stylesheet" href="{% static 'material-dashbboard-bootsrap5-creativetim/material-dashboard.css' %}"/>
 
     <link rel="stylesheet" href="{% static 'css/main.css' %}"/>
-    <link rel="shortcut icon" type="image/png" href="{% static 'img/fav_blanc.png' %}" >
+    <link rel="shortcut icon" type="image/png" href="{% static 'img/fav_blanc.png' %}">
 
 </head>
 <body class="container">
+
+<button class="btn btn-dark btn-sm mt-5"
+        _="on click toggle .dark-version on body
+            then toggle .btn-light on me
+            then toggle .btn-dark on me">
+    Dark
+</button>
+    
 
 {% block content %}
 {% endblock %}

@@ -2,7 +2,7 @@ from django.shortcuts import render, get_object_or_404
 from rest_framework import viewsets
 from rest_framework.permissions import AllowAny
 
-from fedow_core.models import Asset, Place, Wallet, Card
+from fedow_core.models import Asset, Place, Wallet, Card, Federation
 
 
 # Create your views here.
@@ -31,6 +31,7 @@ def index(request):
     Livre un template HTML
     """
     context = {
+        'federations': Federation.objects.all(),
         'assets': Asset.objects.all(),
         'places': Place.objects.all(),
         'wallets': Wallet.objects.all(),

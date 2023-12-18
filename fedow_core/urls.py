@@ -1,7 +1,7 @@
 from django.urls import path, include
 
 from fedow_dashboard import urls as dashboard_urls
-from fedow_core.views import TransactionAPI, TestApiKey, HelloWorld, WalletAPI, PlaceAPI, Onboard_stripe_return, \
+from fedow_core.views import TransactionAPI, TestApiKey, HelloWorld, WalletAPI, PlaceAPI, FederationAPI, Onboard_stripe_return, \
     WebhookStripe, CheckoutStripeForChargePrimaryAsset, CardAPI, AssetAPI, get_new_place_token_for_test
 # from django.conf import settings
 from rest_framework import routers
@@ -13,6 +13,7 @@ router.register(r'helloworld', HelloWorld, basename='testapikey')
 
 router.register(r'transaction', TransactionAPI, basename='transaction')
 router.register(r'place', PlaceAPI, basename='place')
+router.register(r'federation', FederationAPI, basename='federation')
 router.register(r'asset', AssetAPI, basename='asset')
 router.register(r'wallet', WalletAPI, basename='wallet')
 router.register(r'card', CardAPI, basename='card')

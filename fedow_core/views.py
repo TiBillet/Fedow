@@ -26,7 +26,8 @@ from fedow_core.models import Transaction, Place, Configuration, Asset, Checkout
 from fedow_core.permissions import HasKeyAndCashlessSignature, HasAPIKey, IsStripe
 from fedow_core.serializers import TransactionSerializer, WalletCreateSerializer, HandshakeValidator, \
     TransactionW2W, CardSerializer, CardCreateValidator, \
-    AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator
+    AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator, \
+    FederationSerializer
 from rest_framework.pagination import PageNumberPagination
 
 from fedow_core.utils import get_request_ip, fernet_encrypt, fernet_decrypt, dict_to_b64_utf8, dict_to_b64, \
@@ -216,6 +217,18 @@ def get_new_place_token_for_test(request):
     return Response("Not found", status=status.HTTP_404_NOT_FOUND)
 
 
+class FederationAPI(viewsets.ViewSet):
+
+    def list(self, request):
+        place: Place = request.place
+        federations = place.federations.all()
+        serializer = FederationSerializer(federations, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    def get_permissions(self):
+        permission_classes = [HasKeyAndCashlessSignature]
+        return [permission() for permission in permission_classes]
+
 class PlaceAPI(viewsets.ViewSet):
     """
     GET /place : Places where we can use all federated wallets
@@ -402,31 +415,34 @@ class Onboard_stripe_return(APIView):
             place = onboard_serializer.validated_data.get('fedow_place_uuid')
 
             if details_submitted:
+                logger.info(f"Stripe details_submitted : {details_submitted}")
                 # Stripe est OK
                 place.stripe_connect_account = onboard_serializer.validated_data.get('id_acc_connect')
                 place.stripe_connect_valid = True
                 place.save()
-                logger.info(f"details_submitted : {details_submitted}")
+
+                # Mise à jour du cache avec la monnaie fédérée
+                place.federated_with()
 
                 # Envoie des infos de la monnaie fédéré
                 config = Configuration.get_solo()
                 primary_wallet = config.primary_wallet
                 primary_stripe_asset = Asset.objects.get(origin=primary_wallet, category=Asset.STRIPE_FED_FIAT)
-                assert primary_stripe_asset.is_stripe_primary(), "Asset is not primary"
+                if primary_stripe_asset.is_stripe_primary():
+                    data = {
+                        'primary_stripe_asset_uuid': f'{primary_stripe_asset.uuid}',
+                        'primary_stripe_asset_name': primary_stripe_asset.name,
+                        'primary_stripe_asset_currency_code': primary_stripe_asset.currency_code,
+                    }
 
-                data = {
-                    'primary_stripe_asset_uuid': f'{primary_stripe_asset.uuid}',
-                    'primary_stripe_asset_name': primary_stripe_asset.name,
-                    'primary_stripe_asset_currency_code': primary_stripe_asset.currency_code,
-                }
+                    return Response(data, status=status.HTTP_200_OK)
 
-                return Response(data, status=status.HTTP_200_OK)
-
-            else:
-                # return Response(f"{create_account_link_for_onboard()}", status=status.HTTP_206_PARTIAL_CONTENT)
-                place.stripe_connect_valid = False
-                place.save()
-                return Response("Compte stripe non valide", status=status.HTTP_406_NOT_ACCEPTABLE)
+            # return Response(f"{create_account_link_for_onboard()}", status=status.HTTP_206_PARTIAL_CONTENT)
+            place.stripe_connect_valid = False
+            place.save()
+            logger.error(f"Onboard_stripe_return error : {onboard_serializer.errors}")
+        logger.error(f"Onboard_stripe_return : {request.data}")
+        return Response("Compte stripe non valide", status=status.HTTP_406_NOT_ACCEPTABLE)
 
 
 @permission_classes([HasAPIKey])
