@@ -38,7 +38,7 @@ class FedowTestCase(TestCase):
         self.uuid_test = uuid4()
 
         out = StringIO()
-        call_command('create_place',
+        call_command('places', '--create'
                      '--name', 'Billetistan',
                      '--email', f'{email_admin}',
                      stdout=out)

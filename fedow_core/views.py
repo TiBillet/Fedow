@@ -207,6 +207,7 @@ def get_new_place_token_for_test(request):
                          '--create',
                          '--name', f'TEST FED',
                          stdout=out)
+
             call_command('create_place',
                          '--name', f'{name}',
                          '--email', f'{faker.email()}',

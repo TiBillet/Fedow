@@ -4,6 +4,8 @@
 > Work in progress. ALPHA RELEASE.
 > Go talk with us !
 
+## TiBillet/Fedow, a post capitalist tools for collaborative finance and subscriptions.
+
 ![dashboard demo image](https://raw.githubusercontent.com/TiBillet/Fedow/main/fedow_dashboard/static/img/img.png)
 
 ## Presentation (EN)
