@@ -57,6 +57,36 @@ Vous pouvez trouver plus d'informations sur notre blog :
 
 [https://codecommun.coop/blog/federation-part5-fedow](https://codecommun.coop/blog/federation-part5-fedow)
 
+## Features and roadmap
+
+- [x] Handshake with TiBillet/LaBoutik
+- [x] Create place
+- [x] Create link (or not) with another place
+- [x] Hash validation
+- [x] Proof of authority (PoA) consensus
+- [x] HTTP Signature for transaction auth (rsa asymetrical algorithm)
+- [x] Authority delegation for wallet ( user -> place )
+- [x] Create fiat asset (ex : euro)
+- [x] Create no fiat asset (ex : ticket resto, time currency)
+- [x] Create subscription asset (ex : membership)
+- [ ] Create time asset (ex : time spent in a place)
+- [x] Primary Card authentifier (NFC/RFID)
+- [x] Create a new user and new wallet with email or FirstTag of a NFC/RFID card
+- [ ] Double authentification
+- [x] Transaction Place wallet <-> User wallet
+- [x] Transaction Fedow primary wallet (Stripe Connect) <-> User wallet
+- [x] Transaction Fedow primary wallet (Stripe Connect) <-> Place wallet
+- [ ] Transaction User wallet <-> User wallet via QRCode (need double auth)
+- [ ] Transaction Place wallet <-> Place wallet (Compensation algorithm)
+- [ ] Webhook
+- [x] Wallet on NFC Card (Cashless)
+- [ ] Wallet on QRCode (soon, need double auth)
+- [x] Refund wallet
+- [x] Void card (disconnect card from wallet)
+- [x] Scan NFC Card for payment
+- [x] Scan NFC Card for subscription
+- [x] Scan NFC Card for refill wallet
+
 # Server
 
 ## install
@@ -86,7 +116,6 @@ http://localhost:8442/
 Some actions can only be performed on the server itself. The creation of a new federation, a new location and new assets
 are all under the control of the network animator.
 
-
 # Usage
 
 ## Create and manage Federations
@@ -97,7 +126,6 @@ festivals or associations, a shareable time currency, etc...
 
 Fedow use the command-line tool of Django for managing federations. It provides several options to add or remove assets
 and places from a federation, as well as listing all assets in the database.
-
 
 ```bash
 # With env ;
@@ -158,9 +186,7 @@ python manage.py federations --list
 
 Please replace `<FEDERATION_UUID>`, `<ASSET_UUID>`, and `<PLACE_UUID>` with the actual UUIDs.
 
-
 ## Create and manage Places
-
 
 ## Create and manage Assets
 
@@ -168,44 +194,53 @@ If you already have a cash register server, cashless and membership [TiBillet/La
 creation is done automatically during the handshake. Simply enter the key given when creating the location in your
 administration interface.
 
-To create assets manually, you'll need the uuid of the place of origin.
-arg :
+# Documentation for `assets.py`
 
-- name : String
-- currency_code : String (3 letters)
-- origin : String (uuid of the place)
-- category : String
-    - 'TLF' for local and fiat currency token. (e.g.: Euro equivalent cashless payment system)
-    - 'TNF' for local and non fiat currency token. (e.g.: cashless payment system for valuing volunteer work, time
-      currency, free cryptocurrency, etc...)
-    - 'SUB' for membership or subscription. Can return an additional boolean in the api if the user is up to date.)
+`assets.py` is a command-line tool for managing assets in federations. It provides several options to create assets and
+list all assets in the database.
+
+## Usage
 
 ```bash
-docker compose exec fedow poetry run python manage.py create_asset --name "My local and federated City Currency" --currency_code "MLC" --origin "place.wallet.uuid" --category "TLF"
+python manage.py assets [OPTIONS]
 ```
 
+## Options
 
+- `--create`: Create an asset. Requires `--name`, `--currency_code`, `--category`, and either `--place_origin`
+  or `--wallet_origin`.
+- `--place_origin`: UUID of the place origin.
+- `--wallet_origin`: UUID of the wallet origin.
+- `--currency_code`: Currency code (max 3 characters).
+- `--category`: Category of the asset. The choices are 'TLF' for token local fiat currency, 'TNF' for token local non
+  fiat currency, 'SUB' for subscription.
+- `--list`: List all assets in the database.
 
-### Add an asset to a federation
+## Examples
 
-Once the federation has been created, you need to add the assets that will be read by all network users, and modifiable
-by all network locations, authenticated via their rsa key and signature.
-
-Each location in the federation has delegated authority to modify the assets of each user's wallet. This enables the
-asset to be accepted at the location's point of sale.
-
-The location is authenticated via its rsa key, along with its point-of-sale opening manager. Every transaction is
-precisely traced.
+To create an asset:
 
 ```bash
-docker compose exec fedow poetry run python manage.py add_asset_to_federation --asset_uuid "<asset_uuid>" --federation_uuid "<federation_uuid>"
+python manage.py assets --create --name <ASSET_NAME> --currency_code <CURRENCY_CODE> --category <CATEGORY> --place_origin <PLACE_ORIGIN_UUID>
 ```
+
+To list all assets in the database:
+
+```bash
+python manage.py assets --list
+```
+
+Please replace `<ASSET_NAME>`, `<CURRENCY_CODE>`, `<CATEGORY>`, and `<PLACE_ORIGIN_UUID>` with the actual values.
+
+## Error Handling
+
+The script will raise an error if the required arguments are not provided or if the provided arguments are not valid.
+For example, if the `--category` is not one of the valid categories (TLF, TNF, SUB), an error will be raised. Similarly,
+an error will be raised if either `--place_origin` or `--wallet_origin` is not provided when creating an asset.
 
 Congratulations, you've created a federation of places around a local, complementary and citizen currency!
 
-# Client
-
-## Python client usage
+## Python lib
 
 coming soon
 
@@ -222,38 +257,6 @@ coverage report
 # or 
 coverage html
 ```
-
-
-## Features and roadmap
-
-- [x] Handshake with TiBillet/LaBoutik
-- [x] Create place
-- [x] Create link (or not) with another place
-- [x] Hash validation
-- [x] Proof of authority (PoA) consensus
-- [x] HTTP Signature for transaction auth (rsa asymetrical algorithm)
-- [x] Authority delegation for wallet ( user -> place )
-- [x] Create fiat asset (ex : euro)
-- [x] Create no fiat asset (ex : ticket resto, time currency)
-- [x] Create subscription asset (ex : membership)
-- [ ] Create time asset (ex : time spent in a place)
-- [x] Primary Card authentifier (NFC/RFID)
-- [x] Create a new user and new wallet with email or FirstTag of a NFC/RFID card
-- [ ] Double authentification
-- [x] Transaction Place wallet <-> User wallet
-- [x] Transaction Fedow primary wallet (Stripe Connect) <-> User wallet
-- [x] Transaction Fedow primary wallet (Stripe Connect) <-> Place wallet
-- [ ] Transaction User wallet <-> User wallet via QRCode (need double auth)
-- [ ] Transaction Place wallet <-> Place wallet (Compensation algorithm)
-- [ ] Webhook
-- [x] Wallet on NFC Card (Cashless)
-- [ ] Wallet on QRCode (soon, need double auth)
-- [x] Refund wallet
-- [x] Void card (disconnect card from wallet)
-- [x] Scan NFC Card for payment
-- [x] Scan NFC Card for subscription
-- [x] Scan NFC Card for refill wallet
-
 
 ## Made by, with and for :
 

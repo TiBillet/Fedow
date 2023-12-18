@@ -90,9 +90,9 @@ class Asset(models.Model):
                                editable=False,
                                )
 
+    STRIPE_FED_FIAT = 'FED'
     TOKEN_LOCAL_FIAT = 'TLF'
     TOKEN_LOCAL_NOT_FIAT = 'TNF'
-    STRIPE_FED_FIAT = 'FED'
     SUBSCRIPTION = 'SUB'
 
     CATEGORIES = [
