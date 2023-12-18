@@ -94,34 +94,28 @@ Vous pouvez trouver plus d'informations sur notre blog :
 
 # Server
 
-## install
+## Install
 
-For any help, don't hesitate to join us on [Discord](https://discord.gg/ecb5jtP7vY)
+For any help, don't hesitate to talk with us on [Discord](https://discord.gg/ecb5jtP7vY)
 or [Rocket Chat](https://chat.communecter.org/channel/Tibillet)
 
 ```bash
 # Clone the repo :
 git clone https://github.com/TiBillet/Fedow && cd Fedow
-
 # Set your secret :
 cp env_example .env && nano .env
-
 # Launch the server :
 docker compose up -d
-
 # Logs :
 docker compose logs -f 
-
 # Dashboard :
 http://localhost:8442/ 
 ```
 
-## Usage
+# Usage
 
 Some actions can only be performed on the server itself. The creation of a new federation, a new location and new assets
 are all under the control of the network animator.
-
-# Usage
 
 ## Create and manage Federations
 
@@ -133,7 +127,7 @@ Fedow use the command-line tool of Django for managing federations. It provides 
 and places from a federation, as well as listing all assets in the database.
 
 ```bash
-# With env ;
+# Inside the poetry shell :
 python manage.py federations [OPTIONS]
 # Outsite of docker :
 docker compose exec fedow poetry run python manage.py federations [OPTIONS]
@@ -149,47 +143,24 @@ docker compose exec fedow poetry run python manage.py federations [OPTIONS]
 - `--fed_uuid`: The UUID of the federation.
 - `--asset_uuid`: The UUID of the asset.
 - `--place_uuid`: The UUID of the place.
-- `--list`: List all assets in the database.
+- `--list`: List all assets and federations in the database.
 
 ### Examples
 
-Create a new federation:
-
 ```bash
+# List all assets and federation in the database:
+python manage.py federations --list
+# Create a new federation:
 python manage.py federations --create --name "My new federation"
-```
-
-To add an asset to a federation:
-
-```bash
+# Add an asset to a federation:
 python manage.py federations --add_asset --fed_uuid <FEDERATION_UUID> --asset_uuid <ASSET_UUID>
-```
-
-To remove an asset from a federation:
-
-```bash
+# Remove an asset from a federation:
 python manage.py federations --remove_asset --fed_uuid <FEDERATION_UUID> --asset_uuid <ASSET_UUID>
-```
-
-To add a place to a federation:
-
-```bash
+# Add a place to a federation:
 python manage.py federations --add_place --fed_uuid <FEDERATION_UUID> --place_uuid <PLACE_UUID>
-```
-
-To remove a place from a federation:
-
-```bash
+# Remove a place from a federation:
 python manage.py federations --remove_place --fed_uuid <FEDERATION_UUID> --place_uuid <PLACE_UUID>
 ```
-
-To list all assets in the database:
-
-```bash
-python manage.py federations --list
-```
-
-Please replace `<FEDERATION_UUID>`, `<ASSET_UUID>`, and `<PLACE_UUID>` with the actual UUIDs.
 
 ## Create and manage Places
 
@@ -249,6 +220,9 @@ error will be raised if the place name already exists in the database.
 If you already have a cash register server, cashless and membership [TiBillet/LaBoutik](https://tibillet.org), asset
 creation is done automatically during the handshake. Simply enter the key given when creating the location in your
 administration interface.
+
+Please note that once the locations and assets have been configured, you must also validate them on the
+TiBillet/LaBoutik side.
 
 # Documentation for `assets.py`
 

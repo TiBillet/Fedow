@@ -14,7 +14,6 @@ class PlaceAPI(viewsets.ViewSet):
 
         context = {
             'assets': accepted_assets,
-            'federated_assets': place.federated_assets(),
             'federations': place.federations.all(),
             'places': place_federated_with,
             'wallets': Wallet.objects.all(),

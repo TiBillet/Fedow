@@ -6,8 +6,10 @@
                 <i class="material-icons opacity-10">{{ asset.currency_code | upper }}</i>
             </div>
             <div class="text-end pt-1">
-                <p class="text-sm mb-0 text-capitalize">{{ asset.name | capfirst }}</p>
-                <h4 class="mb-0">{{ asset.total_token_value | dround }}</h4>
+                <h4 class="text-sm mb-0 text-capitalize">{{ asset.name | capfirst }}</h4>
+                <p class="mb-0">{{ asset.total_token_value | dround }} / {{ asset.total_in_place | dround }} / {{ asset.total_in_wallet_not_place | dround }}</p>
+{#                <p class="mb-0">Places : {{ asset.total_in_place | dround }}</p>#}
+{#                <p class="mb-0">Wallet : {{ asset.total_in_wallet_not_place | dround }}</p>#}
             </div>
         </div>
         <hr class="dark horizontal my-0">

@@ -7,7 +7,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.db.models import UniqueConstraint, Q
+from django.db.models import UniqueConstraint, Q, Sum
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
 from django.utils import timezone
@@ -113,7 +113,13 @@ class Asset(models.Model):
     id_price_stripe = models.CharField(max_length=30, blank=True, null=True, editable=False)
 
     def total_token_value(self):
-        return sum([token.value for token in self.tokens.all()])
+        return self.tokens.aggregate(total_value=Sum('value'))['total_value'] or 0
+
+    def total_in_place(self):
+        return self.tokens.filter(wallet__place__isnull=False).aggregate(total_value=Sum('value'))['total_value'] or 0
+
+    def total_in_wallet_not_place(self):
+        return self.tokens.filter(wallet__place__isnull=True).aggregate(total_value=Sum('value'))['total_value'] or 0
 
     def is_stripe_primary(self):
         if (self.origin == Configuration.get_solo().primary_wallet
