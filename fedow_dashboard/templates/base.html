@@ -12,15 +12,17 @@
     <link rel="shortcut icon" type="image/png" href="{% static 'img/fav_blanc.png' %}">
 
 </head>
-<body class="container">
+<body class="container dark-version">
 
-<button class="btn btn-dark btn-sm mt-5"
-        _="on click toggle .dark-version on body
+<div>
+    <button class="btn btn-dark btn-sm mt-5"
+            _="on click toggle .dark-version on body
             then toggle .btn-light on me
             then toggle .btn-dark on me">
-    Dark
-</button>
-    
+        Dark / Light
+    </button>
+</div>
+
 
 {% block content %}
 {% endblock %}

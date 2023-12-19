@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% block content %}
+
+
+    <div>
+        <h1>Asset : {{ asset.name }}</h1>
+        <h5>Origin : {{ asset.origin.place.name }}</h5>
+        <h6>Federated with : {{ asset.place_federated_with }}</h6>
+        <h6>Total Market : {{ asset.total_token_value }}</h6>
+        <h6> In place wallet : {{ asset.total_in_place }}</h6>
+        <h6> In users wallets : {{ asset.total_in_wallet_not_place }}</h6>
+    </div>
+    <hr class="dark horizontal my-3">
+
+    <div>
+        <h3>Last transactions :</h3>
+    </div>
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table align-items-center mb-0">
+                <thead>
+                <tr>
+                    <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">Sender/Receiver</th>
+                    <th class="text-center text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">
+                        Action
+                    </th>
+                    <th class="text-center text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">
+                        Valeur
+                    </th>
+                    <th class="text-center text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">
+                        Horaire
+                    </th>
+                    <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-2">Hash</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for transaction in transactions %}
+                    <tr>
+                        <td>
+                            <div class="d-flex px-2 py-1">
+                                <div>
+                                    <img src="https://demos.creative-tim.com/test/material-dashboard-pro/assets/img/team-2.jpg"
+                                         class="avatar avatar-sm me-3">
+                                </div>
+                                <div class="d-flex flex-column justify-content-center">
+                                    <h6 class="mb-0 text-xs">{{ transaction.sender.get_name }}</h6>
+                                    <p class="text-xs text-secondary mb-0">{{ transaction.receiver.get_name }}</p>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <p class="text-xs font-weight-bold mb-0">{{  transaction.datetime }}</p>
+                            <p class="text-xs text-secondary mb-0">{{ transaction.last_check }}</p>
+                        </td>
+                        <td class="align-middle text-center text-sm">
+                            <span class="">{{ transaction.get_action_display }}</span>
+                        </td>
+                        <td class="align-middle text-center">
+                            <span class="text-xs font-weight-normal">{{ transaction.amount }}</span>
+                        </td>
+                        <td>
+                            <p class="text-xs font-weight-bold mb-0">{{  transaction.hash | slice:":8" }}</p>
+                            <p class="text-xs text-secondary mb-0">{{ transaction.previous_transaction.hash | slice:":8" }}</p>
+                        </td>
+                    </tr>
+
+                {% endfor %}
+                <tr>
+                    <td>
+                        <div class="d-flex px-2 py-1">
+                            <div>
+                                <img src="https://demos.creative-tim.com/test/material-dashboard-pro/assets/img/team-2.jpg"
+                                     class="avatar avatar-sm me-3">
+                            </div>
+                            <div class="d-flex flex-column justify-content-center">
+                                <h6 class="mb-0 text-xs">John Michael</h6>
+                                <p class="text-xs text-secondary mb-0">john@creative-tim.com</p>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <p class="text-xs font-weight-bold mb-0">Manager</p>
+                        <p class="text-xs text-secondary mb-0">Organization</p>
+                    </td>
+                    <td class="align-middle text-center text-sm">
+                        <span class="badge badge-sm badge-success">Online</span>
+                    </td>
+                    <td class="align-middle text-center">
+                        <span class="text-secondary text-xs font-weight-normal">23/04/18</span>
+                    </td>
+                </tr>
+
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+
+{% endblock content %}

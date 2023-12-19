@@ -23,6 +23,7 @@ from stdimage.validators import MaxSizeValidator, MinSizeValidator
 from fedow_core.utils import get_public_key, get_private_key, fernet_decrypt, fernet_encrypt, rsa_generator
 
 import logging
+from django.utils.translation import gettext_lazy as _
 
 logger = logging.getLogger(__name__)
 
@@ -93,13 +94,17 @@ class Asset(models.Model):
     STRIPE_FED_FIAT = 'FED'
     TOKEN_LOCAL_FIAT = 'TLF'
     TOKEN_LOCAL_NOT_FIAT = 'TNF'
+    TIME = 'TIM'
+    BADGE = 'BDG'
     SUBSCRIPTION = 'SUB'
 
     CATEGORIES = [
-        (TOKEN_LOCAL_FIAT, 'Token équivalent euro'),
-        (TOKEN_LOCAL_NOT_FIAT, 'Token local non fiduciaire'),
-        (STRIPE_FED_FIAT, 'Fiduciary and federated token on stripe'),
-        (SUBSCRIPTION, 'Membership or subscription'),
+        (TOKEN_LOCAL_FIAT, _('Token équivalent euro')),
+        (TOKEN_LOCAL_NOT_FIAT, _('Non fiduciaire')),
+        (STRIPE_FED_FIAT, _('Stripe Connect')),
+        (TIME, _("Monnaie temps, decompte d'utilisation")),
+        (BADGE, _("Badgeuse/Pointeuse")),
+        (SUBSCRIPTION, _('Adhésion ou abonnement')),
     ]
 
     category = models.CharField(
@@ -120,6 +125,16 @@ class Asset(models.Model):
 
     def total_in_wallet_not_place(self):
         return self.tokens.filter(wallet__place__isnull=True).aggregate(total_value=Sum('value'))['total_value'] or 0
+
+    def place_federated_with(self):
+        places = set()
+        for fed in self.federations.all():
+            for place in fed.places.all():
+                places.add(place)
+        if len(places) > 0 :
+            return " - ".join(places)
+        else:
+            return _("No place federated with this asset")
 
     def is_stripe_primary(self):
         if (self.origin == Configuration.get_solo().primary_wallet
@@ -340,6 +355,7 @@ class Transaction(models.Model):
             'previous_asset_transaction_hash': f"{self.previous_transaction.hash}",
         }
         return dict_for_hash
+
 
     def _checkout_session_id_stripe(self):
         if self.checkout_stripe:

@@ -1,0 +1,26 @@
+{% load fedow_dashboard_tags %}
+<div class="col-xl-3 col-sm-6 mb-xl-0 mb-4 mt-4">
+    <div class="card">
+        <div class="card-header p-3 pt-2">
+            <div>
+                <a class="icon icon-lg icon-shape bg-gradient-dark shadow-dark text-center border-radius-xl mt-n4 position-absolute" >
+                    <i class="material-icons opacity-10">{{ asset.currency_code | upper }}</i>
+                </a>
+            </div>
+            <div class="text-end pt-1">
+                <h4 class="text-sm mb-0 text-capitalize"><a
+                        href="/dashboard/asset/{{ asset.uuid }}/">{{ asset.name | capfirst }}</a></h4>
+                <p class="mb-0">{{ asset.get_category_display }}</p>
+                <p class="mb-0">{{ asset.total_token_value | dround }} en circulation</p>
+                {#                <p class="mb-0">Places : {{ asset.total_in_place | dround }}</p>#}
+                {#                <p class="mb-0">Wallet : {{ asset.total_in_wallet_not_place | dround }}</p>#}
+            </div>
+        </div>
+        <hr class="dark horizontal my-0">
+        <div class="card-footer p-3">
+            <p class="mb-0">Origine : <a
+                    href="/dashboard/place/{{ asset.origin.place.uuid }}/">{{ asset.origin.get_name | capfirst }}</a>
+            </p>
+        </div>
+    </div>
+</div>
