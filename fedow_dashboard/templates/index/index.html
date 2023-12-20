@@ -19,8 +19,8 @@
         <ul>
             {% for federation in federations %}
                 <li>{{ federation.name | upper }}</li>
-                <p>Assets : {{ federation.assets_list }}</p>
-                <p>Lieux : {{ federation.places_list }}</p>
+                <p>Assets : {{ federation.get_assets_names }}</p>
+                <p>Lieux : {{ federation.get_places_names }}</p>
             {% endfor %}
         </ul>
     </div>

@@ -131,7 +131,7 @@ class Asset(models.Model):
         for fed in self.federations.all():
             for place in fed.places.all():
                 places.add(place)
-        if len(places) > 0 :
+        if len(places) > 0:
             return " - ".join(places)
         else:
             return _("No place federated with this asset")
@@ -209,8 +209,6 @@ class Wallet(models.Model):
             return self.name
         elif getattr(self, 'place', None):
             return self.place.name
-        elif getattr(self, 'user', None):
-            return self.user.email
         elif getattr(self, 'primary', None):
             return "Primary"
         return f"{str(self.uuid)[:8]}"
@@ -319,7 +317,7 @@ class Transaction(models.Model):
     # auto_now dans la fonction save. Si on utilise auto_now, le verify hash n'aura pas la même date car il est créé après le save, donc après le hash.
     last_check = models.DateTimeField(blank=True, null=True)
 
-    FIRST, SALE, CREATION, REFILL, TRANSFER, SUBSCRIBE, BADGE, FUSION, REFUND, VOID = 'FST', 'SAL', 'CRE', 'REF', 'TRF', 'SUB', 'BDG' ,'FUS', 'RFD', 'VID'
+    FIRST, SALE, CREATION, REFILL, TRANSFER, SUBSCRIBE, BADGE, FUSION, REFUND, VOID = 'FST', 'SAL', 'CRE', 'REF', 'TRF', 'SUB', 'BDG', 'FUS', 'RFD', 'VID'
     TYPE_ACTION = (
         (FIRST, "Premier bloc"),
         (SALE, "Vente d'article"),
@@ -356,7 +354,6 @@ class Transaction(models.Model):
         }
         return dict_for_hash
 
-
     def _checkout_session_id_stripe(self):
         if self.checkout_stripe:
             return self.checkout_stripe.checkout_session_id_stripe
@@ -379,7 +376,9 @@ class Transaction(models.Model):
         encoded_block = json.dumps(dict_for_hash, sort_keys=True).encode('utf-8')
         return hashlib.sha256(encoded_block).hexdigest() == self.hash
 
+
     def save(self, *args, **kwargs):
+        #TODO: Checker le lancement via update et create. Utiliser les nouveaux validateur en db de django 5 ?
         if not self.datetime:
             self.datetime = timezone.localtime()
 
@@ -445,7 +444,7 @@ class Transaction(models.Model):
             assert not self.receiver.is_place(), "Receiver must be a user wallet"
             if self.asset.is_stripe_primary():
                 assert self.checkout_stripe != None, "Checkout stripe must be set for refill."
-            else :
+            else:
                 assert self.asset.origin == self.sender, "Asset origin must be the place"
             # FILL TOKEN WALLET
             token_sender.value -= self.amount
@@ -508,16 +507,35 @@ class Transaction(models.Model):
         else:
             raise Exception("Transaction hash already set.")
 
+
     class Meta:
         ordering = ['-datetime']
 
-
-"""
-@receiver(pre_save, sender=Transaction)
-def inspector(sender, instance, **kwargs):
-    token_receiver = Token.objects.get(wallet=instance.receiver, asset=instance.asset)
-"""
-
+#
+#
+# class Passage(models.Model):
+#     employee = models.ForeignKey(User, on_delete=models.CASCADE)
+#     timestamp = models.DateTimeField(auto_now_add=True)
+#
+#     @classmethod
+#     def work_periods(cls, employee, date):
+#         passages = list(cls.objects.filter(employee=employee, timestamp__date=date).order_by('timestamp'))
+#         if len(passages) % 2 != 0:
+#             # Ajoute un passage de sortie fictif à l'heure de fermeture du bureau
+#             closing_time = time(23, 59)  # Heure de fermeture du bureau
+#             closing_datetime = datetime.combine(date, closing_time)
+#             passages.append(Passage(employee=employee, timestamp=closing_datetime))
+#         return zip(passages[::2], passages[1::2])
+#
+#     @classmethod
+#     def work_hours(cls, employee, date):
+#         periods = cls.work_periods(employee, date)
+#         return sum((end.timestamp - start.timestamp).total_seconds() / 3600 for start, end in periods)
+#
+#     @classmethod
+#     def is_half_day(cls, employee, date):
+#         return cls.work_hours(employee, date) < 4
+#
 
 class Federation(models.Model):
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=False)
@@ -526,10 +544,10 @@ class Federation(models.Model):
     assets = models.ManyToManyField('Asset', related_name='federations')
     description = models.TextField(blank=True, null=True)
 
-    def assets_list(self):
+    def get_assets_names(self):
         return " - ".join([asset.name for asset in self.assets.all()])
 
-    def places_list(self):
+    def get_places_names(self):
         return " - ".join([place.name for place in self.places.all()])
 
     def __str__(self):
@@ -645,7 +663,7 @@ class Place(models.Model):
         feds = cache.get(f'federated_with_{self.uuid}')
         if feds:
             logger.info(f'federated_with_{self.uuid} GET from cache')
-        else :
+        else:
             feds = self.federated_with()
 
         places, assets, wallets = feds

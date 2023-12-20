@@ -1,8 +1,12 @@
 from django.shortcuts import render, get_object_or_404
 from rest_framework import viewsets
 from rest_framework.permissions import AllowAny
+from django.views.decorators.cache import cache_page
 
 from fedow_core.models import Asset, Place, Wallet, Card, Federation
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def asset_view(request, pk):
@@ -10,7 +14,7 @@ def asset_view(request, pk):
     context = {
         'asset': asset,
         # seulement les 50 dernières transactions :
-        'transactions': asset.transactions.all()[:50],
+        'transactions': asset.transactions.all().order_by('-datetime')[:50],
     }
     return render(request, 'asset/asset_transactions.html', context=context)
 
@@ -33,7 +37,7 @@ def place_view(request, pk):
 
 
 
-
+@cache_page(60 * 15)
 def index(request):
     """
     Livre un template HTML
@@ -45,4 +49,5 @@ def index(request):
         'wallets': Wallet.objects.all(),
         'cards': Card.objects.all(),
     }
+    logger.info(f"Index page rendered")
     return render(request, 'index/index.html', context=context)

@@ -218,15 +218,19 @@ python manage.py assets [OPTIONS]
 
 ### Options
 
+- `--list`: List all assets in the database.
 - `--create`: Create an asset. Requires `--name`, `--currency_code`, `--category`, and either `--place_origin`
   or `--wallet_origin`.
 - `--place_origin`: UUID of the place origin.
 - `--wallet_origin`: UUID of the wallet origin.
 - `--currency_code`: Currency code (max 3 characters).
 - `--name`: Currency name.
-- `--category`: Category of the asset. The choices are 'TLF' for token local fiat currency, 'TNF' for token local non
-  fiat currency, 'SUB' for subscription.
-- `--list`: List all assets in the database.
+- `--category`: Category of the asset. The choices are:
+  - `TLF` for token local fiat currency
+  - `TNF` for token local non fiat currency (gift card, voucher for a meal, etc ..) 
+  - `SUB` for subscription or membership.
+  - `TIM` for time tracking, time currency, etc ...
+  - `BDG` For badge reader. Track passage of a card.
 
 ### Examples
 
