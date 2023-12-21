@@ -21,6 +21,7 @@ class HandshakeValidator(serializers.Serializer):
     cashless_ip = serializers.IPAddressField()
     cashless_url = serializers.URLField()
     cashless_admin_apikey = serializers.CharField(max_length=41, min_length=41)
+    dokos_id = serializers.CharField(max_length=100, required=False, allow_null=True)
 
     def validate_fedow_place_uuid(self, value) -> Place:
         # TODO: Si place à déja été configuré, on renvoie un 400
@@ -100,29 +101,19 @@ class OnboardSerializer(serializers.Serializer):
         return value
 
 
-class TokenSerializer(serializers.ModelSerializer):
-    is_sub_valid = serializers.SerializerMethodField()
-
-    def get_is_sub_valid(self, obj: Token):
-        if obj.asset.category == Asset.SUBSCRIPTION:
-            if obj.last_transaction_datetime() > (localtime() - timedelta(days=365)):
-                return True
-        return False
-
+class PlaceSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Token
+        model = Place
         fields = (
             'uuid',
-            'asset',
             'name',
-            'value',
-            'asset_uuid',
-            'asset_name',
-            'asset_category',
-            'is_primary_stripe_token',
-            'last_transaction_datetime',
-            'is_sub_valid',
+            'dokos_id',
+            'wallet',
+            'stripe_connect_valid',
         )
+
+    def validate(self, attrs):
+        return attrs
 
 
 class WalletSerializer(serializers.ModelSerializer):
@@ -263,6 +254,8 @@ class CardCreateValidator(serializers.ModelSerializer):
 
 
 class AssetSerializer(serializers.ModelSerializer):
+    place_origin = PlaceSerializer(many=False)
+
     class Meta:
         model = Asset
         fields = (
@@ -270,7 +263,8 @@ class AssetSerializer(serializers.ModelSerializer):
             'name',
             'currency_code',
             'category',
-            'origin',
+            'wallet_origin',
+            'place_origin',
             'created_at',
             'last_update',
             'is_stripe_primary',
@@ -290,8 +284,8 @@ class AssetCreateValidator(serializers.Serializer):
         return value
 
     def validate_currency_code(self, value):
-        if Asset.objects.filter(currency_code=value).exists():
-            raise serializers.ValidationError("Currency code already exists")
+        #     if Asset.objects.filter(currency_code=value).exists():
+        #         raise serializers.ValidationError("Currency code already exists")
         return value.upper()
 
     def validate(self, attrs):
@@ -302,7 +296,7 @@ class AssetCreateValidator(serializers.Serializer):
             "name": attrs.get('name'),
             "currency_code": attrs.get('currency_code'),
             "category": attrs.get('category'),
-            "origin": place.wallet,
+            "wallet_origin": place.wallet,
             "ip": get_request_ip(request),
         }
 
@@ -319,21 +313,28 @@ class AssetCreateValidator(serializers.Serializer):
             raise serializers.ValidationError("Asset creation failed")
 
 
+class TokenSerializer(serializers.ModelSerializer):
+    asset = AssetSerializer(many=False)
 
-class PlaceSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Place
+        model = Token
         fields = (
             'uuid',
             'name',
-        )
+            'value',
+            'asset',
 
-    def validate(self, attrs):
-        return attrs
+            'asset_uuid',
+            'asset_name',
+            'asset_category',
+
+            'is_primary_stripe_token',
+            'last_transaction_datetime',
+        )
 
 
 class OriginSerializer(serializers.ModelSerializer):
-    place = serializers.SlugField(source='place.name')
+    place = PlaceSerializer()
 
     class Meta:
         model = Origin
@@ -509,9 +510,9 @@ class TransactionW2W(serializers.Serializer):
                 return Transaction.SUBSCRIBE
 
             if self.sender == self.receiver:
-                if self.asset.origin == self.place.wallet:
+                if self.asset.wallet_origin == self.place.wallet:
                     raise serializers.ValidationError('no longuer implemented for REFILL. Send user wallet instead')
-                raise serializers.ValidationError("Unauthorized origin")
+                raise serializers.ValidationError("Unauthorized wallet_origin")
             return Transaction.REFILL
 
         elif self.place.wallet == self.receiver:
@@ -690,4 +691,3 @@ class FederationSerializer(serializers.ModelSerializer):
             'assets',
             'description',
         )
-

@@ -133,6 +133,10 @@ class CardAPI(viewsets.ViewSet):
             card = Card.objects.get(first_tag_id=pk)
             # import ipdb; ipdb.set_trace()
             serializer = CardSerializer(card, context={'request': request})
+            if settings.DEBUG:
+                logger.info(f"{timezone.now()} Check Card retrieve")
+                logger.info(f"{serializer.data}")
+                logger.info(f"")
             return Response(serializer.data, status=status.HTTP_200_OK)
         except Card.DoesNotExist:
             return Response("Carte inconnue", status=status.HTTP_404_NOT_FOUND)
@@ -203,10 +207,11 @@ def get_new_place_token_for_test(request):
             out = StringIO()
             faker = Faker()
             name = faker.company()
-            call_command('federations',
-                         '--create',
-                         '--name', f'TEST FED',
-                         stdout=out)
+            if not Federation.objects.filter(name='TEST FED').exists():
+                call_command('federations',
+                             '--create',
+                             '--name', f'TEST FED',
+                             stdout=out)
 
             call_command('places', '--create',
                          '--name', f'{name}',
@@ -253,6 +258,7 @@ class PlaceAPI(viewsets.ViewSet):
             validated_data = validator.validated_data
 
             place: Place = validated_data.get('fedow_place_uuid')
+            place.dokos_id = validated_data.get('dokos_id')
             place.cashless_server_ip = validated_data.get('cashless_ip')
             place.cashless_server_url = validated_data.get('cashless_url')
             place.cashless_rsa_pub_key = validated_data.get('cashless_rsa_pub_key')

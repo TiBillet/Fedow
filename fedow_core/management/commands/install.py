@@ -57,7 +57,7 @@ class Command(BaseCommand):
                 raise CommandError("There is more than one asset, it's not an install nor an empty database.")
 
             fed_asset = Asset.objects.first()
-            if fed_asset.origin != config.primary_wallet:
+            if fed_asset.wallet_origin != config.primary_wallet:
                 raise CommandError("Fedow origin is not primary wallet")
 
             price_stripe_id_refill_fed = os.environ.get('PRICE_STRIPE_ID_FED')

@@ -1,4 +1,5 @@
 from django.urls import path, include
+from django.contrib import admin
 
 from fedow_dashboard import urls as dashboard_urls
 from fedow_core.views import TransactionAPI, TestApiKey, HelloWorld, WalletAPI, PlaceAPI, FederationAPI, Onboard_stripe_return, \
@@ -18,7 +19,6 @@ router.register(r'asset', AssetAPI, basename='asset')
 router.register(r'wallet', WalletAPI, basename='wallet')
 router.register(r'card', CardAPI, basename='card')
 
-# router.register(r'', IndexRESThtmx, basename='index')
 
 urlpatterns = [
     # Route pour test fedow :
@@ -29,6 +29,8 @@ urlpatterns = [
 
     path('checkout_stripe_for_charge_primary_asset/', CheckoutStripeForChargePrimaryAsset.as_view()),
     path('webhook_stripe/', WebhookStripe.as_view()),
+
+    path('admin/', admin.site.urls),
     path('', include(dashboard_urls)),
     path('', include(router.urls)),
 ]

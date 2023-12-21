@@ -147,7 +147,7 @@ class AssetCardTest(FedowTestCase):
             name=name,
             currency_code=currency_code,
             category=random.choice([Asset.TOKEN_LOCAL_FIAT, Asset.TOKEN_LOCAL_NOT_FIAT]),
-            origin=self.place.wallet
+            wallet_origin=self.place.wallet
         )
         self.assertTrue(Asset.objects.filter(name=name).exists())
         self.assertTrue(Transaction.objects.filter(asset__name=name, action=Transaction.FIRST).exists())
@@ -157,7 +157,7 @@ class AssetCardTest(FedowTestCase):
                 name=name,
                 currency_code=currency_code,
                 category=random.choice([Asset.TOKEN_LOCAL_FIAT, Asset.TOKEN_LOCAL_NOT_FIAT]),
-                origin=self.place.wallet
+                wallet_origin=self.place.wallet
             )
             # Si on arrive ici, c'est que l'exception n'a pas été enclanchée, les asserts suivants sont donc faux
             self.assertEqual(Asset.objects.filter(name=name).count(), 1)
@@ -178,7 +178,7 @@ class AssetCardTest(FedowTestCase):
             name=name,
             currency_code=currency_code,
             category=random.choice([Asset.TOKEN_LOCAL_FIAT, Asset.TOKEN_LOCAL_NOT_FIAT]),
-            origin=self.place.wallet,
+            wallet_origin=self.place.wallet,
             original_uuid=asset_uuid,
             created_at=created_at,
         )
@@ -385,7 +385,7 @@ class AssetCardTest(FedowTestCase):
         serialized_response = response.json()
         self.assertEqual(serialized_response.get('uuid'), asset_uuid)
         self.assertEqual(serialized_response.get('is_stripe_primary'), False)
-        self.assertEqual(serialized_response.get('origin'), str(self.place.wallet.uuid))
+        self.assertEqual(serialized_response.get('wallet_origin'), str(self.place.wallet.uuid))
 
         return Asset.objects.all()
 
@@ -841,7 +841,7 @@ def test_transaction_from_card_to_place_without_API(self):
     place_wallet = self.place.wallet
     config = Configuration.get_solo()
     # primary_asset = config.primary_wallet.primary_asset
-    primary_asset = Asset.objects.get(origin=config.primary_wallet, category=Asset.STRIPE_FED_FIAT)
+    primary_asset = Asset.objects.get(wallet_origin=config.primary_wallet, category=Asset.STRIPE_FED_FIAT)
     self.assertEqual(Token.objects.get(wallet=user_wallet, asset=primary_asset).value, 4200)
 
     # On verfie que la transaction ne peux avoir lieux

@@ -45,18 +45,18 @@ class Command(BaseCommand):
                     raise CommandError('Please provide a valid category')
                 currency_code = options['currency_code'].upper()
 
-                origin_wallet = None
+                wallet_origin = None
                 if options.get('wallet_origin'):
-                    origin_wallet = Wallet.objects.get(uuid=options['wallet_origin'])
+                    wallet_origin = Wallet.objects.get(uuid=options['wallet_origin'])
                 if options.get('place_origin'):
                     place = Place.objects.get(uuid=options['place_origin'])
-                    origin_wallet = place.wallet
+                    wallet_origin = place.wallet
 
                 asset = asset_creator(
                     name=asset_name,
                     currency_code=currency_code,
                     category=category,
-                    origin=origin_wallet
+                    wallet_origin=wallet_origin
                 )
 
                 self.stdout.write(self.style.SUCCESS(f"Asset succesfully created\nNAME : {asset.name} - CURRENCY CODE : {asset.currency_code}\nUUID : {asset.uuid}"),ending='\n')

@@ -32,15 +32,18 @@ if len(FERNET_KEY) != 44:
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
-ALLOWED_HOSTS = [os.environ.get('DOMAIN', 'fedow.localhost'), ]
+ALLOWED_HOSTS = [os.environ.get('DOMAIN', 'localhost'), ]
+CSRF_TRUSTED_ORIGINS = [f"https://{os.environ.get('DOMAIN')}", ]
 if DEBUG:
+    ALLOWED_HOSTS.append('fedow.tibillet.localhost')
     ALLOWED_HOSTS.append('*')
+    CSRF_TRUSTED_ORIGINS.append('https://fedow.tibillet.localhost')
 
 # Application definition
 
 INSTALLED_APPS = [
     "daphne",
-    "django.contrib.sites",
+    # "django.contrib.sites",
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -65,9 +68,9 @@ if DEBUG:
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.cache.UpdateCacheMiddleware',
+    # 'django.middleware.cache.UpdateCacheMiddleware',
     'django.middleware.common.CommonMiddleware',
-    'django.middleware.cache.FetchFromCacheMiddleware',
+    # 'django.middleware.cache.FetchFromCacheMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',

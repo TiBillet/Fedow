@@ -84,12 +84,14 @@ class Asset(models.Model):
 
     comment = models.TextField(blank=True, null=True)
 
-    origin = models.ForeignKey('Wallet', on_delete=models.PROTECT,
-                               # related_name='primary_asset',
-                               related_name='assets_created',
-                               help_text="Lieu ou configuration d'origine",
-                               editable=False,
-                               )
+    wallet_origin = models.ForeignKey('Wallet', on_delete=models.PROTECT,
+                                      # related_name='primary_asset',
+                                      related_name='assets_created',
+                                      help_text="Lieu ou configuration d'origine",
+                                      editable=False,
+                                      )
+    def place_origin(self):
+        return self.wallet_origin.place
 
     STRIPE_FED_FIAT = 'FED'
     TOKEN_LOCAL_FIAT = 'TLF'
@@ -137,7 +139,7 @@ class Asset(models.Model):
             return _("No place federated with this asset")
 
     def is_stripe_primary(self):
-        if (self.origin == Configuration.get_solo().primary_wallet
+        if (self.wallet_origin == Configuration.get_solo().primary_wallet
                 and self.id_price_stripe != None
                 and self.category == Asset.STRIPE_FED_FIAT):
             return True
@@ -376,9 +378,8 @@ class Transaction(models.Model):
         encoded_block = json.dumps(dict_for_hash, sort_keys=True).encode('utf-8')
         return hashlib.sha256(encoded_block).hexdigest() == self.hash
 
-
     def save(self, *args, **kwargs):
-        #TODO: Checker le lancement via update et create. Utiliser les nouveaux validateur en db de django 5 ?
+        # TODO: Checker le lancement via update et create. Utiliser les nouveaux validateur en db de django 5 ?
         if not self.datetime:
             self.datetime = timezone.localtime()
 
@@ -409,7 +410,7 @@ class Transaction(models.Model):
                 assert self.checkout_stripe != None, "Checkout stripe must be set for create federated money."
             else:
                 # besoin d'une carte primaire pour création monétaire
-                assert self.asset.origin == self.sender, "Asset origin must be the place"
+                assert self.asset.wallet_origin == self.sender, "Asset wallet_origin must be the place"
                 assert self.primary_card, "Primary card must be set for creation money."
                 assert self.primary_card in self.receiver.place.primary_cards.all(), \
                     "Primary card must be set for place"
@@ -421,7 +422,7 @@ class Transaction(models.Model):
             # Pas besoin de création monétaire, on charge directement le wallet client
             assert self.asset.category == Asset.SUBSCRIPTION, "Asset must be a subscription asset"
             assert self.sender.is_place(), "Sender must be a place wallet"
-            assert self.sender.place.wallet == self.asset.origin, "Subscription origin must be the place"
+            assert self.sender.place.wallet == self.asset.wallet_origin, "Subscription wallet_origin must be the place"
             assert self.receiver.user, "Receiver must be a user wallet"
 
             # On ajoute le montant de l'abonnement au wallet du client
@@ -445,7 +446,7 @@ class Transaction(models.Model):
             if self.asset.is_stripe_primary():
                 assert self.checkout_stripe != None, "Checkout stripe must be set for refill."
             else:
-                assert self.asset.origin == self.sender, "Asset origin must be the place"
+                assert self.asset.wallet_origin == self.sender, "Asset wallet_origin must be the place"
             # FILL TOKEN WALLET
             token_sender.value -= self.amount
             token_receiver.value += self.amount
@@ -491,7 +492,7 @@ class Transaction(models.Model):
         if self.action == Transaction.REFUND:
             assert self.amount == token_sender.value, "Amount must be equal to token sender value, we clear the ephemeral wallet"
             assert self.receiver.is_place(), "Receiver must be a place wallet"
-            assert self.asset.origin == self.receiver, "Asset origin must be the place"
+            assert self.asset.wallet_origin == self.receiver, "Asset wallet_origin must be the place"
 
             token_sender.value -= self.amount
 
@@ -507,9 +508,9 @@ class Transaction(models.Model):
         else:
             raise Exception("Transaction hash already set.")
 
-
     class Meta:
         ordering = ['-datetime']
+
 
 #
 #
@@ -552,6 +553,11 @@ class Federation(models.Model):
 
     def __str__(self):
         return f"{self.name} : {','.join([place.name for place in self.places.all()])}"
+
+    def save(self, force_insert=False, force_update=False, using=None, update_fields=None):
+        cache.clear()
+        logger.info(f'CLEAR cache')
+        super().save(force_insert, force_update, using, update_fields)
 
 
 class Configuration(SingletonModel):
@@ -608,6 +614,8 @@ class Place(models.Model):
 
     # User with Stripe connect and cashless federated server
     wallet = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='place')
+
+    dokos_id = models.CharField(max_length=100, blank=True, null=True, editable=False)
 
     stripe_connect_account = models.CharField(max_length=21, blank=True, null=True, editable=False)
     stripe_connect_valid = models.BooleanField(default=False)
@@ -797,7 +805,7 @@ def wallet_creator(ip=None, name=None):
 def asset_creator(name: str = None,
                   currency_code: str = None,
                   category: str = None,
-                  origin: Wallet = None,
+                  wallet_origin: Wallet = None,
                   original_uuid: uuid4 = None,
                   created_at: timezone = None,
                   ip=None, ):
@@ -821,7 +829,8 @@ def asset_creator(name: str = None,
         # Il ne peut y avoir qu'un seul asset de type STRIPE_FED_FIAT
         if Asset.objects.filter(category=Asset.STRIPE_FED_FIAT).exists():
             raise ValueError('Only one asset of type STRIPE_FED_FIAT can exist')
-    elif category not in [Asset.TOKEN_LOCAL_FIAT, Asset.TOKEN_LOCAL_NOT_FIAT, Asset.SUBSCRIPTION]:
+    elif category not in [Asset.TOKEN_LOCAL_FIAT, Asset.TOKEN_LOCAL_NOT_FIAT, Asset.SUBSCRIPTION, Asset.TIME,
+                          Asset.BADGE]:
         raise ValueError('Category not in choices')
 
     # Vérification que l'asset et/ou le code n'existe pas
@@ -830,17 +839,17 @@ def asset_creator(name: str = None,
         raise ValueError('Asset name already exist')
     except Asset.DoesNotExist:
         pass
-    try:
-        Asset.objects.get(currency_code=currency_code)
-        raise ValueError('Asset currency_code already exist')
-    except Asset.DoesNotExist:
-        pass
+    # try:
+    #     Asset.objects.get(currency_code=currency_code)
+    #     raise ValueError('Asset currency_code already exist')
+    # except Asset.DoesNotExist:
+    #     pass
 
     asset = Asset.objects.create(
         uuid=original_uuid if original_uuid else uuid4(),
         name=name,
         currency_code=currency_code,
-        origin=origin,
+        wallet_origin=wallet_origin,
         category=category,
         created_at=created_at,
     )
@@ -849,8 +858,8 @@ def asset_creator(name: str = None,
     first_block = Transaction.objects.create(
         ip=ip,
         checkout_stripe=None,
-        sender=origin,
-        receiver=origin,
+        sender=wallet_origin,
+        receiver=wallet_origin,
         asset=asset,
         amount=int(0),
         datetime=created_at,
