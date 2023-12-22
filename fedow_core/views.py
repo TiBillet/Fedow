@@ -157,15 +157,7 @@ class CardAPI(viewsets.ViewSet):
                 if not Card.objects.filter(first_tag_id=card.get('first_tag_id'),
                                            number_printed=card.get('number_printed')).exists():
                     cards_from_cashless.append(card)
-            """
-            # Test si carte déjà existante. Mais mieux vaut faire une erreur et gérer ça sur la cashless avant.
-            card_serializer_new = CardCreateValidator(data=cards_from_cashless, context={'request': request}, many=True)
-            if card_serializer_new.is_valid():
-                card_serializer_new.save()
-                logger.warning(f"{len(card_serializer_new.validated_data)} Cards created intead of {len(request.data)}")
-                return Response(f"{len(card_serializer_new.validated_data)}", status=status.HTTP_206_PARTIAL_CONTENT,
-                                content_type="application/json")
-            """
+
         logger.error(f"Card create error : {card_serializer.errors}")
         return Response(card_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

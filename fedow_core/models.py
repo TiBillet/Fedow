@@ -380,6 +380,8 @@ class Transaction(models.Model):
 
     def save(self, *args, **kwargs):
         # TODO: Checker le lancement via update et create. Utiliser les nouveaux validateur en db de django 5 ?
+        if settings.DEBUG:
+            logger.info(f"SAVE TRANSACTION {self.action}")
         if not self.datetime:
             self.datetime = timezone.localtime()
 

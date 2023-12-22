@@ -263,7 +263,6 @@ class AssetSerializer(serializers.ModelSerializer):
             'name',
             'currency_code',
             'category',
-            'wallet_origin',
             'place_origin',
             'created_at',
             'last_update',
@@ -475,6 +474,8 @@ class TransactionW2W(serializers.Serializer):
     asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all())
     subscription_start_datetime = serializers.DateTimeField(required=False)
     action = serializers.ChoiceField(choices=Transaction.TYPE_ACTION, required=False, allow_null=True)
+
+    first_token_uuid = serializers.UUIDField(required=False, allow_null=True)
 
     comment = serializers.CharField(required=False, allow_null=True)
     metadata = serializers.JSONField(required=False, allow_null=True)
