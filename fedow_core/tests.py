@@ -385,7 +385,7 @@ class AssetCardTest(FedowTestCase):
         serialized_response = response.json()
         self.assertEqual(serialized_response.get('uuid'), asset_uuid)
         self.assertEqual(serialized_response.get('is_stripe_primary'), False)
-        self.assertEqual(serialized_response.get('wallet_origin'), str(self.place.wallet.uuid))
+        self.assertEqual(serialized_response['place_origin']['wallet'], str(self.place.wallet.uuid))
 
         return Asset.objects.all()
 

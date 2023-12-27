@@ -85,13 +85,15 @@ class Asset(models.Model):
     comment = models.TextField(blank=True, null=True)
 
     wallet_origin = models.ForeignKey('Wallet', on_delete=models.PROTECT,
-                                      # related_name='primary_asset',
                                       related_name='assets_created',
                                       help_text="Lieu ou configuration d'origine",
                                       editable=False,
                                       )
+
     def place_origin(self):
-        return self.wallet_origin.place
+        if self.wallet_origin.is_place():
+            return self.wallet_origin.place
+        return None
 
     STRIPE_FED_FIAT = 'FED'
     TOKEN_LOCAL_FIAT = 'TLF'

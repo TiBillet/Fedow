@@ -43,7 +43,6 @@ class Command(BaseCommand):
         parser.add_argument('--name', type=str)
         parser.add_argument('--email', type=str)
         parser.add_argument('--description', type=str)
-        parser.add_argument('--test', type=str)
 
     def handle(self, *args, **options):
 
@@ -102,12 +101,6 @@ class Command(BaseCommand):
                 }
                 utf8_encoded_data = dict_to_b64_utf8(json_key_to_cashless)
 
-                # Pour test, on le lie à la fedération de test :
-                if test == "TEST FED":
-                    # On le met dans la fédération de test
-                    federation = Federation.objects.get(name='TEST FED')
-                    federation.places.add(place)
-                    place.stripe_connect_valid = True
 
                 place.save()
 

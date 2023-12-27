@@ -1,6 +1,7 @@
 from collections import OrderedDict
 from datetime import timedelta
 
+from django.conf import settings
 from django.utils import timezone
 from django.utils.timezone import localtime
 from rest_framework import serializers
@@ -216,6 +217,7 @@ class CardRefundOrVoidValidator(serializers.Serializer):
 class CardCreateValidator(serializers.ModelSerializer):
     generation = serializers.IntegerField(required=True)
     is_primary = serializers.BooleanField(required=True)
+    tokens_uuid = serializers.ListField(required=False, allow_null=True)
 
     def validate_generation(self, value):
         place = self.context.get('request').place
@@ -231,6 +233,9 @@ class CardCreateValidator(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
+        if validated_data.get('tokens_uuid'):
+            import ipdb; ipdb.set_trace()
+
         is_primary = validated_data.pop('is_primary', False)
         validated_data.pop('generation')
         validated_data['origin'] = self.origin
@@ -305,6 +310,11 @@ class AssetCreateValidator(serializers.Serializer):
             asset_dict["created_at"] = attrs.get('created_at')
 
         self.asset = asset_creator(**asset_dict)
+
+        # Pour les tests unitaires :
+        if settings.DEBUG:
+            federation = Federation.objects.get(name='TEST FED')
+            federation.assets.add(self.asset)
 
         if self.asset:
             return attrs

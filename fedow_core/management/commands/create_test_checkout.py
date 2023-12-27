@@ -42,7 +42,6 @@ class Command(BaseCommand):
             place = Place.objects.get(name='TestPlace')
         except Place.DoesNotExist:
             out = StringIO()
-            primary_federation = Federation.objects.all()[0]
             call_command('places', '--create',
                          '--name', 'TestPlace',
                          '--email', 'place@place.coop',
@@ -51,6 +50,13 @@ class Command(BaseCommand):
             self.last_line = out.getvalue().split('\n')[-2]
             decoded_data = utf8_b64_to_dict(self.last_line)
             place = Place.objects.get(pk=decoded_data.get('uuid'))
+
+            # Pour test, on le lie à la fedération de test :
+            if settings.DEBUG :
+                # On le met dans la fédération de test
+                federation = Federation.objects.get(name='TEST FED')
+                federation.places.add(place)
+                place.stripe_connect_valid = True
 
         ### Création d'une carte
         try:

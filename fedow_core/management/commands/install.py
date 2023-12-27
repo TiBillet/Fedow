@@ -4,7 +4,7 @@ from django.conf import settings
 from django.core.management import call_command
 from rest_framework_api_key.models import APIKey
 
-from fedow_core.models import Configuration, Wallet, Asset, Federation, wallet_creator
+from fedow_core.models import Configuration, Wallet, Asset, Federation, wallet_creator, Place
 from django.core.management.base import BaseCommand, CommandError
 
 from cryptography.hazmat.primitives import serialization
