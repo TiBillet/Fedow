@@ -57,6 +57,7 @@ class Command(BaseCommand):
                 federation = Federation.objects.get(name='TEST FED')
                 federation.places.add(place)
                 place.stripe_connect_valid = True
+                place.save()
 
         ### Création d'une carte
         try:

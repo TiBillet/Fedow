@@ -190,7 +190,6 @@ a time currency or subscriptions throughout the federation.
 - `--name`: Name of the place.
 - `--email`: Email of the admin.
 - `--description`: Description of the place.
-- `--test`: If provided with "TEST FED", the place will be automatically added to the test federation.
 
 ### Examples
 

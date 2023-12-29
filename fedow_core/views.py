@@ -104,7 +104,16 @@ class AssetAPI(viewsets.ViewSet):
     def list(self, request):
         accepted_assets = request.place.accepted_assets()
         serializers = AssetSerializer(accepted_assets, many=True, context={'request': request})
+        # if settings.DEBUG:
+        #     logger.info(f"{timezone.now()} {len(serializers.data)} Assets list")
+        #     logger.info(f"")
         return Response(serializers.data)
+
+    def retrieve(self, request, pk=None):
+        asset = get_object_or_404(Asset, pk=pk)
+        # self.action = retrieve -> on ajoute les totaux des token dans la réponse
+        serializer = AssetSerializer(asset, context={'request': request, "action":self.action })
+        return Response(serializer.data)
 
     def get_permissions(self):
         permission_classes = [HasKeyAndCashlessSignature]
@@ -131,12 +140,7 @@ class CardAPI(viewsets.ViewSet):
         # Utilisé par les serveurs cashless comme un check card
         try:
             card = Card.objects.get(first_tag_id=pk)
-            # import ipdb; ipdb.set_trace()
             serializer = CardSerializer(card, context={'request': request})
-            if settings.DEBUG:
-                logger.info(f"{timezone.now()} Check Card retrieve")
-                logger.info(f"{serializer.data}")
-                logger.info(f"")
             return Response(serializer.data, status=status.HTTP_200_OK)
         except Card.DoesNotExist:
             return Response("Carte inconnue", status=status.HTTP_404_NOT_FOUND)
@@ -208,7 +212,6 @@ def get_new_place_token_for_test(request):
             call_command('places', '--create',
                          '--name', f'{name}',
                          '--email', f'{faker.email()}',
-                         '--test', f'TEST FED',
                          stdout=out)
             encoded_data = out.getvalue().split('\n')[-2]
             return JsonResponse({"encoded_data": encoded_data})

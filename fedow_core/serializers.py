@@ -177,7 +177,7 @@ class CardRefundOrVoidValidator(serializers.Serializer):
         self.primary_card = attrs.get('primary_card_uuid') or attrs.get('primary_card_fisrtTagId')
         self.user_card: Card = attrs.get('user_card_uuid') or attrs.get('user_card_firstTagId')
 
-        if self.primary_card not in self.place.primary_cards.all():
+        if self.primary_card not in request.place.primary_cards.all():
             raise serializers.ValidationError("Primary card must be in place primary cards")
 
         if not self.user_card:
@@ -188,13 +188,13 @@ class CardRefundOrVoidValidator(serializers.Serializer):
 
         for token in wallet.tokens.filter(
                 value__gt=0,
-                asset__origin=self.place.wallet,
+                asset__wallet_origin=request.place.wallet,
                 asset__category__in=[Asset.TOKEN_LOCAL_FIAT, Asset.TOKEN_LOCAL_NOT_FIAT]):
             transaction_dict = {
                 "ip": get_request_ip(request),
                 "checkout_stripe": None,
                 "sender": self.user_card.get_wallet(),
-                "receiver": self.place.wallet,
+                "receiver": request.place.wallet,
                 "asset": token.asset,
                 "amount": token.value,
                 "action": Transaction.REFUND,
@@ -217,6 +217,9 @@ class CardRefundOrVoidValidator(serializers.Serializer):
 class CardCreateValidator(serializers.ModelSerializer):
     generation = serializers.IntegerField(required=True)
     is_primary = serializers.BooleanField(required=True)
+
+    # Lors de la création, si il existe déja des assets dans la carte,
+    # on les créé avec l'uuid de l'asset cashless pour une meuilleur correspondance.
     tokens_uuid = serializers.ListField(required=False, allow_null=True)
 
     def validate_generation(self, value):
@@ -233,8 +236,9 @@ class CardCreateValidator(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
-        if validated_data.get('tokens_uuid'):
-            import ipdb; ipdb.set_trace()
+        # Le cashless envoie des cartes qui ont déja des tokens.
+        # On les créé vide pour faire la correspondance avec l'uuid du cashless.
+        pre_tokens = validated_data.pop('tokens_uuid', False)
 
         is_primary = validated_data.pop('is_primary', False)
         validated_data.pop('generation')
@@ -243,6 +247,13 @@ class CardCreateValidator(serializers.ModelSerializer):
         card = Card.objects.create(**validated_data)
         if is_primary:
             self.origin.place.primary_cards.add(card)
+
+        if pre_tokens:
+            for pre_token in pre_tokens:
+                asset = Asset.objects.get(uuid=pre_token.get('asset_uuid'))
+                wallet = card.get_wallet()
+                token, created = Token.objects.get_or_create(uuid=pre_token.get("token_uuid"), asset=asset, wallet=wallet)
+                print(f"token {token} created {created}")
         return card
 
     class Meta:
@@ -255,6 +266,7 @@ class CardCreateValidator(serializers.ModelSerializer):
             'number_printed',
             'generation',
             'is_primary',
+            'tokens_uuid',
         )
 
 
@@ -273,6 +285,15 @@ class AssetSerializer(serializers.ModelSerializer):
             'last_update',
             'is_stripe_primary',
         )
+
+    def to_representation(self, instance:Asset):
+        # Add apikey user to representation
+        rep = super().to_representation(instance)
+        if self.context.get('action') == 'retrieve':
+            rep['total_token_value'] = instance.total_token_value()
+            rep['total_in_place'] = instance.total_in_place()
+            rep['total_in_wallet_not_place'] = instance.total_in_wallet_not_place()
+        return rep
 
 
 class AssetCreateValidator(serializers.Serializer):
@@ -312,9 +333,9 @@ class AssetCreateValidator(serializers.Serializer):
         self.asset = asset_creator(**asset_dict)
 
         # Pour les tests unitaires :
-        if settings.DEBUG:
-            federation = Federation.objects.get(name='TEST FED')
-            federation.assets.add(self.asset)
+        # if settings.DEBUG:
+        #     federation = Federation.objects.get(name='TEST FED')
+        #     federation.assets.add(self.asset)
 
         if self.asset:
             return attrs
@@ -413,7 +434,7 @@ class WalletCreateSerializer(serializers.Serializer):
                 # Si carte avec wallet ephemere, on lie l'user avec le wallet ephemere
                 if card.wallet_ephemere != self.user.wallet:
                     # On vide le wallet ephemere en faveur du wallet de l'user
-                    for token in card.wallet_ephemere.tokens.all():
+                    for token in card.wallet_ephemere.tokens.filter(value__gt=0):
                         data = {
                             "amount": token.value,
                             "asset": f"{token.asset.pk}",

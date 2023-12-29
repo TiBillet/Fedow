@@ -650,7 +650,7 @@ class Place(models.Model):
                      )
 
     def federated_with(self):
-        logger.info(f'federated_with_{self.uuid} called')
+        # logger.info(f'federated_with_{self.uuid} called')
         # print(f'federated_with_{self.uuid} called')
         places, assets, wallets = set(), set(), set()
         for federation in self.federations.all():
@@ -658,11 +658,14 @@ class Place(models.Model):
             assets.update(federation.assets.all())
             wallets.update([place.wallet for place in federation.places.all()])
 
-        # On s'assure d'avoir l'asset fédéré par STRIPE
-        if self.stripe_connect_valid:
-            assets.add(Asset.objects.get(category=Asset.STRIPE_FED_FIAT))
+        # On a joute automatiquement l'asset stripe primaire
+        assets.add(Asset.objects.get(category=Asset.STRIPE_FED_FIAT))
+
         # Les assets créé par le lieu
         assets.update(self.wallet.assets_created.all())
+        # Soi-même
+        wallets.add(self.wallet)
+        places.add(self)
 
         # Mise en cache :
         feds = places, assets, wallets
@@ -764,9 +767,11 @@ class Card(models.Model):
         return False
 
     def get_authority_delegation(self):
+        # Le lieu d'origine doit faire parti de la fédération du lieu de la carte
         card: Card = self
         place_origin = card.origin.place
-        return place_origin.wallet_federated_with()
+        wallets = place_origin.wallet_federated_with()
+        return wallets
 
 
 class OrganizationAPIKey(AbstractAPIKey):
@@ -872,6 +877,8 @@ def asset_creator(name: str = None,
         primary_card=None,
     )
     print(f"First block created for {asset.name}")
+    cache.clear()
+    print(f"cache cleared")
     return asset
 
 

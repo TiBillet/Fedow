@@ -31,6 +31,6 @@ urlpatterns = [
     path('webhook_stripe/', WebhookStripe.as_view()),
 
     path('admin/', admin.site.urls),
-    path('', include(dashboard_urls)),
+    path('dashboard/', include(dashboard_urls)),
     path('', include(router.urls)),
 ]
