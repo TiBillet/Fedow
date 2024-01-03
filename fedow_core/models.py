@@ -38,7 +38,7 @@ class CheckoutStripe(models.Model):
     checkout_session_id_stripe = models.CharField(max_length=80, unique=True)
     asset = models.ForeignKey('Asset', on_delete=models.PROTECT,
                               related_name='checkout_stripe')
-    OPEN, EXPIRE, PAID, WALLET_PRIMARY_OK, WALLET_USER_OK, CANCELED = 'O', 'E', 'P', 'W', 'V', 'C'
+    OPEN, EXPIRE, PAID, WALLET_PRIMARY_OK, WALLET_USER_OK, CANCELED, ERROR = 'O', 'E', 'P', 'W', 'V', 'C', 'R'
     STATUT_CHOICES = (
         (OPEN, 'En attente de paiement'),
         (EXPIRE, 'Expiré'),
@@ -46,6 +46,7 @@ class CheckoutStripe(models.Model):
         (WALLET_PRIMARY_OK, 'Wallet primaire chargé'),  # wallet primaire chargé
         (WALLET_USER_OK, 'Wallet user chargé'),  # wallet chargé
         (CANCELED, 'Annulée'),
+        (ERROR, 'en erreur'),
     )
     status = models.CharField(max_length=1, choices=STATUT_CHOICES, default=OPEN, verbose_name="Statut de la commande")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='checkout_stripe')
@@ -410,7 +411,7 @@ class Transaction(models.Model):
             assert self.sender == self.receiver, "Sender and receiver must be the same for creation money."
             if self.asset.is_stripe_primary():
                 # Pas besoin de carte primaire, mais besoin d'un checkout stripe
-                # TODO: Chekout stripe must be unique
+                # TODO: Chekout stripe must be unique and not used
                 assert self.checkout_stripe != None, "Checkout stripe must be set for create federated money."
             else:
                 # besoin d'une carte primaire pour création monétaire
@@ -448,6 +449,7 @@ class Transaction(models.Model):
 
             assert not self.receiver.is_place(), "Receiver must be a user wallet"
             if self.asset.is_stripe_primary():
+                # TODO: Chekout stripe must be unique and not used
                 assert self.checkout_stripe != None, "Checkout stripe must be set for refill."
             else:
                 assert self.asset.wallet_origin == self.sender, "Asset wallet_origin must be the place"
@@ -583,6 +585,7 @@ class Configuration(SingletonModel):
 
     def set_stripe_endpoint_secret(self, string):
         self.stripe_endpoint_secret_enc = fernet_encrypt(string)
+        cache.clear()
         self.save()
         return True
 

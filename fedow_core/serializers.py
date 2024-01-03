@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.utils.timezone import localtime
 from rest_framework import serializers
 from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction, OrganizationAPIKey, Asset, Token, \
-    get_or_create_user, Origin, asset_creator, Configuration, Federation
+    get_or_create_user, Origin, asset_creator, Configuration, Federation, CheckoutStripe
 from fedow_core.utils import get_request_ip, get_public_key, dict_to_b64, verify_signature
 from cryptography.hazmat.primitives.asymmetric import rsa
 import stripe
@@ -150,6 +150,55 @@ class UserSerializer(serializers.ModelSerializer):
         )
 
 
+class BadgeValidator(serializers.Serializer):
+    primary_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
+    primary_card_fisrtTagId = serializers.SlugRelatedField(
+        queryset=Card.objects.all(),
+        required=False, slug_field='first_tag_id')
+    user_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
+    user_card_firstTagId = serializers.SlugRelatedField(
+        queryset=Card.objects.all(),
+        required=False, slug_field='first_tag_id')
+    asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all(), required=False)
+    action = serializers.ChoiceField(choices=Transaction.TYPE_ACTION, required=False, allow_null=True)
+    amount = serializers.IntegerField()
+
+    def validate_action(self, value):
+        if value not in [Transaction.BADGE]:
+            raise serializers.ValidationError("Action must be BADGE")
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        self.place: Place = request.place
+
+        # Avons nous une carte user et/ou une carte primaire LaBoutik ?
+        self.primary_card = attrs.get('primary_card_uuid') or attrs.get('primary_card_fisrtTagId')
+        self.user_card: Card = attrs.get('user_card_uuid') or attrs.get('user_card_firstTagId')
+
+        if self.primary_card not in request.place.primary_cards.all():
+            raise serializers.ValidationError("Primary card must be in place primary cards")
+
+        if not self.user_card:
+            raise serializers.ValidationError("User card is required for void or refund")
+
+        transaction_dict = {
+            "ip": get_request_ip(request),
+            "checkout_stripe": None,
+            "sender": self.user_card.get_wallet(),
+            "receiver": request.place.wallet,
+            "asset": attrs.get('asset'),
+            "amount": attrs.get('amount'),
+            "action": Transaction.BADGE,
+            "primary_card": self.primary_card,
+            "card": self.user_card,
+            "subscription_start_datetime": None
+        }
+        transaction = Transaction.objects.create(**transaction_dict)
+        self.transaction = transaction
+        return attrs
+
+
 class CardRefundOrVoidValidator(serializers.Serializer):
     primary_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
     primary_card_fisrtTagId = serializers.SlugRelatedField(
@@ -252,7 +301,8 @@ class CardCreateValidator(serializers.ModelSerializer):
             for pre_token in pre_tokens:
                 asset = Asset.objects.get(uuid=pre_token.get('asset_uuid'))
                 wallet = card.get_wallet()
-                token, created = Token.objects.get_or_create(uuid=pre_token.get("token_uuid"), asset=asset, wallet=wallet)
+                token, created = Token.objects.get_or_create(uuid=pre_token.get("token_uuid"), asset=asset,
+                                                             wallet=wallet)
                 print(f"token {token} created {created}")
         return card
 
@@ -286,7 +336,7 @@ class AssetSerializer(serializers.ModelSerializer):
             'is_stripe_primary',
         )
 
-    def to_representation(self, instance:Asset):
+    def to_representation(self, instance: Asset):
         # Add apikey user to representation
         rep = super().to_representation(instance)
         if self.context.get('action') == 'retrieve':
@@ -510,6 +560,8 @@ class TransactionW2W(serializers.Serializer):
 
     comment = serializers.CharField(required=False, allow_null=True)
     metadata = serializers.JSONField(required=False, allow_null=True)
+    checkout_stripe = serializers.PrimaryKeyRelatedField(queryset=CheckoutStripe.objects.all(),
+                                                         required=False, allow_null=True)
 
     primary_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
     primary_card_fisrtTagId = serializers.SlugRelatedField(
@@ -535,16 +587,32 @@ class TransactionW2W(serializers.Serializer):
         # Quel type de transaction ?
         action = None
 
-        if self.place.wallet == self.sender:
-            # Un lieu envoi : c'est une recharge de carte
-            if self.asset.category == Asset.SUBSCRIPTION:
-                # ou une adhésion / abonnement
-                return Transaction.SUBSCRIBE
+        if (attrs.get('action') == Transaction.REFILL
+                and self.checkout_stripe
+                and self.sender.is_primary()
+                and self.asset.is_stripe_primary()
+        ):
+            # C'est une recharge stripe
+            return Transaction.REFILL
 
+        # Un lieu est le sender, trois cas possibles : Adhésion / Badge / Recharge locale
+        if self.place.wallet == self.sender:
+            # adhésion / abonnement
+            if self.asset.category == Asset.SUBSCRIPTION:
+                return Transaction.SUBSCRIBE
+            # Badgeuse
+            if self.asset.category == Asset.BADGE:
+                return Transaction.BADGE
+
+            # ex methode, on ne fait plus qu'une seule requete maintenant.
             if self.sender == self.receiver:
                 if self.asset.wallet_origin == self.place.wallet:
                     raise serializers.ValidationError('no longuer implemented for REFILL. Send user wallet instead')
                 raise serializers.ValidationError("Unauthorized wallet_origin")
+
+            # C'est une recharge locale, on a besoin de deux cartes
+            if not self.primary_card or not self.user_card:
+                raise serializers.ValidationError("Primary card and user card are required for refill transaction")
             return Transaction.REFILL
 
         elif self.place.wallet == self.receiver:
@@ -583,8 +651,6 @@ class TransactionW2W(serializers.Serializer):
     def validate(self, attrs):
         # Récupération de la place grâce à la permission HasKeyAndCashlessSignature
         request = self.context.get('request')
-        self.place: Place = request.place
-
         # get variable
         self.sender: Wallet = attrs.get('sender')
         self.receiver: Wallet = attrs.get('receiver')
@@ -592,12 +658,30 @@ class TransactionW2W(serializers.Serializer):
         self.amount: int = attrs.get('amount')
         self.comment: str = attrs.get('comment')
         self.metadata: str = attrs.get('metadata')
+        self.checkout_stripe: CheckoutStripe = attrs.get('checkout_stripe', None)
         # Subscription :
         self.subscription_start_datetime = attrs.get('subscription_start_datetime')
 
         # Avons nous une carte user et/ou une carte primaire LaBoutik ?
-        self.primary_card = attrs.get('primary_card_uuid') or attrs.get('primary_card_fisrtTagId')
-        self.user_card = attrs.get('user_card_uuid') or attrs.get('user_card_firstTagId')
+        self.primary_card: Card = attrs.get('primary_card_uuid') or attrs.get('primary_card_fisrtTagId')
+        self.user_card: Card = attrs.get('user_card_uuid') or attrs.get('user_card_firstTagId')
+
+        self.place: Place = getattr(request, 'place', None)
+
+        if not self.place:
+            # C'est probablement une recharge stripe.
+            # Le serializer est appellé par le webhook post paiement, il n'y a pas de place.
+            if (attrs.get('action') == Transaction.REFILL
+                    and self.checkout_stripe
+                    and self.sender.is_primary()
+                    and self.asset.is_stripe_primary()):
+                # Si c'est une recharge depuis Stripe,
+                # on met la place de l'origine de la carte
+                self.place: Place = self.user_card.origin.place
+
+            else:
+                logger.error(f"{timezone.localtime()} ERROR NewTransactionWallet2WalletValidator : place not found")
+                raise serializers.ValidationError("Place not found")
 
         action = self.get_action(attrs)
         if not action:
@@ -607,7 +691,10 @@ class TransactionW2W(serializers.Serializer):
             raise serializers.ValidationError("Unauthorized")
 
         # Check if sender or receiver are a place
-        if not self.place.wallet == self.sender and not self.place.wallet == self.receiver and not action == Transaction.FUSION:
+        if (not self.place.wallet == self.sender
+                and not self.place.wallet == self.receiver
+                and not self.asset.is_stripe_primary()
+                and not action == Transaction.FUSION):
             # Place must be sender or receiver
             logger.error(f"{timezone.localtime()} ERROR sender nor receiver are Unauthorized - {request}")
             raise serializers.ValidationError("Unauthorized")
@@ -634,17 +721,15 @@ class TransactionW2W(serializers.Serializer):
 
         # Si c'est un refill, on génère la monnaie avant :
         if action == Transaction.REFILL:
-            if not self.primary_card or not self.user_card:
-                raise serializers.ValidationError("Primary card and user card are required for refill transaction")
 
             crea_transac_dict = {
                 "ip": get_request_ip(request),
-                "checkout_stripe": None,
                 "sender": self.sender,
                 "receiver": self.sender,
                 "asset": self.asset,
                 "comment": self.comment,
                 "metadata": self.metadata,
+                "checkout_stripe": self.checkout_stripe,
                 "amount": self.amount,
                 "action": Transaction.CREATION,
                 "primary_card": self.primary_card,
@@ -659,12 +744,12 @@ class TransactionW2W(serializers.Serializer):
 
         transaction_dict = {
             "ip": get_request_ip(request),
-            "checkout_stripe": None,
             "sender": self.sender,
             "receiver": self.receiver,
             "asset": self.asset,
             "comment": self.comment,
             "metadata": self.metadata,
+            "checkout_stripe": self.checkout_stripe,
             "amount": self.amount,
             "action": action,
             "primary_card": self.primary_card,

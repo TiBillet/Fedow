@@ -37,7 +37,7 @@ def place_view(request, pk):
 
 
 
-@cache_page(60 * 15)
+# @cache_page(60 * 15)
 def index(request):
     """
     Livre un template HTML

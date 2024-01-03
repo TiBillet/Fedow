@@ -720,14 +720,13 @@ class HandshakeTest(FedowTestCase):
         self.assertEqual(fernet_decrypt(place.cashless_admin_apikey), data.get('cashless_admin_apikey'))
 
 
-"""
 # @tag("only")
 def test_create_checkout_and_REFILL(self):
     ### RECHARGE AVEC ASSET PRINCIPAL STRIPE
     ## Creation de monnaie. Reception d'un webhook stripe
     ## A faire a la main en attendant une automatisation du paiement checkout
     # Lancer stripe :
-    # stripe listen --forward-to http://127.0.0.1:8000/webhook_stripe/
+    # stripe listen --forward-to http://127.0.0.1:8442/webhook_stripe/
     # 
     # S'assurer que la clé de signature soit la même que dans le .env
     # Créer un checkout et le payer :
@@ -898,4 +897,3 @@ def test_transaction_from_card_to_place_without_API(self):
     last_transaction = Transaction.objects.order_by('datetime').last()
     self.assertTrue(last_transaction.verify_hash())
 
-"""

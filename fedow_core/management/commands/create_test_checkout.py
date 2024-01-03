@@ -34,7 +34,7 @@ class Command(BaseCommand):
         stripe.api_key = settings.STRIPE_KEY_TEST
 
         ### Création de l'user
-        email = 'lambda@lambda.com'
+        email = 'jturbeaux@pm.me'
         user, created = get_or_create_user(email)
 
         ### Création d'un lieu
@@ -52,12 +52,11 @@ class Command(BaseCommand):
             place = Place.objects.get(pk=decoded_data.get('uuid'))
 
             # Pour test, on le lie à la fedération de test :
-            if settings.DEBUG :
-                # On le met dans la fédération de test
-                federation = Federation.objects.get(name='TEST FED')
-                federation.places.add(place)
-                place.stripe_connect_valid = True
-                place.save()
+            # On le met dans la fédération de test
+            federation, created = Federation.objects.get_or_create(name='TEST FED')
+            federation.places.add(place)
+            place.stripe_connect_valid = True
+            place.save()
 
         ### Création d'une carte
         try:
@@ -81,7 +80,7 @@ class Command(BaseCommand):
             )
 
         primary_wallet = config.primary_wallet
-        primary_stripe_asset = Asset.objects.get(origin=primary_wallet, category=Asset.STRIPE_FED_FIAT)
+        primary_stripe_asset = Asset.objects.get(wallet_origin=primary_wallet, category=Asset.STRIPE_FED_FIAT)
         id_price_stripe = primary_stripe_asset.get_id_price_stripe()
 
         if not primary_stripe_asset.is_stripe_primary():
@@ -114,8 +113,8 @@ class Command(BaseCommand):
         signed_data = signer.sign(dict_to_b64_utf8(metadata))
 
         data_checkout = {
-            'success_url': 'https://127.0.0.1:8000/checkout_stripe/',
-            'cancel_url': 'https://127.0.0.1:8000/checkout_stripe/',
+            'success_url': 'http://127.0.0.1:8442/checkout_stripe/',
+            'cancel_url': 'http://127.0.0.1:8442/checkout_stripe/',
             'payment_method_types': ["card"],
             'customer_email': f'{email}',
             'line_items': line_items,

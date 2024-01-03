@@ -5,7 +5,11 @@
 
     <div>
         <h1>Asset : {{ asset.name }}</h1>
-        <h5>Origin : {{ asset.wallet_origin.place.name }}</h5>
+        {% if asset.wallet_origin.place %}
+            <h5>Origin : {{ asset.wallet_origin.place.name }}</h5>
+        {% elif asset.is_stripe_primary %}
+            <h5>Origin : Stripe Primary</h5>
+        {% endif %}
         <h6>Federated with : {{ asset.place_federated_with }}</h6>
         <h6>Total Market : {{ asset.total_token_value }}</h6>
         <h6> In place wallet : {{ asset.total_in_place }}</h6>
@@ -35,6 +39,9 @@
                     </th>
                     <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-2">
                         Hash
+                    </th>
+                    <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-2">
+                        Card Origin
                     </th>
                 </tr>
                 </thead>
@@ -66,7 +73,14 @@
                         </td>
                         <td>
                             <p class="text-xs font-weight-bold mb-0">{{ transaction.hash | slice:":8" }}</p>
-                            <p class="text-xs text-secondary mb-0">{{ transaction.previous_transaction.hash | slice:":8" }}</p>
+                            <p class="text-xs text-secondary mb-0">{{ transaction.verify_hash }}</p>
+                        </td>
+                        <td>
+                            {% if transaction.card %}
+                                <span class="text-xs font-weight-normal">{{ transaction.card.origin.place }}</span>
+                            {% else %}
+                                <span class="text-xs font-weight-normal">None</span>
+                            {% endif %}
                         </td>
                     </tr>
                 {% endfor %}
