@@ -146,6 +146,88 @@ class CardAPI(viewsets.ViewSet):
         logger.error(f"{timezone.now()} Card update error : {validator.errors}")
         return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=False, methods=['post'])
+    def get_checkout(self, request):
+        # Même sérializer que la création, sauf qu'on vérifie que le mail soit bien présent.
+        if not request.data.get('email'):
+            return Response("Email missing", status=status.HTTP_406_NOT_ACCEPTABLE)
+
+        serializer = WalletCreateSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            config = Configuration.get_solo()
+            stripe.api_key = config.get_stripe_api()
+
+            # Vérification que l'email soit bien présent pour l'envoyer a Stripe
+            user: FedowUser = serializer.user
+            email = user.email
+
+            primary_wallet = config.primary_wallet
+            stripe_asset = Asset.objects.get(wallet_origin=primary_wallet, category=Asset.STRIPE_FED_FIAT)
+            id_price_stripe = stripe_asset.get_id_price_stripe()
+
+            primary_token, created = Token.objects.get_or_create(
+                wallet=primary_wallet,
+                asset=stripe_asset,
+            )
+
+            user_token, created = Token.objects.get_or_create(
+                wallet=user.wallet,
+                asset=stripe_asset,
+            )
+
+            line_items = [{
+                "price": f"{id_price_stripe}",
+                "quantity": 1
+            }]
+
+            metadata = {
+                "primary_token": f"{primary_token.uuid}",
+                "user_token": f"{user_token.uuid}",
+                "card_uuid": f"{serializer.card.uuid}",
+            }
+
+            signer = Signer()
+            signed_data = signer.sign(dict_to_b64_utf8(metadata))
+
+            data_checkout = {
+                'success_url': f'https://{config.domain}/checkout_stripe/',
+                'cancel_url': f'https://{config.domain}/checkout_stripe/',
+                'payment_method_types': ["card"],
+                'customer_email': f'{email}',
+                'line_items': line_items,
+                'mode': 'payment',
+                'metadata': {
+                    'signed_data': f'{signed_data}',
+                },
+                'client_reference_id': f"{user.pk}",
+            }
+
+            if settings.STRIPE_TEST and settings.DEBUG:
+                data_checkout['success_url'] = f'https://127.0.0.1:8442/checkout_stripe/'
+                data_checkout['cancel_url'] = f'https://127.0.0.1:8442/checkout_stripe/'
+
+            try:
+                checkout_session = stripe.checkout.Session.create(**data_checkout)
+            except Exception as e :
+                logger.error(f"Creation of Stripe Checkout error : {e}")
+                import ipdb; ipdb.set_trace()
+                raise Exception("Creation of Stripe Checkout error")
+
+            # Enregistrement du checkout Stripe dans la base de donnée
+            checkout_db = CheckoutStripe.objects.create(
+                checkout_session_id_stripe=checkout_session.id,
+                asset=user_token.asset,
+                status=CheckoutStripe.OPEN,
+                user=user,
+                metadata=signed_data,
+            )
+
+            return Response(checkout_session.url, status=status.HTTP_202_ACCEPTED)
+
+        logger.error(f"get_checkout error : {serializer.errors}")
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
     def retrieve(self, request, pk=None):
         # Utilisé par les serveurs cashless comme un check card
         try:
@@ -454,86 +536,8 @@ class Onboard_stripe_return(APIView):
 
 @permission_classes([HasAPIKey])
 class CheckoutStripeForChargePrimaryAsset(APIView):
-    def post(self, request):
-        # Même sérializer que la création, sauf qu'on vérifie que le mail soit bien présent.
-        if not request.data.get('email'):
-            return Response("Email missing", status=status.HTTP_404_NOT_FOUND)
-
-        serializer = WalletCreateSerializer(data=request.data, context={'request': request})
-        if serializer.is_valid():
-            config = Configuration.get_solo()
-
-            # Vérification que l'email soit bien présent pour l'envoyer a Stripe
-            wallet_uuid = serializer.data['wallet']
-            wallet = serializer.wallet
-            email = wallet.user.email
-
-            primary_wallet = config.primary_wallet
-            stripe_asset = Asset.objects.get(origin=primary_wallet, category=Asset.STRIPE_FED_FIAT)
-            id_price_stripe = stripe_asset.get_id_price_stripe()
-
-            primary_token, created = Token.objects.get_or_create(
-                wallet=primary_wallet,
-                asset=stripe_asset,
-            )
-
-            user_token, created = Token.objects.get_or_create(
-                wallet=wallet,
-                asset=stripe_asset,
-            )
-
-            # Pour dev : Lancer stripe :
-            # stripe listen --forward-to http://127.0.0.1:8000/webhook_stripe/
-            # S'assurer que la clé de signature soit la même que dans le .env
-            line_items = [{
-                "price": f"{id_price_stripe}",
-                "quantity": 1
-            }]
-
-            metadata = {
-                "primary_token": f"{primary_token.uuid}",
-                "user_token": f"{user_token.uuid}",
-            }
-
-            # Ajout de l'uuid de la carte si elle envoyée :
-            if getattr(serializer, 'card', None):
-                card: Card = serializer.card
-                metadata['card_qrcode_uuid'] = f"{card.qrcode_uuid}"
-
-            signer = Signer()
-            signed_data = signer.sign(dict_to_b64_utf8(metadata))
-
-            data_checkout = {
-                'success_url': f'https://{config.domain}/checkout_stripe/',
-                'cancel_url': f'https://{config.domain}/checkout_stripe/',
-                'payment_method_types': ["card"],
-                'customer_email': f'{email}',
-                'line_items': line_items,
-                'mode': 'payment',
-                'metadata': {
-                    'signed_data': f'{signed_data}',
-                },
-                'client_reference_id': f"{wallet.user.pk}",
-            }
-            try:
-                checkout_session = stripe.checkout.Session.create(**data_checkout)
-            except:
-                raise Exception("Creation of Stripe Checkout error")
-
-            # Enregistrement du checkout Stripe dans la base de donnée
-            checkout_db = CheckoutStripe.objects.create(
-                checkout_session_id_stripe=checkout_session.id,
-                asset=user_token.asset,
-                status=CheckoutStripe.OPEN,
-                user=wallet.user,
-                metadata=signed_data,
-            )
-
-            return Response(checkout_session.url, status=status.HTTP_202_ACCEPTED)
-
-        logger.error(f"CheckoutStripeForChargePrimaryAsset error : {serializer.errors}")
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
+    # Utilisez l'api card
+    pass
 
 class MembershipAPI(viewsets.ViewSet):
     def create(self, request):

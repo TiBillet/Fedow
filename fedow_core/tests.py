@@ -720,180 +720,21 @@ class HandshakeTest(FedowTestCase):
         self.assertEqual(fernet_decrypt(place.cashless_admin_apikey), data.get('cashless_admin_apikey'))
 
 
-# @tag("only")
-def test_create_checkout_and_REFILL(self):
-    ### RECHARGE AVEC ASSET PRINCIPAL STRIPE
-    ## Creation de monnaie. Reception d'un webhook stripe
-    ## A faire a la main en attendant une automatisation du paiement checkout
-    # Lancer stripe :
-    # stripe listen --forward-to http://127.0.0.1:8442/webhook_stripe/
-    # 
-    # S'assurer que la clé de signature soit la même que dans le .env
-    # Créer un checkout et le payer :
-    # ./manage.py create_test_checkout
-    # 
-    # Vérifier les Transactions et les Assets
+class StripeTest(FedowTestCase):
 
-    # Création d'un checkout stripe
-    out = StringIO()
-    call_command('create_test_checkout',
-                 '--no-stripe',
-                 stdout=out)
-    last_line = out.getvalue()
-    # print(last_line)
+    @tag("stripe")
+    def xtest_create_checkout_and_REFILL(self):
+        ### RECHARGE AVEC ASSET PRINCIPAL STRIPE
+        ## Creation de monnaie. Reception d'un webhook stripe
+        ## A faire a la main en attendant une automatisation du paiement checkout
+        # Lancer stripe :
+        # stripe listen --forward-to http://127.0.0.1:8442/webhook_stripe/
+        #
+        # S'assurer que la clé de signature soit la même que dans le .env
+        # Créer un checkout et le payer :
+        # ./manage.py create_test_checkout
+        #
+        # Vérifier les Transactions et les Assets
 
-    # Récupération du checkout stripe
-    checkout = CheckoutStripe.objects.all().order_by('datetime').last()
-
-    # amount_total est entré normalement par l'user sur stripe
-    amount_total = "4200"
-
-    # Récupération des metadonnée envoyées à Stripe
-    signer = Signer()
-    signed_data = utf8_b64_to_dict(signer.unsign(checkout.metadata))
-
-    primary_token = Token.objects.get(uuid=signed_data.get('primary_token'))
-    user_token = Token.objects.get(uuid=signed_data.get('user_token'))
-    card = Card.objects.get(uuid=signed_data.get('card_uuid'))
-
-    # L'asset est-il le même entre les deux tokens ?
-    self.assertEqual(primary_token.asset, user_token.asset)
-    # L'user du token est-il le même que celui de la carte ?
-    self.assertEqual(card.user, user_token.wallet.user)
-
-    # Création de la transaction de création de token
-    token_creation = Transaction.objects.create(
-        ip='0.0.0.0',
-        checkout_stripe=checkout,
-        sender=primary_token.wallet,
-        receiver=primary_token.wallet,
-        asset=primary_token.asset,
-        amount=int(amount_total),
-        action=Transaction.CREATION,
-        card=card,
-        primary_card=None,  # Création de monnaie
-    )
-
-    self.assertTrue(token_creation.verify_hash())
-    primary_token.refresh_from_db()
-    self.assertEqual(int(amount_total), primary_token.value)
-
-    # virement vers le wallet de l'utilisateur
-    virement = Transaction.objects.create(
-        ip='0.0.0.0',
-        checkout_stripe=checkout,
-        sender=primary_token.wallet,
-        receiver=user_token.wallet,
-        asset=primary_token.asset,
-        amount=int(amount_total),
-        action=Transaction.REFILL,
-        card=card,
-        primary_card=None,  # Création de monnaie
-    )
-
-    self.assertTrue(virement.verify_hash())
-    primary_token.refresh_from_db()
-    user_token.refresh_from_db()
-    self.assertEqual(int(amount_total), user_token.value)
-    self.assertEqual(0, primary_token.value)
-
-    # Ajout d'une carte primaire
-    admin_place_user, created = get_or_create_user('admin@admin.admin')
-    primary_card = Card.objects.all()[10]
-    primary_card.user = admin_place_user
-    primary_card.save()
-
-    # Simulation de la clé rsa du cashless
-    self.place.cashless_rsa_pub_key = self.public_cashless_pem
-    self.place.primary_cards_cashless.add(primary_card)
-    self.place.save()
-
-    # Pour les requetes GET, on signe le path
-    response = self._get_from_simulated_cashless(f'/card/{card.first_tag_id}/')
-
-    self.assertEqual(response.status_code, 200)
-
-    data = response.json()
-    fti = data['first_tag_id']
-    resp_card = Card.objects.get(first_tag_id=fti)
-    self.assertEqual(resp_card, card)
-    user_id = data['user']['uuid']
-    self.assertEqual(user_id, str(user_token.wallet.user.uuid))
-    user_wallet_id = data['user']['wallet']['uuid']
-    self.assertEqual(user_wallet_id, str(user_token.wallet.uuid))
-    tokens = data['user']['wallet']['tokens']
-    fedow_token_value = tokens[0]['value']
-    self.assertEqual(fedow_token_value, 4200)
-
-    print(response.json())
-
-
-# @tag("only")
-def test_transaction_from_card_to_place_without_API(self):
-    charge42 = self.test_create_checkout_and_REFILL()
-    last_transaction = Transaction.objects.order_by('datetime').last()
-    self.assertTrue(last_transaction.verify_hash())
-    card = last_transaction.card
-    user = card.user
-    user_wallet = user.wallet
-
-    place_wallet = self.place.wallet
-    config = Configuration.get_solo()
-    # primary_asset = config.primary_wallet.primary_asset
-    primary_asset = Asset.objects.get(wallet_origin=config.primary_wallet, category=Asset.STRIPE_FED_FIAT)
-    self.assertEqual(Token.objects.get(wallet=user_wallet, asset=primary_asset).value, 4200)
-
-    # On verfie que la transaction ne peux avoir lieux
-    # ( montant trop élevé : )
-    try:
-        virement = Transaction.objects.create(
-            ip='0.0.0.0',
-            checkout_stripe=None,
-            sender=user_wallet,
-            receiver=place_wallet,
-            asset=primary_asset,
-            amount=int("9999"),
-            action=Transaction.SALE,
-            card=card,
-            primary_card=None,  # Création de monnaie
-        )
-    except Exception as e:
-        self.assertIsInstance(e, ValueError)
-        self.assertEqual(str(e), "amount too high")
-
-    # création d'une carte primaire
-    admin_place_user, created = get_or_create_user('admin@admin.admin')
-    primary_card = Card.objects.all()[10]
-    primary_card.user = admin_place_user
-    primary_card.save()
-
-    self.place.primary_cards_cashless.add(primary_card)
-    self.place.save()
-
-    message = {
-        "amount": "1000",
-        "asset": f"{primary_asset.uuid}",
-        "primary_card": f"{primary_card.uuid}",
-        "user_card_uuid": f"{card.uuid}",
-    }
-
-    self.place.cashless_rsa_pub_key = self.public_cashless_pem
-    self.place.save()
-
-    private_cashless_rsa = get_private_key(self.private_cashless_pem)
-    signature = sign_message(dict_to_b64(message), private_cashless_rsa)
-    # creation de la requete nouvelle transaction par carte :
-    response = self.client.post('/transaction/', message,
-                                headers={
-                                    'Authorization': f'Api-Key {self.temp_key_place}',
-                                    'Signature': signature,
-                                })
-
-    self.assertEqual(response.status_code, 201)
-    self.place.wallet.refresh_from_db()
-    card.user.wallet.refresh_from_db()
-    self.assertEqual(Token.objects.get(wallet=self.place.wallet, asset=primary_asset).value, 1000)
-    self.assertEqual(Token.objects.get(wallet=card.user.wallet, asset=primary_asset).value, 3200)
-    last_transaction = Transaction.objects.order_by('datetime').last()
-    self.assertTrue(last_transaction.verify_hash())
-
+        # Tout est fait coté cashless
+        pass
