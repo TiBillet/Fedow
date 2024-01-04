@@ -31,7 +31,7 @@ if len(FERNET_KEY) != 44:
     raise ValueError('FERNET_KEY must be 32bit Fernet key. run "./manage.py generate_fernet"')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 ALLOWED_HOSTS = [os.environ.get('DOMAIN', 'localhost'), ]
 CSRF_TRUSTED_ORIGINS = [f"https://{os.environ.get('DOMAIN')}", ]
 if DEBUG:
