@@ -2,16 +2,17 @@ version: '3'
 services:
   django_fedow:
     image: tibillet/fedow:alpha1
-    hostname: django_fedow
     container_name: django_fedow
+    hostname: django_fedow
+    restart: always
     env_file: .env
     user: fedow
-    restart: always
     networks:
       - backend
     volumes:
       - ./:/home/fedow/Fedow
       - ./bashrc:/home/fedow/.bashrc
+    command: "bash ./launcher.sh"
 
   nginx_fedow:
     image: nginx
