@@ -39,6 +39,20 @@ if DEBUG:
     ALLOWED_HOSTS.append('*')
     CSRF_TRUSTED_ORIGINS.append('https://fedow.tibillet.localhost')
 
+# Sentry
+if not DEBUG:
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn="https://d320243035a8d0cbead2e0bbc673e9a9@o262913.ingest.sentry.io/4506512594239488",
+        # Set traces_sample_rate to 1.0 to capture 100%
+        # of transactions for performance monitoring.
+        traces_sample_rate=0.2,
+        # Set profiles_sample_rate to 1.0 to profile 100%
+        # of sampled transactions.
+        # We recommend adjusting this value in production.
+        profiles_sample_rate=0.2,
+    )
+
 # Application definition
 
 INSTALLED_APPS = [
