@@ -299,7 +299,12 @@ class CardCreateValidator(serializers.ModelSerializer):
 
         if pre_tokens:
             for pre_token in pre_tokens:
-                asset = Asset.objects.get(uuid=pre_token.get('asset_uuid'))
+                try :
+                    asset = Asset.objects.get(uuid=pre_token.get('asset_uuid'))
+                except Asset.DoesNotExist:
+                    import ipdb; ipdb.set_trace()
+                    raise serializers.ValidationError("Asset does not exist")
+
                 wallet = card.get_wallet()
                 token, created = Token.objects.get_or_create(uuid=pre_token.get("token_uuid"), asset=asset,
                                                              wallet=wallet)
@@ -463,16 +468,19 @@ class WalletCreateSerializer(serializers.Serializer):
                 card.user = user
                 card.save()
                 return attrs
-            # Si la carte possède un wallet ephemere, nous créons l'e'user avec ce wallet.
+            # Si la carte possède un wallet ephemere, nous créons l'user avec ce wallet.
             elif not card.user and card.wallet_ephemere:
                 user, created = get_or_create_user(email, ip=ip, wallet_uuid=card.wallet_ephemere.uuid)
                 self.user = user
                 card.user = user
+                # Le wallet ephemere est devenu un wallet user, on le retire de la carte
+                card.wallet_ephemere = None
                 card.save()
                 return attrs
             elif card.user or card.wallet_ephemere:
                 raise serializers.ValidationError("Card already linked to another user")
 
+        # L'utilisateur existe.
         # Si la carte est liée à un user, on vérifie que c'est le même
         if card and user_exist:
             # Si carte vierge, on lie l'user
@@ -480,8 +488,10 @@ class WalletCreateSerializer(serializers.Serializer):
                 card.user = self.user
                 card.save()
                 return attrs
+            # La carte n'a pas d'user, mais un wallet ephemere
             if not card.user and card.wallet_ephemere:
                 # Si carte avec wallet ephemere, on lie l'user avec le wallet ephemere
+
                 if card.wallet_ephemere != self.user.wallet:
                     # On vide le wallet ephemere en faveur du wallet de l'user
                     for token in card.wallet_ephemere.tokens.filter(value__gt=0):
@@ -499,13 +509,17 @@ class WalletCreateSerializer(serializers.Serializer):
                                 f"{timezone.localtime()} ERROR FUSION WalletCreateSerializer : {transaction_validator.errors}")
                             raise serializers.ValidationError(transaction_validator.errors)
 
-                    card.user = self.user
-                    # card.wallet_ephemere = None
-                    card.save()
-                    return attrs
 
-                # if card.wallet_ephemere == self.user.wallet:
-                raise serializers.ValidationError("Strange case")
+                # On retire le wallet ephemere de la carte après avoir vérifié qu'il est bien vide
+                card.refresh_from_db()
+                card.wallet_ephemere.refresh_from_db()
+                if card.wallet_ephemere.tokens.filter(value__gt=0).exists():
+                    raise serializers.ValidationError("Wallet ephemere not empty after fusion")
+                card.wallet_ephemere = None
+
+                card.user = self.user
+                card.save()
+                return attrs
 
             if card.user == self.user:
                 return attrs
@@ -635,12 +649,16 @@ class TransactionW2W(serializers.Serializer):
 
         elif attrs.get('action') == Transaction.FUSION:
             # Liaison entre une carte avec wallet ephemere et un wallet user -> Fusion !
+            # Le sender est le wallet ephemere d'une carte sans user
+            # Le receiver est le wallet user d'un user déja existant
+            # mais dont le wallet est différent du wallet_ephemere de la carte
+            # C'est une fusion de deux wallet en faveur de celui de l'user : le receiver
             sender: Wallet = attrs.get('sender')
             receiver: Wallet = attrs.get('receiver')
             if (not getattr(sender, 'user', None)
                     and sender.card_ephemere
-                    and not hasattr(receiver, 'card_ephemere')
                     and receiver.user):
+
                 # Uniquement avec une clé api de place pour le moment.
                 # Pour que l'user puisse le faire en autonomie -> auth forte (tel, double auth, etc ...)
                 if sender.card_ephemere.origin.place == self.place:

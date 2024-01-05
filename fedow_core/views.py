@@ -247,12 +247,6 @@ class CardAPI(viewsets.ViewSet):
             logger.info(f"{len(card_serializer.validated_data)} Cards created")
             return Response(f"{len(card_serializer.validated_data)}", status=status.HTTP_201_CREATED,
                             content_type="application/json")
-        else:
-            cards_from_cashless = []
-            for card in request.data:
-                if not Card.objects.filter(first_tag_id=card.get('first_tag_id'),
-                                           number_printed=card.get('number_printed')).exists():
-                    cards_from_cashless.append(card)
 
         logger.error(f"Card create error : {card_serializer.errors}")
         return Response(card_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -470,7 +464,6 @@ class WebhookStripe(APIView):
 
                 transaction_validator = TransactionW2W(data=tr_data, context={'request': request})
                 if not transaction_validator.is_valid():
-                    import ipdb; ipdb.set_trace()
                     logger.error(f"TransactionW2W serializer ERROR : {transaction_validator.errors}")
                     # Update checkout status
                     checkout_db.status = CheckoutStripe.ERROR
