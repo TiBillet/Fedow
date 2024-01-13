@@ -233,6 +233,12 @@ class CardAPI(viewsets.ViewSet):
         try:
             card = Card.objects.get(first_tag_id=pk)
             serializer = CardSerializer(card, context={'request': request})
+
+            logger.info(f"\nCHECK CARTE N° {card.number_printed} - TagId {card.first_tag_id}")
+            for token in serializer.data['wallet']['tokens'] :
+                logger.info(f"Asset {token['asset']['name']} : {token['value']}")
+            logger.info("\n")
+
             return Response(serializer.data, status=status.HTTP_200_OK)
         except Card.DoesNotExist:
             return Response("Carte inconnue", status=status.HTTP_404_NOT_FOUND)

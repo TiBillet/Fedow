@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load humanize i18n %}
+{% load humanize i18n fedow_dashboard_tags %}
 {% block content %}
 
 
@@ -11,9 +11,9 @@
             <h5>Origin : Stripe Primary</h5>
         {% endif %}
         <h6>Federated with : {{ asset.place_federated_with }}</h6>
-        <h6>Total Market : {{ asset.total_token_value }}</h6>
-        <h6> In place wallet : {{ asset.total_in_place }}</h6>
-        <h6> In users wallets : {{ asset.total_in_wallet_not_place }}</h6>
+        <h6>Total Market : {{ asset.total_token_value | dround }}</h6>
+        <h6> In place wallet : {{ asset.total_in_place | dround }}</h6>
+        <h6> In users wallets : {{ asset.total_in_wallet_not_place  | dround }}</h6>
     </div>
     <hr class="dark horizontal my-3">
 
@@ -41,7 +41,7 @@
                         Hash
                     </th>
                     <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-2">
-                        Card Origin
+                        Card
                     </th>
                 </tr>
                 </thead>
@@ -69,7 +69,7 @@
                             <span class="">{{ transaction.get_action_display }}</span>
                         </td>
                         <td class="align-middle text-center">
-                            <span class="text-xs font-weight-normal">{{ transaction.amount }}</span>
+                            <span class="text-xs font-weight-normal">{{ transaction.amount | dround }}</span>
                         </td>
                         <td>
                             <p class="text-xs font-weight-bold mb-0">{{ transaction.hash | slice:":8" }}</p>
@@ -77,7 +77,8 @@
                         </td>
                         <td>
                             {% if transaction.card %}
-                                <span class="text-xs font-weight-normal">{{ transaction.card.origin.place }}</span>
+                                <p class="text-xs font-weight-bold mb-0">N° {{ transaction.card.number_printed }}</p>
+                                <p class="text-xs text-secondary mb-0">Origin : {{ transaction.card.origin.place }}</p>
                             {% else %}
                                 <span class="text-xs font-weight-normal">None</span>
                             {% endif %}
