@@ -1,26 +1,22 @@
-import base64
-import json
+import logging
 from io import StringIO
 
 import stripe
-from cryptography.fernet import Fernet
 from django.conf import settings
-from django.core import signing
+from django.core.cache import cache
 from django.core.management import call_command
-from django.core.serializers import serialize
-from django.core.serializers.json import DjangoJSONEncoder
 from django.core.signing import Signer
-from django.core.validators import URLValidator
-from django.http import Http404, JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from faker import Faker
-from rest_framework import viewsets, status, serializers
+from rest_framework import viewsets, status
 from rest_framework.decorators import permission_classes, action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_api_key.models import APIKey
+
 from fedow_core.models import Transaction, Place, Configuration, Asset, CheckoutStripe, Token, Wallet, FedowUser, \
     OrganizationAPIKey, Card, Federation
 from fedow_core.permissions import HasKeyAndCashlessSignature, HasAPIKey, IsStripe
@@ -28,12 +24,7 @@ from fedow_core.serializers import TransactionSerializer, WalletCreateSerializer
     TransactionW2W, CardSerializer, CardCreateValidator, \
     AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator, \
     FederationSerializer, BadgeValidator
-from rest_framework.pagination import PageNumberPagination
-
-from fedow_core.utils import get_request_ip, fernet_encrypt, fernet_decrypt, dict_to_b64_utf8, dict_to_b64, \
-    get_public_key, verify_signature, utf8_b64_to_dict
-
-import logging
+from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict
 
 logger = logging.getLogger(__name__)
 
@@ -104,9 +95,6 @@ class AssetAPI(viewsets.ViewSet):
     def list(self, request):
         accepted_assets = request.place.accepted_assets()
         serializers = AssetSerializer(accepted_assets, many=True, context={'request': request})
-        # if settings.DEBUG:
-        #     logger.info(f"{timezone.now()} {len(serializers.data)} Assets list")
-        #     logger.info(f"")
         return Response(serializers.data)
 
     def retrieve(self, request, pk=None):
@@ -311,6 +299,7 @@ def get_new_place_token_for_test(request):
     return Response("Not found", status=status.HTTP_404_NOT_FOUND)
 
 
+
 class FederationAPI(viewsets.ViewSet):
 
     def list(self, request):
@@ -318,6 +307,7 @@ class FederationAPI(viewsets.ViewSet):
         federations = place.federations.all()
         serializer = FederationSerializer(federations, many=True, context={'request': request})
         return Response(serializer.data)
+
 
     def get_permissions(self):
         permission_classes = [HasKeyAndCashlessSignature]
@@ -377,8 +367,30 @@ class PlaceAPI(viewsets.ViewSet):
             return Response(data_encoded, status=status.HTTP_202_ACCEPTED)
         return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
+    @action(detail=False, methods=['GET'])
+    def add_me_to_test_fed(self, request):
+        if settings.DEBUG:
+            # Récupération du lieu dans le request
+            place: Place = request.place
+            assets_created_by_the_place = place.wallet.assets_created.all()
+            asset_euro = assets_created_by_the_place.get(category=Asset.TOKEN_LOCAL_FIAT)
+
+            # Récupération de la fed test
+            fed_test = Federation.objects.get(name='TEST FED')
+            fed_test.places.add(place)
+            fed_test.assets.add(asset_euro)
+            # Save pour faire le clear cache
+            fed_test.save()
+            cache.clear()
+
+            accepted_assets = request.place.accepted_assets()
+            serializers = AssetSerializer(accepted_assets, many=True, context={'request': request})
+            return Response(serializers.data)
+        return Response('405', status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
     def get_permissions(self):
-        permission_classes = [AllowAny]
+        permission_classes = [HasKeyAndCashlessSignature]
         if self.action in ['create']:
             permission_classes = [HasAPIKey]
         return [permission() for permission in permission_classes]
