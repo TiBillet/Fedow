@@ -1,5 +1,6 @@
 from collections import OrderedDict
 from datetime import timedelta
+from time import sleep
 
 from django.conf import settings
 from django.utils import timezone
@@ -302,13 +303,13 @@ class CardCreateValidator(serializers.ModelSerializer):
                 try :
                     asset = Asset.objects.get(uuid=pre_token.get('asset_uuid'))
                 except Asset.DoesNotExist:
-                    import ipdb; ipdb.set_trace()
                     raise serializers.ValidationError("Asset does not exist")
 
                 wallet = card.get_wallet()
                 token, created = Token.objects.get_or_create(uuid=pre_token.get("token_uuid"), asset=asset,
                                                              wallet=wallet)
                 print(f"token {token} created {created}")
+                sleep(0.1)
         return card
 
     class Meta:
