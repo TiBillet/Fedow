@@ -24,7 +24,7 @@ from fedow_core.serializers import TransactionSerializer, WalletCreateSerializer
     TransactionW2W, CardSerializer, CardCreateValidator, \
     AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator, \
     FederationSerializer, BadgeValidator
-from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict
+from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict, b64_to_data
 
 logger = logging.getLogger(__name__)
 
@@ -277,12 +277,12 @@ class WalletAPI(viewsets.ViewSet):
         return [permission() for permission in permission_classes]
 
 
-def get_new_place_token_for_test(request):
+def get_new_place_token_for_test(request, name_enc):
     if request.method == 'GET':
         if settings.DEBUG:
             out = StringIO()
             faker = Faker()
-            name = faker.company()
+            name = b64_to_data(name_enc).get('name')
             if not Federation.objects.filter(name='TEST FED').exists():
                 call_command('federations',
                              '--create',

@@ -22,7 +22,7 @@ router.register(r'card', CardAPI, basename='card')
 
 urlpatterns = [
     # Route pour test fedow :
-    path('get_new_place_token_for_test/', get_new_place_token_for_test),
+    path('get_new_place_token_for_test/<str:name_enc>/', get_new_place_token_for_test),
 
     # Requete depuis le cashless pour le retour de l'onboarding stripe
     path('onboard_stripe_return/', Onboard_stripe_return.as_view()),
