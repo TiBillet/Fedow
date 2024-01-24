@@ -135,6 +135,18 @@ class CardAPI(viewsets.ViewSet):
         return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['post'])
+    def set_primary(self, request):
+        place : Place = request.place
+        card = Card.objects.get(first_tag_id=request.data.get('first_tag_id'))
+        if place in card.primary_places.all():
+            return Response("Déja OK", status=status.HTTP_208_ALREADY_REPORTED)
+
+        card.primary_places.add(place)
+        card.save()
+        return Response("OK", status=status.HTTP_200_OK)
+
+
+    @action(detail=False, methods=['post'])
     def get_checkout(self, request):
         # Même sérializer que la création, sauf qu'on vérifie que le mail soit bien présent.
         if not request.data.get('email'):
@@ -244,6 +256,7 @@ class CardAPI(viewsets.ViewSet):
 
         logger.error(f"Card create error : {card_serializer.errors}")
         return Response(card_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
     def get_permissions(self):
         permission_classes = [HasKeyAndCashlessSignature]

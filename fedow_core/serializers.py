@@ -547,7 +547,7 @@ class CardSerializer(serializers.ModelSerializer):
         return f"{obj.origin.place.name} V{obj.origin.generation}"
 
     def get_wallet(self, obj: Card):
-        wallet = obj.get_wallet()
+        wallet: Wallet = obj.get_wallet()
         return WalletSerializer(wallet, context=self.context).data
 
     class Meta:
