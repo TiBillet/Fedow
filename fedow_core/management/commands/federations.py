@@ -13,16 +13,18 @@ class Command(BaseCommand):
         parser.add_argument('--create', action='store_true',
                             help='Create a federation. Need --name')
         parser.add_argument('--add_asset', action='store_true',
-                            help='Add an asset on federation. Need --fed_uuid adn --asset_uuid')
+                            help='Add an asset on federation. Need --fed_uuid and --asset_uuid')
         parser.add_argument('--remove_asset', action='store_true',
-                            help='Remove an asset on federation. Need --fed_uuid adn --asset_uuid')
+                            help='Remove an asset on federation. Need --fed_uuid and --asset_uuid')
         parser.add_argument('--add_place', action='store_true',
-                            help='Add a place on federation. Need --fed_uuid adn --asset_uuid')
+                            help='Add a place on federation. Need --fed_uuid and --place_uuid')
         parser.add_argument('--remove_place', action='store_true',
-                    help='Add a place on federation. Need --fed_uuid adn --asset_uuid')
+                    help='Add a place on federation. Need --fed_uuid and --asset_uuid')
 
         parser.add_argument('--fed_uuid',
                             help='Federation uuid')
+        parser.add_argument('--place_uuid',
+                            help='Place uuid')
         parser.add_argument('--name',
                             help='Federation name')
         parser.add_argument('--asset_uuid',
