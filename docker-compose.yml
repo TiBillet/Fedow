@@ -10,6 +10,7 @@ services:
     networks:
       - backend
     volumes:
+      - ./ssh:/home/fedow/.ssh
       - ./:/home/fedow/Fedow
       - ./bashrc:/home/fedow/.bashrc
     command: "bash ./launcher.sh"

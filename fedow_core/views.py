@@ -388,11 +388,13 @@ class PlaceAPI(viewsets.ViewSet):
             place: Place = request.place
             assets_created_by_the_place = place.wallet.assets_created.all()
             asset_euro = assets_created_by_the_place.get(category=Asset.TOKEN_LOCAL_FIAT)
+            asset_badge = assets_created_by_the_place.get(category=Asset.BADGE)
 
             # Récupération de la fed test
             fed_test = Federation.objects.get(name='TEST FED')
             fed_test.places.add(place)
             fed_test.assets.add(asset_euro)
+            fed_test.assets.add(asset_badge)
             # Save pour faire le clear cache
             fed_test.save()
             cache.clear()
