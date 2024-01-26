@@ -10,7 +10,6 @@ PREFIX=$PREFIX_SAVE_DB-M$MIGRATION
 DUMPS_DIRECTORY="/home/fedow/Fedow/backup"
 
 echo $DATE_NOW" on gzip la db en sqlite"
-/usr/bin/pg_dumpall | gzip >$DUMPS_DIRECTORY/$PREFIX-$DATE_NOW.sql.gz
 gzip -c /home/fedow/Fedow/database/db.sqlite3 > $DUMPS_DIRECTORY/$PREFIX-$DATE_NOW.db.sqlite3.gz
 
 echo $DATE_NOW" on supprime les vieux dumps sql de plus de 30min"
