@@ -137,7 +137,7 @@ class Asset(models.Model):
             for place in fed.places.all():
                 places.add(place)
         if len(places) > 0:
-            return " - ".join(places)
+            return " - ".join(f"{places}")
         else:
             return _("No place federated with this asset")
 
