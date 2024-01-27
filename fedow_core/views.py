@@ -589,7 +589,7 @@ class TransactionAPI(viewsets.ViewSet):
         return Response(serializer.data)
 
     def retrieve(self, request, pk=None):
-        serializer = TransactionSerializer(Transaction.objects.get(pk=pk), context={'request': request})
+        serializer = TransactionSerializer(Transaction.objects.get(hash=pk), context={'request': request})
         return Response(serializer.data)
 
     def create(self, request):
