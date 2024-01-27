@@ -723,7 +723,8 @@ class TransactionW2W(serializers.Serializer):
             token_sender = Token.objects.get(wallet=self.sender, asset=self.asset)
             # Check if sender has enough value
             if token_sender.value < self.amount and action in [Transaction.SALE, Transaction.TRANSFER]:
-                logger.error(f"{timezone.localtime()} ERROR sender not enough value - {request}")
+                logger.error(f"\n{timezone.localtime()} ERROR sender not enough value - {request}\n")
+                # import ipdb; ipdb.set_trace()
                 raise serializers.ValidationError("Not enough token on sender wallet")
         except Token.DoesNotExist:
             raise serializers.ValidationError("Sender token does not exist")

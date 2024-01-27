@@ -1,4 +1,5 @@
 import logging
+from decimal import Decimal
 from io import StringIO
 
 import stripe
@@ -27,6 +28,11 @@ from fedow_core.serializers import TransactionSerializer, WalletCreateSerializer
 from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict, b64_to_data
 
 logger = logging.getLogger(__name__)
+
+def dround(value):
+    if type(value) == Decimal:
+        return value.quantize(Decimal('1.00'))
+    return Decimal(value/100).quantize(Decimal('1.00'))
 
 
 def get_api_place_user(request) -> tuple:
@@ -236,7 +242,7 @@ class CardAPI(viewsets.ViewSet):
 
             logger.info(f"\nCHECK CARTE N° {card.number_printed} - TagId {card.first_tag_id}")
             for token in serializer.data['wallet']['tokens'] :
-                logger.info(f"Asset {token['asset']['name']} : {token['value']}")
+                logger.info(f"Asset {token['asset']['name']} : {dround(token['value'])}")
             logger.info("\n")
 
             return Response(serializer.data, status=status.HTTP_200_OK)

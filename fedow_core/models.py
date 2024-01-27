@@ -137,7 +137,8 @@ class Asset(models.Model):
             for place in fed.places.all():
                 places.add(place)
         if len(places) > 0:
-            return " - ".join(f"{places}")
+            places_name = [place.name for place in places ]
+            return ", ".join(places_name)
         else:
             return _("No place federated with this asset")
 
@@ -673,14 +674,14 @@ class Place(models.Model):
         # Mise en cache :
         feds = places, assets, wallets
         cache.set(f'federated_with_{self.uuid}', feds, 120)
-        logger.info(f'federated_with_{self.uuid} SET in cache')
+        logger.debug(f'federated_with_{self.uuid} SET in cache')
 
         return feds
 
     def cached_federated_with(self):
         feds = cache.get(f'federated_with_{self.uuid}')
         if feds:
-            logger.info(f'federated_with_{self.uuid} GET from cache')
+            logger.debug(f'federated_with_{self.uuid} GET from cache')
         else:
             feds = self.federated_with()
 
