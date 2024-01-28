@@ -6,6 +6,8 @@ from django.conf import settings
 from django.utils import timezone
 from django.utils.timezone import localtime
 from rest_framework import serializers
+from rest_framework.generics import get_object_or_404
+
 from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction, OrganizationAPIKey, Asset, Token, \
     get_or_create_user, Origin, asset_creator, Configuration, Federation, CheckoutStripe
 from fedow_core.utils import get_request_ip, get_public_key, dict_to_b64, verify_signature
@@ -151,53 +153,6 @@ class UserSerializer(serializers.ModelSerializer):
         )
 
 
-class BadgeValidator(serializers.Serializer):
-    primary_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
-    primary_card_fisrtTagId = serializers.SlugRelatedField(
-        queryset=Card.objects.all(),
-        required=False, slug_field='first_tag_id')
-    user_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
-    user_card_firstTagId = serializers.SlugRelatedField(
-        queryset=Card.objects.all(),
-        required=False, slug_field='first_tag_id')
-    asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all(), required=False)
-    action = serializers.ChoiceField(choices=Transaction.TYPE_ACTION, required=False, allow_null=True)
-    amount = serializers.IntegerField()
-
-    def validate_action(self, value):
-        if value not in [Transaction.BADGE]:
-            raise serializers.ValidationError("Action must be BADGE")
-        return value
-
-    def validate(self, attrs):
-        request = self.context.get('request')
-        self.place: Place = request.place
-
-        # Avons nous une carte user et/ou une carte primaire LaBoutik ?
-        self.primary_card = attrs.get('primary_card_uuid') or attrs.get('primary_card_fisrtTagId')
-        self.user_card: Card = attrs.get('user_card_uuid') or attrs.get('user_card_firstTagId')
-
-        if self.primary_card not in request.place.primary_cards.all():
-            raise serializers.ValidationError("Primary card must be in place primary cards")
-
-        if not self.user_card:
-            raise serializers.ValidationError("User card is required for void or refund")
-
-        transaction_dict = {
-            "ip": get_request_ip(request),
-            "checkout_stripe": None,
-            "sender": self.user_card.get_wallet(),
-            "receiver": request.place.wallet,
-            "asset": attrs.get('asset'),
-            "amount": attrs.get('amount'),
-            "action": Transaction.BADGE,
-            "primary_card": self.primary_card,
-            "card": self.user_card,
-            "subscription_start_datetime": None
-        }
-        transaction = Transaction.objects.create(**transaction_dict)
-        self.transaction = transaction
-        return attrs
 
 
 class CardRefundOrVoidValidator(serializers.Serializer):
@@ -561,6 +516,45 @@ class CardSerializer(serializers.ModelSerializer):
             'number_printed',
             'is_wallet_ephemere',
         )
+
+
+
+class BadgeValidator(serializers.Serializer):
+    first_tag_id = serializers.CharField(min_length=8, max_length=8)
+    primary_card_firstTagId = serializers.CharField(min_length=8, max_length=8)
+    asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all())
+    pos_uuid = serializers.UUIDField(required=False, allow_null=True)
+    pos_name = serializers.CharField(required=False, allow_null=True)
+
+    def validate_first_tag_id(self, first_tag_id):
+        self.card = get_object_or_404(Card, first_tag_id=first_tag_id)
+        return first_tag_id
+
+    def validate_primary_card_firstTagId(self, primary_card_firstTagId):
+        self.primary_card = get_object_or_404(Card, first_tag_id=primary_card_firstTagId)
+        return primary_card_firstTagId
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        self.place: Place = request.place
+
+        #TODO: Vérifier l'abonnement
+        transaction_dict = {
+            "ip": get_request_ip(request),
+            "checkout_stripe": None,
+            "sender": self.card.get_wallet(),
+            "receiver": request.place.wallet,
+            "asset": attrs.get('asset'),
+            "amount": 0,
+            "action": Transaction.BADGE,
+            "metadata": self.initial_data,
+            "primary_card": self.primary_card,
+            "card": self.card,
+            "subscription_start_datetime": None
+        }
+        transaction = Transaction.objects.create(**transaction_dict)
+        self.transaction = transaction
+        return attrs
 
 
 class TransactionW2W(serializers.Serializer):

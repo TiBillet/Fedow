@@ -136,7 +136,8 @@ class CardAPI(viewsets.ViewSet):
         if validator.is_valid():
             transaction = validator.transaction
             transaction_serialized = TransactionSerializer(transaction, context={'request': request})
-            return Response(transaction_serialized, status=status.HTTP_200_OK)
+            return Response(transaction_serialized.data, status=status.HTTP_201_CREATED)
+
         logger.error(f"{timezone.now()} Card update error : {validator.errors}")
         return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)
 
