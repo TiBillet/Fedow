@@ -100,6 +100,7 @@ class Asset(models.Model):
     TOKEN_LOCAL_FIAT = 'TLF'
     TOKEN_LOCAL_NOT_FIAT = 'TNF'
     TIME = 'TIM'
+    FIDELITY = 'FID'
     BADGE = 'BDG'
     SUBSCRIPTION = 'SUB'
 
@@ -108,6 +109,7 @@ class Asset(models.Model):
         (TOKEN_LOCAL_NOT_FIAT, _('Non fiduciaire')),
         (STRIPE_FED_FIAT, _('Stripe Connect')),
         (TIME, _("Monnaie temps, decompte d'utilisation")),
+        (FIDELITY, _("Points de fidélité, non fiat.")),
         (BADGE, _("Badgeuse/Pointeuse")),
         (SUBSCRIPTION, _('Adhésion ou abonnement')),
     ]

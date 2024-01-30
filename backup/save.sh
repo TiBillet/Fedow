@@ -7,7 +7,7 @@ MIGRATION=$(ls /home/fedow/Fedow/fedow_core/migrations | grep -E '^[0]' | tail -
 
 PREFIX=$PREFIX_SAVE_DB-M$MIGRATION
 
-DUMPS_DIRECTORY="/home/fedow/Fedow/backup"
+DUMPS_DIRECTORY="/home/fedow/Fedow/backup/dumps"
 
 echo $DATE_NOW" on gzip la db en sqlite"
 gzip -c /home/fedow/Fedow/database/db.sqlite3 > $DUMPS_DIRECTORY/$PREFIX-$DATE_NOW.db.sqlite3.gz
