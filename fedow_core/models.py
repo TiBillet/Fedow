@@ -843,8 +843,9 @@ def asset_creator(name: str = None,
         # Il ne peut y avoir qu'un seul asset de type STRIPE_FED_FIAT
         if Asset.objects.filter(category=Asset.STRIPE_FED_FIAT).exists():
             raise ValueError('Only one asset of type STRIPE_FED_FIAT can exist')
-    elif category not in [Asset.TOKEN_LOCAL_FIAT, Asset.TOKEN_LOCAL_NOT_FIAT, Asset.SUBSCRIPTION, Asset.TIME,
-                          Asset.BADGE]:
+
+    categories = [category_code for category_code, category_name in Asset.CATEGORIES]
+    if category not in categories:
         raise ValueError('Category not in choices')
 
     # Vérification que l'asset et/ou le code n'existe pas
