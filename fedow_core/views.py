@@ -20,7 +20,7 @@ from rest_framework.views import APIView
 
 from fedow_core.models import Transaction, Place, Configuration, Asset, CheckoutStripe, Token, Wallet, FedowUser, \
     OrganizationAPIKey, Card, Federation
-from fedow_core.permissions import HasKeyAndCashlessSignature, HasAPIKey, IsStripe
+from fedow_core.permissions import HasKeyAndPlaceSignature, HasAPIKey, IsStripe
 from fedow_core.serializers import TransactionSerializer, WalletCreateSerializer, HandshakeValidator, \
     TransactionW2W, CardSerializer, CardCreateValidator, \
     AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator, \
@@ -53,13 +53,13 @@ class TestApiKey(viewsets.ViewSet):
         return Response({'message': 'Hello world ApiKey!'})
 
     def create(self, request):
-        # On test ici la permission : HasKeyAndCashlessSignature
+        # On test ici la permission : HasKeyAndPlaceSignature
         return Response({'message': 'Hello world Signature!'})
 
     def get_permissions(self):
         permission_classes = [HasAPIKey]
         if self.action in ['create']:
-            permission_classes = [HasKeyAndCashlessSignature]
+            permission_classes = [HasKeyAndPlaceSignature]
         return [permission() for permission in permission_classes]
 
 
@@ -110,7 +110,7 @@ class AssetAPI(viewsets.ViewSet):
         return Response(serializer.data)
 
     def get_permissions(self):
-        permission_classes = [HasKeyAndCashlessSignature]
+        permission_classes = [HasKeyAndPlaceSignature]
         return [permission() for permission in permission_classes]
 
 
@@ -266,7 +266,7 @@ class CardAPI(viewsets.ViewSet):
 
 
     def get_permissions(self):
-        permission_classes = [HasKeyAndCashlessSignature]
+        permission_classes = [HasKeyAndPlaceSignature]
         return [permission() for permission in permission_classes]
 
 
@@ -293,7 +293,7 @@ class WalletAPI(viewsets.ViewSet):
         return Response(wallet_create_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get_permissions(self):
-        permission_classes = [HasKeyAndCashlessSignature]
+        permission_classes = [HasKeyAndPlaceSignature]
         return [permission() for permission in permission_classes]
 
 
@@ -330,7 +330,7 @@ class FederationAPI(viewsets.ViewSet):
 
 
     def get_permissions(self):
-        permission_classes = [HasKeyAndCashlessSignature]
+        permission_classes = [HasKeyAndPlaceSignature]
         return [permission() for permission in permission_classes]
 
 
@@ -412,7 +412,7 @@ class PlaceAPI(viewsets.ViewSet):
         return Response('405', status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     def get_permissions(self):
-        permission_classes = [HasKeyAndCashlessSignature]
+        permission_classes = [HasKeyAndPlaceSignature]
         if self.action in ['create']:
             permission_classes = [HasAPIKey]
         return [permission() for permission in permission_classes]
@@ -527,7 +527,7 @@ class WebhookStripe(APIView):
             return Response("ERROR", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@permission_classes([HasKeyAndCashlessSignature])
+@permission_classes([HasKeyAndPlaceSignature])
 class Onboard_stripe_return(APIView):
     def post(self, request):
         onboard_serializer = OnboardSerializer(data=request.data, context={'request': request})
@@ -606,5 +606,5 @@ class TransactionAPI(viewsets.ViewSet):
     def get_permissions(self):
         # Cette permission rajoute place dans request si la signature est validé
         # place: Place = request.place
-        permission_classes = [HasKeyAndCashlessSignature]
+        permission_classes = [HasKeyAndPlaceSignature]
         return [permission() for permission in permission_classes]

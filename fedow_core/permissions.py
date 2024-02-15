@@ -52,7 +52,7 @@ class HasAPIKey(BaseHasAPIKey):
     model = OrganizationAPIKey
 
 
-class HasKeyAndCashlessSignature(BaseHasAPIKey):
+class HasKeyAndPlaceSignature(BaseHasAPIKey):
     model = OrganizationAPIKey
 
     def get_signature(self, request: HttpRequest) -> str | bool:

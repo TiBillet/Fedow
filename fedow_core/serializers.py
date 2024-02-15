@@ -662,7 +662,7 @@ class TransactionW2W(serializers.Serializer):
         raise serializers.ValidationError("No action authorized")
 
     def validate(self, attrs):
-        # Récupération de la place grâce à la permission HasKeyAndCashlessSignature
+        # Récupération de la place grâce à la permission HasKeyAndPlaceSignature
         request = self.context.get('request')
         # get variable
         self.sender: Wallet = attrs.get('sender')

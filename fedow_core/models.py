@@ -239,6 +239,8 @@ class Wallet(models.Model):
     def public_key(self) -> rsa.RSAPublicKey:
         return get_public_key(self.public_pem)
 
+    #TODO: DEMAIN, TESTER AVEC ET SANS PRIVATE
+    # LA PRIVATE DOIT ETRE EXTERIEUR A FEDOW !
     def private_key(self) -> rsa.RSAPrivateKey:
         return get_private_key(self.private_pem)
 
@@ -610,12 +612,6 @@ class FedowUser(AbstractUser):
 
     wallet = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='user', blank=True, null=True)
 
-    # key = models.OneToOneField(APIKey,
-    #                            on_delete=models.SET_NULL,
-    #                            blank=True, null=True,
-    #                            related_name="fedow_user"
-    #                            )
-
 
 class Place(models.Model):
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=False)
@@ -636,6 +632,7 @@ class Place(models.Model):
                                             help_text="Public rsa Key of cashless server for signature.")
     cashless_admin_apikey = models.CharField(max_length=256, blank=True, null=True, editable=False,
                                              help_text="Encrypted API key of cashless server admin.")
+
 
     admins = models.ManyToManyField(FedowUser, related_name='admin_places')
 
@@ -747,8 +744,7 @@ class Card(models.Model):
     origin = models.ForeignKey(Origin, on_delete=models.PROTECT, related_name='cards')
     primary_places = models.ManyToManyField(Place, related_name='primary_cards')
 
-    # Dette technique pour les cartes qui ne possèdent pas d'utilisateur
-    # TODO : Dès qu'un user se manifeste, fusionner les wallet
+    # Pour les cartes qui ne possèdent pas encore d'utilisateur. Fusion avec le wallet de l'user lorsqu'il se déclare.
     wallet_ephemere = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='card_ephemere', blank=True,
                                            null=True)
 
