@@ -139,7 +139,7 @@ class Asset(models.Model):
             for place in fed.places.all():
                 places.add(place)
         if len(places) > 0:
-            places_name = [place.name for place in places ]
+            places_name = [place.name for place in places]
             return ", ".join(places_name)
         else:
             return _("No place federated with this asset")
@@ -207,8 +207,8 @@ class Wallet(models.Model):
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=False)
     name = models.CharField(max_length=100, blank=True, null=True)
 
-    private_pem = models.CharField(max_length=2048, editable=False)
-    public_pem = models.CharField(max_length=512, editable=False)
+    private_pem = models.CharField(max_length=2048, editable=False, null=True, blank=True)
+    public_pem = models.CharField(max_length=512, editable=False, null=True, blank=True)
 
     ip = models.GenericIPAddressField(verbose_name="Ip source", default='0.0.0.0')
 
@@ -239,7 +239,7 @@ class Wallet(models.Model):
     def public_key(self) -> rsa.RSAPublicKey:
         return get_public_key(self.public_pem)
 
-    #TODO: DEMAIN, TESTER AVEC ET SANS PRIVATE
+    # TODO: DEMAIN, TESTER AVEC ET SANS PRIVATE
     # LA PRIVATE DOIT ETRE EXTERIEUR A FEDOW !
     def private_key(self) -> rsa.RSAPrivateKey:
         return get_private_key(self.private_pem)
@@ -571,16 +571,23 @@ class Federation(models.Model):
         super().save(force_insert, force_update, using, update_fields)
 
 
+class CreatePlaceAPIKey(AbstractAPIKey):
+    class meta():
+        verbose_name = "Place creator API key"
+        verbose_name_plural = "Place creator API keys"
+
+
 class Configuration(SingletonModel):
     name = models.CharField(max_length=100)
     domain = models.URLField()
     # Wallet used to create money
+    create_place_apikey = models.OneToOneField(CreatePlaceAPIKey,
+                                               on_delete=models.CASCADE,
+                                               null=True,
+                                               related_name='configuration')
 
     primary_wallet = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='primary')
     stripe_endpoint_secret_enc = models.CharField(max_length=100, blank=True, null=True, editable=False)
-
-    # def primary_key(self):
-    #     return self.primary_wallet.key
 
     def get_stripe_api(self):
         if settings.STRIPE_TEST:
@@ -632,7 +639,6 @@ class Place(models.Model):
                                             help_text="Public rsa Key of cashless server for signature.")
     cashless_admin_apikey = models.CharField(max_length=256, blank=True, null=True, editable=False,
                                              help_text="Encrypted API key of cashless server admin.")
-
 
     admins = models.ManyToManyField(FedowUser, related_name='admin_places')
 
@@ -798,16 +804,17 @@ class OrganizationAPIKey(AbstractAPIKey):
 ### CREATORS TOOLS
 
 
-def wallet_creator(ip=None, name=None):
+def wallet_creator(ip=None, name=None, public_pem=None):
     if ip is None:
         ip = "0.0.0.0"
 
-    private_pem, public_pem = rsa_generator()
+    # private_pem, public_pem = rsa_generator()
     wallet = Wallet.objects.create(
         name=name,
         ip=ip,
-        private_pem=private_pem,
         public_pem=public_pem,
+        # private_pem=private_pem,
+        # public_pem=public_pem,
     )
     return wallet
 
@@ -884,15 +891,26 @@ def asset_creator(name: str = None,
     return asset
 
 
-def get_or_create_user(email, ip=None, wallet_uuid=None):
+def get_or_create_user(email, ip=None, wallet_uuid=None, public_pem=None):
     User: FedowUser = get_user_model()
     try:
         user = User.objects.get(email=email.lower())
         created = False
-        return user, created
+
+        # On vérifie la clé publique du wallet
+        # Si elle est différente, on lève une erreur
+        # Si la clé n'existe pas, c'est un user créé par le cashless, on la renseigne
+        if public_pem and user.wallet:
+            if not user.wallet.public_pem:
+                user.wallet.public_pem = public_pem
+                user.wallet.save()
+            if user.wallet.public_pem != public_pem:
+                raise ValueError('Public pem not the same as wallet')
+
     except User.DoesNotExist:
         # Si on nous envoie le wallet dans la fonction (pour liaison de carte existante, par exemple)
-        wallet = Wallet.objects.get(pk=wallet_uuid) if wallet_uuid else wallet_creator(ip=ip)
+        wallet = Wallet.objects.get(pk=wallet_uuid) if wallet_uuid \
+            else wallet_creator(ip=ip, public_pem=public_pem)
 
         user = User.objects.create(
             email=email.lower(),
@@ -901,4 +919,4 @@ def get_or_create_user(email, ip=None, wallet_uuid=None):
         )
         created = True
 
-        return user, created
+    return user, created

@@ -99,9 +99,8 @@ class Command(BaseCommand):
                     "uuid": f"{place.uuid}",
                     "temp_key": key,
                 }
+
                 utf8_encoded_data = dict_to_b64_utf8(json_key_to_cashless)
-
-
                 place.save()
 
                 # TODO: Envoyer la clé par email

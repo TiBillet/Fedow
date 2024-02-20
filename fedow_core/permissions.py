@@ -9,7 +9,7 @@ from rest_framework_api_key.models import APIKey
 from rest_framework_api_key.permissions import BaseHasAPIKey
 from stripe.error import SignatureVerificationError
 
-from fedow_core.models import OrganizationAPIKey, Configuration
+from fedow_core.models import OrganizationAPIKey, Configuration, CreatePlaceAPIKey
 from fedow_core.utils import verify_signature, data_to_b64
 import stripe
 import logging
@@ -51,6 +51,8 @@ class IsStripe(AllowAny):
 class HasAPIKey(BaseHasAPIKey):
     model = OrganizationAPIKey
 
+class CanCreatePlace(BaseHasAPIKey):
+    model = CreatePlaceAPIKey
 
 class HasKeyAndPlaceSignature(BaseHasAPIKey):
     model = OrganizationAPIKey

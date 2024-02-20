@@ -394,6 +394,8 @@ class WalletCreateSerializer(serializers.Serializer):
     card_qrcode_uuid = serializers.SlugRelatedField(slug_field='qrcode_uuid',
                                                     queryset=Card.objects.all(), required=False)
 
+    public_pem = serializers.CharField(max_length=512, required=False, allow_null=True)
+
     def validate(self, attrs):
         # On trace l'ip de la requete
         ip = None
@@ -411,9 +413,9 @@ class WalletCreateSerializer(serializers.Serializer):
         card: Card = attrs.get('card_first_tag_id') or attrs.get('card_qrcode_uuid')
         self.card = card
 
-        # Si l'email ne donne aucun user, on le créé
+        # Si l'email seul est envoyé et qu'il n'existe pas : on le créé
         if not card and not user_exist:
-            self.user, created = get_or_create_user(email, ip=ip)
+            self.user, created = get_or_create_user(email, ip=ip, public_pem=attrs.get('public_pem'))
             return attrs
 
         if card and not user_exist:
@@ -424,6 +426,7 @@ class WalletCreateSerializer(serializers.Serializer):
                 card.user = user
                 card.save()
                 return attrs
+            
             # Si la carte possède un wallet ephemere, nous créons l'user avec ce wallet.
             elif not card.user and card.wallet_ephemere:
                 user, created = get_or_create_user(email, ip=ip, wallet_uuid=card.wallet_ephemere.uuid)
@@ -433,6 +436,7 @@ class WalletCreateSerializer(serializers.Serializer):
                 card.wallet_ephemere = None
                 card.save()
                 return attrs
+            
             elif card.user or card.wallet_ephemere:
                 raise serializers.ValidationError("Card already linked to another user")
 
@@ -444,10 +448,10 @@ class WalletCreateSerializer(serializers.Serializer):
                 card.user = self.user
                 card.save()
                 return attrs
+            
             # La carte n'a pas d'user, mais un wallet ephemere
             if not card.user and card.wallet_ephemere:
                 # Si carte avec wallet ephemere, on lie l'user avec le wallet ephemere
-
                 if card.wallet_ephemere != self.user.wallet:
                     # On vide le wallet ephemere en faveur du wallet de l'user
                     for token in card.wallet_ephemere.tokens.filter(value__gt=0):

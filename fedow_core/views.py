@@ -276,10 +276,6 @@ class WalletAPI(viewsets.ViewSet):
     """
     pagination_class = StandardResultsSetPagination
 
-    # def list(self, request):
-    #     serializer = WalletSerializer(Wallet.objects.all(), many=True)
-    #     return Response(serializer.data)
-
     def retrieve(self, request, pk=None):
         serializer = WalletSerializer(Wallet.objects.get(pk=pk), context={'request': request})
         return Response(serializer.data)
@@ -378,8 +374,8 @@ class PlaceAPI(viewsets.ViewSet):
             data = {
                 "url_onboard": url_onboard,
                 "place_admin_apikey": key,
-                "place_wallet_public_pem": place.wallet.public_pem,
                 "place_wallet_uuid": str(place.wallet.uuid),
+                # "place_wallet_public_pem": place.wallet.public_pem,
             }
             print(data)
 
