@@ -80,6 +80,7 @@ class Command(BaseCommand):
                 except Place.DoesNotExist:
                     pass
 
+                #TODO: Passer par le validater CreatePlace
                 place = Place.objects.create(
                     name=place_name,
                     description=description,

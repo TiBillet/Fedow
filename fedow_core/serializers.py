@@ -1,19 +1,16 @@
+import logging
 from collections import OrderedDict
-from datetime import timedelta
 from time import sleep
 
-from django.conf import settings
+import stripe
+from cryptography.hazmat.primitives.asymmetric import rsa
 from django.utils import timezone
-from django.utils.timezone import localtime
 from rest_framework import serializers
 from rest_framework.generics import get_object_or_404
 
 from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction, OrganizationAPIKey, Asset, Token, \
     get_or_create_user, Origin, asset_creator, Configuration, Federation, CheckoutStripe
 from fedow_core.utils import get_request_ip, get_public_key, dict_to_b64, verify_signature
-from cryptography.hazmat.primitives.asymmetric import rsa
-import stripe
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +100,7 @@ class OnboardSerializer(serializers.Serializer):
         if place != value:
             raise serializers.ValidationError("Place not match")
         return value
+
 
 
 class PlaceSerializer(serializers.ModelSerializer):

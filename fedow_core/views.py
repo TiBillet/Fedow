@@ -7,7 +7,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.core.management import call_command
 from django.core.signing import Signer
-from django.http import JsonResponse
+from django.http import JsonResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from faker import Faker
@@ -19,20 +19,22 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from fedow_core.models import Transaction, Place, Configuration, Asset, CheckoutStripe, Token, Wallet, FedowUser, \
-    OrganizationAPIKey, Card, Federation
-from fedow_core.permissions import HasKeyAndPlaceSignature, HasAPIKey, IsStripe
+    OrganizationAPIKey, Card, Federation, CreatePlaceAPIKey
+from fedow_core.permissions import HasKeyAndPlaceSignature, HasAPIKey, IsStripe, CanCreatePlace
 from fedow_core.serializers import TransactionSerializer, WalletCreateSerializer, HandshakeValidator, \
     TransactionW2W, CardSerializer, CardCreateValidator, \
     AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator, \
     FederationSerializer, BadgeValidator
-from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict, b64_to_data
+from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict, b64_to_data, get_request_ip
+from fedow_core.validators import PlaceValidator
 
 logger = logging.getLogger(__name__)
+
 
 def dround(value):
     if type(value) == Decimal:
         return value.quantize(Decimal('1.00'))
-    return Decimal(value/100).quantize(Decimal('1.00'))
+    return Decimal(value / 100).quantize(Decimal('1.00'))
 
 
 def get_api_place_user(request) -> tuple:
@@ -143,7 +145,7 @@ class CardAPI(viewsets.ViewSet):
 
     @action(detail=False, methods=['post'])
     def set_primary(self, request):
-        place : Place = request.place
+        place: Place = request.place
         card = Card.objects.get(first_tag_id=request.data.get('first_tag_id'))
         if place in card.primary_places.all():
             return Response("Déja OK", status=status.HTTP_208_ALREADY_REPORTED)
@@ -151,7 +153,6 @@ class CardAPI(viewsets.ViewSet):
         card.primary_places.add(place)
         card.save()
         return Response("OK", status=status.HTTP_200_OK)
-
 
     @action(detail=False, methods=['post'])
     def get_checkout(self, request):
@@ -215,9 +216,10 @@ class CardAPI(viewsets.ViewSet):
 
             try:
                 checkout_session = stripe.checkout.Session.create(**data_checkout)
-            except Exception as e :
+            except Exception as e:
                 logger.error(f"Creation of Stripe Checkout error : {e}")
-                import ipdb; ipdb.set_trace()
+                import ipdb;
+                ipdb.set_trace()
                 raise Exception("Creation of Stripe Checkout error")
 
             # Enregistrement du checkout Stripe dans la base de donnée
@@ -234,7 +236,6 @@ class CardAPI(viewsets.ViewSet):
         logger.error(f"get_checkout error : {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
     def retrieve(self, request, pk=None):
         # Utilisé par les serveurs cashless comme un check card
         try:
@@ -242,7 +243,7 @@ class CardAPI(viewsets.ViewSet):
             serializer = CardSerializer(card, context={'request': request})
 
             logger.info(f"\nCHECK CARTE N° {card.number_printed} - TagId {card.first_tag_id}")
-            for token in serializer.data['wallet']['tokens'] :
+            for token in serializer.data['wallet']['tokens']:
                 logger.info(f"Asset {token['asset']['name']} : {dround(token['value'])}")
             logger.info("\n")
 
@@ -263,7 +264,6 @@ class CardAPI(viewsets.ViewSet):
 
         logger.error(f"Card create error : {card_serializer.errors}")
         return Response(card_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
     def get_permissions(self):
         permission_classes = [HasKeyAndPlaceSignature]
@@ -293,29 +293,6 @@ class WalletAPI(viewsets.ViewSet):
         return [permission() for permission in permission_classes]
 
 
-def get_new_place_token_for_test(request, name_enc):
-    if request.method == 'GET':
-        if settings.DEBUG:
-            out = StringIO()
-            faker = Faker()
-            name = b64_to_data(name_enc).get('name')
-            if not Federation.objects.filter(name='TEST FED').exists():
-                call_command('federations',
-                             '--create',
-                             '--name', f'TEST FED',
-                             stdout=out)
-
-            call_command('places', '--create',
-                         '--name', f'{name}',
-                         '--email', f'{faker.email()}',
-                         stdout=out)
-            encoded_data = out.getvalue().split('\n')[-2]
-            return JsonResponse({"encoded_data": encoded_data})
-
-    return Response("Not found", status=status.HTTP_404_NOT_FOUND)
-
-
-
 class FederationAPI(viewsets.ViewSet):
 
     def list(self, request):
@@ -323,7 +300,6 @@ class FederationAPI(viewsets.ViewSet):
         federations = place.federations.all()
         serializer = FederationSerializer(federations, many=True, context={'request': request})
         return Response(serializer.data)
-
 
     def get_permissions(self):
         permission_classes = [HasKeyAndPlaceSignature]
@@ -342,7 +318,16 @@ class PlaceAPI(viewsets.ViewSet):
     def update(self, request):
         pass
 
+    # Création depuis le moteur Tenant
     def create(self, request):
+        validator = PlaceValidator(data=request.data, context={'request': request})
+        if validator.is_valid():
+            seralized_place = validator.create_place()
+            return Response(seralized_place, status=status.HTTP_201_CREATED)
+        return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['POST'])
+    def handshake(self, request):
         # HANDSHAKE with cashless server
         # Request only work if came from Cashless server
         # with the right API key gived at the manual creation of new place
@@ -383,7 +368,6 @@ class PlaceAPI(viewsets.ViewSet):
             return Response(data_encoded, status=status.HTTP_202_ACCEPTED)
         return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
     @action(detail=False, methods=['GET'])
     def add_me_to_test_fed(self, request):
         if settings.DEBUG:
@@ -409,8 +393,10 @@ class PlaceAPI(viewsets.ViewSet):
 
     def get_permissions(self):
         permission_classes = [HasKeyAndPlaceSignature]
-        if self.action in ['create']:
+        if self.action == 'handshake':
             permission_classes = [HasAPIKey]
+        if self.action == 'create':
+            permission_classes = [CanCreatePlace]
         return [permission() for permission in permission_classes]
 
 
@@ -483,8 +469,8 @@ class WebhookStripe(APIView):
             )
 
             if ((checkout.payment_status == 'paid'
-                and checkout_db.status == CheckoutStripe.OPEN)
-                or (settings.STRIPE_TEST and settings.DEBUG)):
+                 and checkout_db.status == CheckoutStripe.OPEN)
+                    or (settings.STRIPE_TEST and settings.DEBUG)):
                 # Paiement ok ou stripe TEST, on enregistre la transaction
 
                 tr_data = {
@@ -568,6 +554,7 @@ class CheckoutStripeForChargePrimaryAsset(APIView):
     # Utilisez l'api card
     pass
 
+
 class MembershipAPI(viewsets.ViewSet):
     def create(self, request):
         pass
@@ -604,3 +591,55 @@ class TransactionAPI(viewsets.ViewSet):
         # place: Place = request.place
         permission_classes = [HasKeyAndPlaceSignature]
         return [permission() for permission in permission_classes]
+
+
+"""
+POUR TEST/DEV
+"""
+
+
+def get_new_place_token_for_test(request, name_enc):
+    if request.method == 'GET':
+        if settings.DEBUG:
+            out = StringIO()
+            faker = Faker()
+            name = b64_to_data(name_enc).get('name')
+            if not Federation.objects.filter(name='TEST FED').exists():
+                call_command('federations',
+                             '--create',
+                             '--name', f'TEST FED',
+                             stdout=out)
+
+            call_command('places', '--create',
+                         '--name', f'{name}',
+                         '--email', f'{faker.email()}',
+                         stdout=out)
+            encoded_data = out.getvalue().split('\n')[-2]
+            return JsonResponse({"encoded_data": encoded_data})
+
+    raise Http404()
+
+
+# Le premier handshake de la billetterie
+def root_tibillet_handshake(request):
+    if request.method == 'GET':
+        ip = get_request_ip(request)
+        config = Configuration.get_solo()
+        if settings.DEBUG or not config.create_place_apikey:
+            api_key, key = CreatePlaceAPIKey.objects.create_key(
+                name=f"billetterie_root_{ip}",
+            )
+            config.create_place_apikey = api_key
+            config.save()
+            return JsonResponse({
+                "api_key": key,
+                "fedow_pub_pem": config.primary_wallet.public_pem,
+            })
+
+    raise Http404()
+
+
+
+"""
+FIN TEST/DEV
+"""

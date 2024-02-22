@@ -1,29 +1,25 @@
 import hashlib
 import json
+import logging
 import os
+from uuid import uuid4
 
 import stripe
 from cryptography.hazmat.primitives.asymmetric import rsa
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core.cache import cache
-from django.db.models import UniqueConstraint, Q, Sum
-from django.db.models.signals import pre_save
-from django.dispatch import receiver
-from django.utils import timezone
-from rest_framework_api_key.models import AbstractAPIKey
 from django.contrib.auth.models import AbstractUser
-from solo.models import SingletonModel
+from django.core.cache import cache
 from django.db import models
-from uuid import uuid4
-
+from django.db.models import UniqueConstraint, Q, Sum
+from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
+from rest_framework_api_key.models import AbstractAPIKey
+from solo.models import SingletonModel
 from stdimage import JPEGField
 from stdimage.validators import MaxSizeValidator, MinSizeValidator
 
 from fedow_core.utils import get_public_key, get_private_key, fernet_decrypt, fernet_encrypt, rsa_generator
-
-import logging
-from django.utils.translation import gettext_lazy as _
 
 logger = logging.getLogger(__name__)
 
@@ -571,6 +567,12 @@ class Federation(models.Model):
         super().save(force_insert, force_update, using, update_fields)
 
 
+# class ReadOnlyAPIKey(AbstractAPIKey):
+#     class meta():
+#         verbose_name = "Read only Api Key"
+#         verbose_name_plural = "Read only Api Key"
+
+
 class CreatePlaceAPIKey(AbstractAPIKey):
     class meta():
         verbose_name = "Place creator API key"
@@ -580,12 +582,17 @@ class CreatePlaceAPIKey(AbstractAPIKey):
 class Configuration(SingletonModel):
     name = models.CharField(max_length=100)
     domain = models.URLField()
-    # Wallet used to create money
+
+    # Clé API dans le moteur billetterie/adhésion
+    # A Créer à la main,
+    # puis l'entrer dans la billetterie ave la fonction : set_fedow_create_place_apikey
     create_place_apikey = models.OneToOneField(CreatePlaceAPIKey,
                                                on_delete=models.CASCADE,
                                                null=True,
-                                               related_name='configuration')
+                                               related_name='configuration',
+                                               help_text="Clé API root de la billetterie qui permet de créer des nouveau lieux")
 
+    # Wallet pour monnaie fédérée
     primary_wallet = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='primary')
     stripe_endpoint_secret_enc = models.CharField(max_length=100, blank=True, null=True, editable=False)
 
@@ -804,17 +811,23 @@ class OrganizationAPIKey(AbstractAPIKey):
 ### CREATORS TOOLS
 
 
-def wallet_creator(ip=None, name=None, public_pem=None):
+def wallet_creator(ip=None, name=None, public_pem=None, generate_rsa=None):
     if ip is None:
         ip = "0.0.0.0"
 
-    # private_pem, public_pem = rsa_generator()
+    # Les clés ne sont pas stockée par default
+    prv = None
+    pub = None
+    if generate_rsa:
+        prv, pub = rsa_generator()
+    elif public_pem:
+        pub = public_pem
+
     wallet = Wallet.objects.create(
         name=name,
         ip=ip,
-        public_pem=public_pem,
-        # private_pem=private_pem,
-        # public_pem=public_pem,
+        private_pem=prv,
+        public_pem=pub,
     )
     return wallet
 
@@ -905,7 +918,7 @@ def get_or_create_user(email, ip=None, wallet_uuid=None, public_pem=None):
                 user.wallet.public_pem = public_pem
                 user.wallet.save()
             if user.wallet.public_pem != public_pem:
-                raise ValueError('Public pem not the same as wallet')
+                raise ValueError('Public pem not match')
 
     except User.DoesNotExist:
         # Si on nous envoie le wallet dans la fonction (pour liaison de carte existante, par exemple)
