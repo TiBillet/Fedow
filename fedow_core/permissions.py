@@ -54,6 +54,31 @@ class HasAPIKey(BaseHasAPIKey):
 class CanCreatePlace(BaseHasAPIKey):
     model = CreatePlaceAPIKey
 
+
+class HasOrganizationAPIKeyOnly(BaseHasAPIKey):
+    model = OrganizationAPIKey
+    def get_key(self, request: HttpRequest) -> typing.Optional[str]:
+        return super().get_key(request)
+
+    def has_permission(self, request: HttpRequest, view: typing.Any) -> bool:
+        # Récupération de la clé API qui va nous permettre de connaitre
+        # le lieu et sa clé RSA publique pour vérifier la signature.
+        key = self.get_key(request)
+        if not key:
+            logger.warning(f"HasKeyAndCashlessSignature : no key")
+            return False
+
+        try :
+            api_key = self.model.objects.get_from_key(key)
+            place = api_key.place
+            request.place = place
+            return True
+        except Exception as e :
+            logger.warning(f"HasPlaceKeyAndUserSignature : {e}")
+
+        return False
+
+
 class HasKeyAndPlaceSignature(BaseHasAPIKey):
     model = OrganizationAPIKey
 
@@ -69,20 +94,22 @@ class HasKeyAndPlaceSignature(BaseHasAPIKey):
         # le lieu et sa clé RSA publique pour vérifier la signature.
         key = self.get_key(request)
         if not key:
-            logger.debug(f"HasKeyAndCashlessSignature : no key")
+            logger.warning(f"HasKeyAndCashlessSignature : no key")
             return False
 
         try :
             api_key = self.model.objects.get_from_key(key)
             place = api_key.place
             request.place = place
+            # On va chercher la clé publique du cashless
             cashless_public_key = place.cashless_public_key()
         except OrganizationAPIKey.DoesNotExist:
             logger.warning(f"HasKeyAndCashlessSignature : no api key")
             return False
         except Exception as e:
-            logger.error(f"HasKeyAndCashlessSignature : {e}")
-            raise e
+            # Pas de cashless_public_key ?
+            logger.warning(f"HasKeyAndCashlessSignature : {e}")
+            return False
 
         signature = self.get_signature(request)
         if not signature:
@@ -103,4 +130,5 @@ class HasKeyAndPlaceSignature(BaseHasAPIKey):
             if verify_signature(cashless_public_key, message, signature):
                 return super().has_permission(request, view)
 
+        logger.warning(f"HasKeyAndCashlessSignature : signature invalid")
         return False

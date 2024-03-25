@@ -10,7 +10,7 @@ from rest_framework.generics import get_object_or_404
 
 from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction, OrganizationAPIKey, Asset, Token, \
     get_or_create_user, Origin, asset_creator, Configuration, Federation, CheckoutStripe
-from fedow_core.utils import get_request_ip, get_public_key, dict_to_b64, verify_signature
+from fedow_core.utils import get_request_ip, get_public_key, dict_to_b64, verify_signature, data_to_b64
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,6 @@ class OnboardSerializer(serializers.Serializer):
         return value
 
 
-
 class PlaceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Place
@@ -149,8 +148,6 @@ class UserSerializer(serializers.ModelSerializer):
             'uuid',
             'wallet',
         )
-
-
 
 
 class CardRefundOrVoidValidator(serializers.Serializer):
@@ -253,7 +250,7 @@ class CardCreateValidator(serializers.ModelSerializer):
 
         if pre_tokens:
             for pre_token in pre_tokens:
-                try :
+                try:
                     asset = Asset.objects.get(uuid=pre_token.get('asset_uuid'))
                 except Asset.DoesNotExist:
                     raise serializers.ValidationError("Asset does not exist")
@@ -384,6 +381,52 @@ class OriginSerializer(serializers.ModelSerializer):
         )
 
 
+class WalletGetOrCreate(serializers.Serializer):
+    # Sérialiser utilisé par le front billetterie
+    # Si email existe pas, on fabrique. Si existe, on demande la signature
+    email = serializers.EmailField()
+    public_pem = serializers.CharField(max_length=512, required=True)
+
+    def validate_public_pem(self, value):
+        try:
+            public_key = get_public_key(value)
+            if public_key.key_size < 2048:
+                raise serializers.ValidationError("Public key size too small")
+        except Exception as e:
+            raise serializers.ValidationError("Public key not valid, must be 2048 min rsa key")
+
+        print(f"public_key is_valid")
+        self.sended_public_key = public_key
+        return value
+
+    def validate(self, attrs):
+        request = self.context['request']
+        email = attrs.get('email')
+
+        # Vérification de la signature
+        message = data_to_b64(request.data)
+        signature = request.META.get("HTTP_SIGNATURE")
+        if not verify_signature(self.sended_public_key, message, signature):
+            raise serializers.ValidationError("Invalid singature")
+
+        # S'il existe, on check la clé envoyée
+        if FedowUser.objects.filter(email=email).exists():
+            self.user = FedowUser.objects.get(email=email)
+            # Check si pub == user pub
+            if attrs.get('public_pem') != self.user.wallet.public_pem:
+                raise serializers.ValidationError("Invalid pub pem")
+
+        else :
+            # L'utilisateur n'existe pas, on le fabrique avec sa clé publique
+            self.user, created = get_or_create_user(
+                email,
+                ip=get_request_ip(request),
+                public_pem=attrs.get('public_pem'),
+            )
+
+        return attrs
+
+
 class WalletCreateSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
@@ -393,6 +436,18 @@ class WalletCreateSerializer(serializers.Serializer):
                                                     queryset=Card.objects.all(), required=False)
 
     public_pem = serializers.CharField(max_length=512, required=False, allow_null=True)
+
+    def validate_public_pem(self, value):
+        try:
+            public_key = get_public_key(value)
+            if public_key.key_size < 2048:
+                raise serializers.ValidationError("Public key size too small")
+        except Exception as e:
+            raise serializers.ValidationError("Public key not valid, must be 2048 min rsa key")
+
+        print(f"public_key is_valid")
+        self.sended_public_key = public_key
+        return value
 
     def validate(self, attrs):
         # On trace l'ip de la requete
@@ -424,7 +479,7 @@ class WalletCreateSerializer(serializers.Serializer):
                 card.user = user
                 card.save()
                 return attrs
-            
+
             # Si la carte possède un wallet ephemere, nous créons l'user avec ce wallet.
             elif not card.user and card.wallet_ephemere:
                 user, created = get_or_create_user(email, ip=ip, wallet_uuid=card.wallet_ephemere.uuid)
@@ -434,7 +489,7 @@ class WalletCreateSerializer(serializers.Serializer):
                 card.wallet_ephemere = None
                 card.save()
                 return attrs
-            
+
             elif card.user or card.wallet_ephemere:
                 raise serializers.ValidationError("Card already linked to another user")
 
@@ -446,7 +501,7 @@ class WalletCreateSerializer(serializers.Serializer):
                 card.user = self.user
                 card.save()
                 return attrs
-            
+
             # La carte n'a pas d'user, mais un wallet ephemere
             if not card.user and card.wallet_ephemere:
                 # Si carte avec wallet ephemere, on lie l'user avec le wallet ephemere
@@ -466,7 +521,6 @@ class WalletCreateSerializer(serializers.Serializer):
                             logger.error(
                                 f"{timezone.localtime()} ERROR FUSION WalletCreateSerializer : {transaction_validator.errors}")
                             raise serializers.ValidationError(transaction_validator.errors)
-
 
                 # On retire le wallet ephemere de la carte après avoir vérifié qu'il est bien vide
                 card.refresh_from_db()
@@ -520,7 +574,6 @@ class CardSerializer(serializers.ModelSerializer):
         )
 
 
-
 class BadgeValidator(serializers.Serializer):
     first_tag_id = serializers.CharField(min_length=8, max_length=8)
     primary_card_firstTagId = serializers.CharField(min_length=8, max_length=8)
@@ -540,7 +593,7 @@ class BadgeValidator(serializers.Serializer):
         request = self.context.get('request')
         self.place: Place = request.place
 
-        #TODO: Vérifier l'abonnement
+        # TODO: Vérifier l'abonnement
         transaction_dict = {
             "ip": get_request_ip(request),
             "checkout_stripe": None,

@@ -20,11 +20,12 @@ from rest_framework.views import APIView
 
 from fedow_core.models import Transaction, Place, Configuration, Asset, CheckoutStripe, Token, Wallet, FedowUser, \
     OrganizationAPIKey, Card, Federation, CreatePlaceAPIKey
-from fedow_core.permissions import HasKeyAndPlaceSignature, HasAPIKey, IsStripe, CanCreatePlace
+from fedow_core.permissions import HasKeyAndPlaceSignature, HasAPIKey, IsStripe, CanCreatePlace, \
+    HasOrganizationAPIKeyOnly
 from fedow_core.serializers import TransactionSerializer, WalletCreateSerializer, HandshakeValidator, \
     TransactionW2W, CardSerializer, CardCreateValidator, \
     AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator, \
-    FederationSerializer, BadgeValidator
+    FederationSerializer, BadgeValidator, WalletGetOrCreate
 from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict, b64_to_data, get_request_ip
 from fedow_core.validators import PlaceValidator
 
@@ -288,8 +289,25 @@ class WalletAPI(viewsets.ViewSet):
 
         return Response(wallet_create_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=False, methods=['POST'])
+    def get_or_create(self, request):
+        # Création du wallet avec email et public key
+        # En mode get or create -> si existe pas, on fabrique avec le pub
+        # Si existe : on vérifie la signature et on envoie le wallet
+        wallet_get_or_create_serializer = WalletGetOrCreate(data=request.data, context={'request': request})
+        if wallet_get_or_create_serializer.is_valid():
+            user = wallet_get_or_create_serializer.user
+            wallet_uuid = user.wallet.uuid
+            return Response(f"{wallet_uuid}", status=status.HTTP_200_OK)
+
+        logger.warning(f"Wallet get_or_create error : {wallet_get_or_create_serializer.errors}")
+        return Response(wallet_get_or_create_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
     def get_permissions(self):
-        permission_classes = [HasKeyAndPlaceSignature]
+        if self.action == 'get_or_create':
+            permission_classes = [HasOrganizationAPIKeyOnly]
+        else:
+            permission_classes = [HasKeyAndPlaceSignature]
         return [permission() for permission in permission_classes]
 
 
@@ -593,11 +611,38 @@ class TransactionAPI(viewsets.ViewSet):
         return [permission() for permission in permission_classes]
 
 
+
+# Le premier handshake de la billetterie
+def root_tibillet_handshake(request):
+    if request.method == 'GET':
+        ip = get_request_ip(request)
+        config = Configuration.get_solo()
+
+        # create_place_apikey -> une seule par instance.
+        # La clé pour création de place pour la billetterie.
+        # A lancer à la main sur la billetterie.
+        # DEBUG laisse passer pour test
+        if settings.DEBUG or not config.create_place_apikey:
+            api_key, key = CreatePlaceAPIKey.objects.create_key(
+                name=f"billetterie_root_{ip}",
+            )
+            config.create_place_apikey = api_key
+            config.save()
+            return JsonResponse({
+                "api_key": key,
+                "fedow_pub_pem": config.primary_wallet.public_pem,
+            })
+
+    raise Http404()
+
+
+
+
 """
 POUR TEST/DEV
 """
 
-
+# TEST CASHLESS :
 def get_new_place_token_for_test(request, name_enc):
     if request.method == 'GET':
         if settings.DEBUG:
@@ -618,26 +663,6 @@ def get_new_place_token_for_test(request, name_enc):
             return JsonResponse({"encoded_data": encoded_data})
 
     raise Http404()
-
-
-# Le premier handshake de la billetterie
-def root_tibillet_handshake(request):
-    if request.method == 'GET':
-        ip = get_request_ip(request)
-        config = Configuration.get_solo()
-        if settings.DEBUG or not config.create_place_apikey:
-            api_key, key = CreatePlaceAPIKey.objects.create_key(
-                name=f"billetterie_root_{ip}",
-            )
-            config.create_place_apikey = api_key
-            config.save()
-            return JsonResponse({
-                "api_key": key,
-                "fedow_pub_pem": config.primary_wallet.public_pem,
-            })
-
-    raise Http404()
-
 
 
 """

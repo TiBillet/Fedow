@@ -31,8 +31,8 @@ if len(FERNET_KEY) != 44:
     raise ValueError('FERNET_KEY must be 32bit Fernet key. run "./manage.py generate_fernet"')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DEBUG') == 'True'
-TEST = os.environ.get('TEST') == 'True'
+DEBUG = os.environ.get('DEBUG') == 'True' or os.environ.get('DEBUG') == '1'
+TEST = os.environ.get('TEST') == 'True' or os.environ.get('TEST') == '1'
 
 ALLOWED_HOSTS = [os.environ.get('DOMAIN', 'localhost'), ]
 CSRF_TRUSTED_ORIGINS = [f"https://{os.environ.get('DOMAIN')}", ]
@@ -45,7 +45,7 @@ if DEBUG:
 if not DEBUG:
     import sentry_sdk
     sentry_sdk.init(
-        dsn="https://d320243035a8d0cbead2e0bbc673e9a9@o262913.ingest.sentry.io/4506512594239488",
+        dsn=os.environ.get('SENTRY_DNS'),
         # Set traces_sample_rate to 1.0 to capture 100%
         # of transactions for performance monitoring.
         traces_sample_rate=0.2,
