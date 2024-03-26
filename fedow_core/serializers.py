@@ -124,12 +124,15 @@ class WalletSerializer(serializers.ModelSerializer):
         # On ne pousse que les tokens acceptés par le lieu
         if self.context.get('request'):
             request = self.context.get('request')
-            place = request.place
-            if place:
+
+            # Uniquement les tokens acceptés par le lieu demandeur :
+            if hasattr(request, 'place'):
+                place = request.place
                 assets = place.accepted_assets()
                 return TokenSerializer(obj.tokens.filter(wallet=obj, asset__in=assets), many=True).data
 
-        raise serializers.ValidationError("Place not found")
+        # Si pas de lieu, on envoi tous les tokens du wallet
+        return TokenSerializer(obj.tokens.filter(wallet=obj), many=True).data
 
     class Meta:
         model = Wallet
@@ -402,6 +405,7 @@ class WalletGetOrCreate(serializers.Serializer):
     def validate(self, attrs):
         request = self.context['request']
         email = attrs.get('email')
+        self.created = False
 
         # Vérification de la signature
         message = data_to_b64(request.data)
@@ -418,7 +422,7 @@ class WalletGetOrCreate(serializers.Serializer):
 
         else :
             # L'utilisateur n'existe pas, on le fabrique avec sa clé publique
-            self.user, created = get_or_create_user(
+            self.user, self.created = get_or_create_user(
                 email,
                 ip=get_request_ip(request),
                 public_pem=attrs.get('public_pem'),
@@ -744,10 +748,12 @@ class TransactionW2W(serializers.Serializer):
                     and self.sender.is_primary()
                     and self.asset.is_stripe_primary()):
                 # Si c'est une recharge depuis Stripe,
-                # on met la place de l'origine de la carte
-                self.place: Place = self.user_card.origin.place
+                # on met la place de l'origine de la carte, si on a la carte :
+                if self.user_card :
+                    self.place: Place = self.user_card.origin.place
 
             else:
+                # Dans tout les autre cas, il nous faut une place
                 logger.error(f"{timezone.localtime()} ERROR NewTransactionWallet2WalletValidator : place not found")
                 raise serializers.ValidationError("Place not found")
 
@@ -758,14 +764,6 @@ class TransactionW2W(serializers.Serializer):
                 f"{timezone.localtime()} ERROR ZERO ACTION FOUND - {request}")
             raise serializers.ValidationError("Unauthorized")
 
-        # Check if sender or receiver are a place
-        if (not self.place.wallet == self.sender
-                and not self.place.wallet == self.receiver
-                and not self.asset.is_stripe_primary()
-                and not action == Transaction.FUSION):
-            # Place must be sender or receiver
-            logger.error(f"{timezone.localtime()} ERROR sender nor receiver are Unauthorized - {request}")
-            raise serializers.ValidationError("Unauthorized")
 
         # get sender token
         try:

@@ -21,7 +21,7 @@ from rest_framework.views import APIView
 from fedow_core.models import Transaction, Place, Configuration, Asset, CheckoutStripe, Token, Wallet, FedowUser, \
     OrganizationAPIKey, Card, Federation, CreatePlaceAPIKey
 from fedow_core.permissions import HasKeyAndPlaceSignature, HasAPIKey, IsStripe, CanCreatePlace, \
-    HasOrganizationAPIKeyOnly
+    HasOrganizationAPIKeyOnly, HasWalletSignature
 from fedow_core.serializers import TransactionSerializer, WalletCreateSerializer, HandshakeValidator, \
     TransactionW2W, CardSerializer, CardCreateValidator, \
     AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator, \
@@ -163,75 +163,11 @@ class CardAPI(viewsets.ViewSet):
 
         serializer = WalletCreateSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
-            config = Configuration.get_solo()
-            stripe.api_key = config.get_stripe_api()
-
-            # Vérification que l'email soit bien présent pour l'envoyer a Stripe
-            user: FedowUser = serializer.user
-            email = user.email
-
-            primary_wallet = config.primary_wallet
-            stripe_asset = Asset.objects.get(wallet_origin=primary_wallet, category=Asset.STRIPE_FED_FIAT)
-            id_price_stripe = stripe_asset.get_id_price_stripe()
-
-            primary_token, created = Token.objects.get_or_create(
-                wallet=primary_wallet,
-                asset=stripe_asset,
-            )
-
-            user_token, created = Token.objects.get_or_create(
-                wallet=user.wallet,
-                asset=stripe_asset,
-            )
-
-            line_items = [{
-                "price": f"{id_price_stripe}",
-                "quantity": 1
-            }]
-
-            metadata = {
-                "primary_token": f"{primary_token.uuid}",
-                "user_token": f"{user_token.uuid}",
+            add_metadata = {
                 "card_uuid": f"{serializer.card.uuid}",
             }
-
-            signer = Signer()
-            signed_data = signer.sign(dict_to_b64_utf8(metadata))
-
-            data_checkout = {
-                'success_url': f'https://{config.domain}/checkout_stripe/',
-                'cancel_url': f'https://{config.domain}/checkout_stripe/',
-                'payment_method_types': ["card"],
-                'customer_email': f'{email}',
-                'line_items': line_items,
-                'mode': 'payment',
-                'metadata': {
-                    'signed_data': f'{signed_data}',
-                },
-                'client_reference_id': f"{user.pk}",
-            }
-
-            if settings.STRIPE_TEST and settings.DEBUG:
-                data_checkout['success_url'] = f'https://127.0.0.1:8442/checkout_stripe/'
-                data_checkout['cancel_url'] = f'https://127.0.0.1:8442/checkout_stripe/'
-
-            try:
-                checkout_session = stripe.checkout.Session.create(**data_checkout)
-            except Exception as e:
-                logger.error(f"Creation of Stripe Checkout error : {e}")
-                import ipdb;
-                ipdb.set_trace()
-                raise Exception("Creation of Stripe Checkout error")
-
-            # Enregistrement du checkout Stripe dans la base de donnée
-            checkout_db = CheckoutStripe.objects.create(
-                checkout_session_id_stripe=checkout_session.id,
-                asset=user_token.asset,
-                status=CheckoutStripe.OPEN,
-                user=user,
-                metadata=signed_data,
-            )
-
+            checkout_session = create_stripe_checkout_for_federated_refill(user=serializer.user,
+                                                                           add_metadata=add_metadata)
             return Response(checkout_session.url, status=status.HTTP_202_ACCEPTED)
 
         logger.error(f"get_checkout error : {serializer.errors}")
@@ -277,6 +213,23 @@ class WalletAPI(viewsets.ViewSet):
     """
     pagination_class = StandardResultsSetPagination
 
+    ### Route pour LESPAS
+    @action(detail=False, methods=['GET'])
+    def retrieve_by_signature(self, request):
+        # La méthode d'auth diffère d'un retrive standard et donne le wallet plutot que le place
+        wallet = request.wallet
+        serializer = WalletSerializer(wallet, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['GET'])
+    def get_federated_token_refill_checkout(self, request):
+        # La méthode d'auth diffère d'un retrive standard et donne le wallet plutot que le place
+        wallet = request.wallet
+        checkout_session = create_stripe_checkout_for_federated_refill(user=wallet.user)
+        return Response(checkout_session.url, status=status.HTTP_202_ACCEPTED)
+
+    ### END ROUTE LESPAS
+
     def retrieve(self, request, pk=None):
         serializer = WalletSerializer(Wallet.objects.get(pk=pk), context={'request': request})
         return Response(serializer.data)
@@ -296,16 +249,28 @@ class WalletAPI(viewsets.ViewSet):
         # Si existe : on vérifie la signature et on envoie le wallet
         wallet_get_or_create_serializer = WalletGetOrCreate(data=request.data, context={'request': request})
         if wallet_get_or_create_serializer.is_valid():
+            created: bool = wallet_get_or_create_serializer.created
             user = wallet_get_or_create_serializer.user
             wallet_uuid = user.wallet.uuid
-            return Response(f"{wallet_uuid}", status=status.HTTP_200_OK)
+
+            # get or create ? 200 ou 201
+            stt = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+            # On ne renvoie que l'uuid. Pour plus d'info, il faudra passer par :
+            # retrieve pour le cashless ou retrieve_by_signature pour la billetterie
+            return Response(f"{wallet_uuid}", status=stt)
 
         logger.warning(f"Wallet get_or_create error : {wallet_get_or_create_serializer.errors}")
         return Response(wallet_get_or_create_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get_permissions(self):
-        if self.action == 'get_or_create':
+        if self.action in ['get_or_create', ]:
+            # L'api Key de l'organisation au minimum
             permission_classes = [HasOrganizationAPIKeyOnly]
+        elif self.action in [
+            'retrieve_by_signature',
+            'get_federated_token_refill_checkout', ]:
+            # Signature du wallet demandé
+            permission_classes = [HasWalletSignature]
         else:
             permission_classes = [HasKeyAndPlaceSignature]
         return [permission() for permission in permission_classes]
@@ -467,7 +432,13 @@ class WebhookStripe(APIView):
 
             primary_token = Token.objects.get(uuid=unsigned_data.get('primary_token'))
             user_token = Token.objects.get(uuid=unsigned_data.get('user_token'))
-            card = Card.objects.get(uuid=unsigned_data.get('card_uuid'))
+
+            card = None
+            if unsigned_data.get('card_uuid'):
+                card = Card.objects.get(uuid=unsigned_data.get('card_uuid'))
+                # L'user du token est-il le même que celui de la carte ?
+                if not card.user == user_token.wallet.user:
+                    return Response("card given but user not match", status=status.HTTP_409_CONFLICT)
 
             # L'asset est-il le même entre les deux tokens ?
             if not primary_token.asset == user_token.asset:
@@ -477,9 +448,6 @@ class WebhookStripe(APIView):
             if not config.primary_wallet == primary_token.wallet:
                 return Response("Primary wallet not match", status=status.HTTP_409_CONFLICT)
 
-            # L'user du token est-il le même que celui de la carte ?
-            if not card.user == user_token.wallet.user:
-                return Response("User not match", status=status.HTTP_409_CONFLICT)
 
             checkout_db = CheckoutStripe.objects.get(
                 checkout_session_id_stripe=checkout_session_id_stripe,
@@ -487,9 +455,9 @@ class WebhookStripe(APIView):
             )
 
             if ((checkout.payment_status == 'paid'
-                 and checkout_db.status == CheckoutStripe.OPEN)
-                    or (settings.STRIPE_TEST and settings.DEBUG)):
+                 and checkout_db.status == CheckoutStripe.OPEN)):
                 # Paiement ok ou stripe TEST, on enregistre la transaction
+                #     or (settings.STRIPE_TEST and settings.DEBUG)):
 
                 tr_data = {
                     'amount': int(checkout.amount_total),
@@ -498,9 +466,12 @@ class WebhookStripe(APIView):
                     'asset': f'{primary_token.asset.uuid}',
                     'action': f'{Transaction.REFILL}',
                     'metadata': f'{signed_data}',
-                    'user_card_uuid': f'{card.uuid}',
                     'checkout_stripe': f'{checkout_db.uuid}'
                 }
+
+                if card :
+                    # dans le cas d'une recharge par user / wallet sans carte depuis le front billetterie
+                    tr_data['user_card_uuid'] = f'{card.uuid}'
 
                 transaction_validator = TransactionW2W(data=tr_data, context={'request': request})
                 if not transaction_validator.is_valid():
@@ -611,6 +582,84 @@ class TransactionAPI(viewsets.ViewSet):
         return [permission() for permission in permission_classes]
 
 
+def create_stripe_checkout_for_federated_refill(user,
+                                                add_metadata: dict = None,
+                                                return_url: str = None,
+                                                ):
+
+    config = Configuration.get_solo()
+    stripe.api_key = config.get_stripe_api()
+
+    # Vérification que l'email soit bien présent pour l'envoyer a Stripe
+    email = user.email
+
+    primary_wallet = config.primary_wallet
+    stripe_asset = Asset.objects.get(wallet_origin=primary_wallet, category=Asset.STRIPE_FED_FIAT)
+    id_price_stripe = stripe_asset.get_id_price_stripe()
+
+    primary_token, created = Token.objects.get_or_create(
+        wallet=primary_wallet,
+        asset=stripe_asset,
+    )
+
+    user_token, created = Token.objects.get_or_create(
+        wallet=user.wallet,
+        asset=stripe_asset,
+    )
+
+    line_items = [{
+        "price": f"{id_price_stripe}",
+        "quantity": 1
+    }]
+
+    metadata = {
+        "primary_token": f"{primary_token.uuid}",
+        "user_token": f"{user_token.uuid}",
+    }
+
+    # Si la requete vient du cashless ou de la carte
+    if add_metadata:
+        metadata.update(add_metadata)
+
+    signer = Signer()
+    signed_data = signer.sign(dict_to_b64_utf8(metadata))
+
+    if not return_url:
+        return_url = f'https://{config.domain}/checkout_stripe/'
+
+    if settings.STRIPE_TEST and settings.DEBUG:
+        return_url = f'https://127.0.0.1:8442/checkout_stripe/'
+
+    data_checkout = {
+        'success_url': f"{return_url}",
+        'cancel_url':  f"{return_url}",
+        'payment_method_types': ["card"],
+        'customer_email': f'{email}',
+        'line_items': line_items,
+        'mode': 'payment',
+        'metadata': {
+            'signed_data': f'{signed_data}',
+        },
+        'client_reference_id': f"{user.pk}",
+    }
+
+    try:
+        checkout_session = stripe.checkout.Session.create(**data_checkout)
+    except Exception as e:
+        logger.error(f"Creation of Stripe Checkout error : {e}")
+        raise Exception("Creation of Stripe Checkout error")
+
+    # Enregistrement du checkout Stripe dans la base de donnée
+    checkout_db = CheckoutStripe.objects.create(
+        checkout_session_id_stripe=checkout_session.id,
+        asset=user_token.asset,
+        status=CheckoutStripe.OPEN,
+        user=user,
+        metadata=signed_data,
+    )
+
+    return checkout_session
+
 
 # Le premier handshake de la billetterie
 def root_tibillet_handshake(request):
@@ -636,11 +685,10 @@ def root_tibillet_handshake(request):
     raise Http404()
 
 
-
-
 """
 POUR TEST/DEV
 """
+
 
 # TEST CASHLESS :
 def get_new_place_token_for_test(request, name_enc):

@@ -4,12 +4,13 @@ import typing
 from datetime import datetime
 
 from django.http import HttpRequest
+from rest_framework import permissions
 from rest_framework.permissions import AllowAny
 from rest_framework_api_key.models import APIKey
 from rest_framework_api_key.permissions import BaseHasAPIKey
 from stripe.error import SignatureVerificationError
 
-from fedow_core.models import OrganizationAPIKey, Configuration, CreatePlaceAPIKey
+from fedow_core.models import OrganizationAPIKey, Configuration, CreatePlaceAPIKey, Wallet
 from fedow_core.utils import verify_signature, data_to_b64
 import stripe
 import logging
@@ -53,6 +54,45 @@ class HasAPIKey(BaseHasAPIKey):
 
 class CanCreatePlace(BaseHasAPIKey):
     model = CreatePlaceAPIKey
+
+class HasWalletSignature(permissions.BasePermission):
+    # On récupère l'uuid dans le wallet et on vérifie la signature avec la clé publique qui est stockée
+    def get_signature(self, request: HttpRequest) -> str | bool:
+        signature = request.META.get("HTTP_SIGNATURE")
+        return signature
+
+    def get_wallet(self, request: HttpRequest) -> Wallet | bool:
+        wallet_uuid = request.headers.get("Wallet")
+        wallet = Wallet.objects.get(uuid=wallet_uuid)
+        return wallet
+
+    def get_date(self, request: HttpRequest) -> datetime | bool:
+        date = datetime.fromisoformat(request.META.get("HTTP_DATE"))
+        logger.info(f"HasWalletSignature : {datetime.now() - date}")
+        return date
+
+    def has_permission(self, request: HttpRequest, view: typing.Any) -> bool:
+        wallet = self.get_wallet(request)
+        date = self.get_date(request)
+
+        signature = self.get_signature(request)
+        wallet_public_key = wallet.public_key()
+
+        # SIGNATURE ( GET / POST )
+        # On signe la donnée si c'est du post.
+        # Uniquement la clé si c'est du get.
+        if request.method == 'POST':
+            message = data_to_b64(request.data)
+        elif request.method == 'GET':
+            message = f"{wallet.uuid}:{date.isoformat()}".encode('utf8')
+        else :
+            return False
+
+        if verify_signature(wallet_public_key, message, signature):
+            request.wallet = wallet
+            return True
+
+        return False
 
 
 class HasOrganizationAPIKeyOnly(BaseHasAPIKey):
