@@ -95,6 +95,69 @@ class HasWalletSignature(permissions.BasePermission):
         return False
 
 
+class HasPlaceKeyAndWalletSignature(BaseHasAPIKey):
+    # Permission pour billetterie : Place Api key + wallet user signature
+    model = OrganizationAPIKey
+
+    def get_key(self, request: HttpRequest) -> typing.Optional[str]:
+        return super().get_key(request)
+
+    def get_signature(self, request: HttpRequest) -> str | bool:
+        signature = request.META.get("HTTP_SIGNATURE")
+        return signature
+
+    def get_wallet(self, request: HttpRequest) -> Wallet | bool:
+        wallet_uuid = request.headers.get("Wallet")
+        wallet = Wallet.objects.get(uuid=wallet_uuid)
+        return wallet
+
+    def get_date(self, request: HttpRequest) -> datetime | bool:
+        date = datetime.fromisoformat(request.META.get("HTTP_DATE"))
+        logger.info(f"HasWalletSignature : {datetime.now() - date}")
+        return date
+
+    def has_permission(self, request: HttpRequest, view: typing.Any) -> bool:
+        # Récupération de la clé API qui va nous permettre de connaitre
+        # le lieu et sa clé RSA publique pour vérifier la signature.
+        key = self.get_key(request)
+        if not key:
+            logger.warning(f"HasKeyAndCashlessSignature : no key")
+            return False
+
+        try :
+            api_key = self.model.objects.get_from_key(key)
+            place = api_key.place
+            request.place = place
+        except Exception as e :
+            logger.warning(f"HasPlaceKeyAndUserSignature : {e}")
+            return False
+
+        # On a la place, on va chercher le wallet
+
+        wallet = self.get_wallet(request)
+        date = self.get_date(request)
+
+        signature = self.get_signature(request)
+        wallet_public_key = wallet.public_key()
+
+        # SIGNATURE ( GET / POST )
+        # On signe la donnée si c'est du post.
+        # Uniquement la clé si c'est du get.
+        if request.method == 'POST':
+            message = data_to_b64(request.data)
+        elif request.method == 'GET':
+            message = f"{wallet.uuid}:{date.isoformat()}".encode('utf8')
+        else :
+            return False
+
+        if verify_signature(wallet_public_key, message, signature):
+            request.wallet = wallet
+            return True
+
+        return False
+
+
+
 class HasOrganizationAPIKeyOnly(BaseHasAPIKey):
     model = OrganizationAPIKey
     def get_key(self, request: HttpRequest) -> typing.Optional[str]:

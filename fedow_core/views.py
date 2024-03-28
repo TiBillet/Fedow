@@ -21,7 +21,7 @@ from rest_framework.views import APIView
 from fedow_core.models import Transaction, Place, Configuration, Asset, CheckoutStripe, Token, Wallet, FedowUser, \
     OrganizationAPIKey, Card, Federation, CreatePlaceAPIKey
 from fedow_core.permissions import HasKeyAndPlaceSignature, HasAPIKey, IsStripe, CanCreatePlace, \
-    HasOrganizationAPIKeyOnly, HasWalletSignature
+    HasOrganizationAPIKeyOnly, HasWalletSignature, HasPlaceKeyAndWalletSignature
 from fedow_core.serializers import TransactionSerializer, WalletCreateSerializer, HandshakeValidator, \
     TransactionW2W, CardSerializer, CardCreateValidator, \
     AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator, \
@@ -112,8 +112,26 @@ class AssetAPI(viewsets.ViewSet):
         serializer = AssetSerializer(asset, context={'request': request, "action": self.action})
         return Response(serializer.data)
 
+    @action(detail=True, methods=['GET'])
+    def retrieve_membership_asset(self, request, pk=None):
+        # Meme api que RETRIEVE, mais depuis billetterie : c'est une adhésion obligatoirement
+        asset = get_object_or_404(Asset, category=Asset.SUBSCRIPTION, pk=pk, )
+        serializer = AssetSerializer(asset, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['POST'])
+    def create_membership_asset(self, request):
+        # Meme api que CREATE, mais depuis billetterie : c'est une adhésion obligatoirement
+        if not request.data.get('category') == Asset.SUBSCRIPTION:
+            return Response('not a sub asset', status=status.HTTP_400_BAD_REQUEST)
+        return self.create(request)
+
     def get_permissions(self):
-        permission_classes = [HasKeyAndPlaceSignature]
+        # Pour les routes depuis la billetterie : L'api Key de l'organisation au minimum
+        if self.action in ['retrieve_membership_asset', 'create_membership_asset']:
+            permission_classes = [HasOrganizationAPIKeyOnly]
+        else:
+            permission_classes = [HasKeyAndPlaceSignature]
         return [permission() for permission in permission_classes]
 
 
@@ -448,7 +466,6 @@ class WebhookStripe(APIView):
             if not config.primary_wallet == primary_token.wallet:
                 return Response("Primary wallet not match", status=status.HTTP_409_CONFLICT)
 
-
             checkout_db = CheckoutStripe.objects.get(
                 checkout_session_id_stripe=checkout_session_id_stripe,
                 asset=primary_token.asset,
@@ -469,7 +486,7 @@ class WebhookStripe(APIView):
                     'checkout_stripe': f'{checkout_db.uuid}'
                 }
 
-                if card :
+                if card:
                     # dans le cas d'une recharge par user / wallet sans carte depuis le front billetterie
                     tr_data['user_card_uuid'] = f'{card.uuid}'
 
@@ -544,12 +561,6 @@ class CheckoutStripeForChargePrimaryAsset(APIView):
     pass
 
 
-class MembershipAPI(viewsets.ViewSet):
-    def create(self, request):
-        pass
-        # serializer = TransactionW2W(data=request.data, context={'request': request})
-
-
 class TransactionAPI(viewsets.ViewSet):
     """
     GET /transaction/ : liste des transactions
@@ -575,18 +586,31 @@ class TransactionAPI(viewsets.ViewSet):
         logger.error(f"{timezone.localtime()} ERROR - Transaction create error : {transaction_validator.errors}")
         return Response(transaction_validator.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=False, methods=['POST'])
+    def create_membership(self, request):
+        # Cela vient de la billetterie. Il nous faut l'api du lieu et la signature du wallet de l'user
+        # On vérifie que l'asset soit bien un membership
+        get_object_or_404(Asset, category=Asset.SUBSCRIPTION, pk=request.data['asset'])
+        if not request.place or not request.wallet:
+            return Response('create_membership', status=status.HTTP_400_BAD_REQUEST)
+
+        # Validation préléminaire ok, on lance les vérif de transaction normales
+        return self.create(request)
+
     def get_permissions(self):
-        # Cette permission rajoute place dans request si la signature est validé
-        # place: Place = request.place
-        permission_classes = [HasKeyAndPlaceSignature]
+        if self.action in ['create_membership', ]:
+            permission_classes = [HasPlaceKeyAndWalletSignature]
+        else:
+            permission_classes = [HasKeyAndPlaceSignature]
         return [permission() for permission in permission_classes]
+
+
 
 
 def create_stripe_checkout_for_federated_refill(user,
                                                 add_metadata: dict = None,
                                                 return_url: str = None,
                                                 ):
-
     config = Configuration.get_solo()
     stripe.api_key = config.get_stripe_api()
 
@@ -632,7 +656,7 @@ def create_stripe_checkout_for_federated_refill(user,
 
     data_checkout = {
         'success_url': f"{return_url}",
-        'cancel_url':  f"{return_url}",
+        'cancel_url': f"{return_url}",
         'payment_method_types': ["card"],
         'customer_email': f'{email}',
         'line_items': line_items,

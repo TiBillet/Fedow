@@ -20,6 +20,7 @@ router.register(r'federation', FederationAPI, basename='federation')
 router.register(r'asset', AssetAPI, basename='asset')
 router.register(r'wallet', WalletAPI, basename='wallet')
 router.register(r'card', CardAPI, basename='card')
+# router.register(r'membership', MembershipAPI, basename='membership')
 
 urlpatterns = [
     # Route pour test fedow :
