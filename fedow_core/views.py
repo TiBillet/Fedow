@@ -600,6 +600,8 @@ class TransactionAPI(viewsets.ViewSet):
     def get_permissions(self):
         if self.action in ['create_membership', ]:
             permission_classes = [HasPlaceKeyAndWalletSignature]
+        elif self.action in ['retrieve', ]:
+            permission_classes = [AllowAny]
         else:
             permission_classes = [HasKeyAndPlaceSignature]
         return [permission() for permission in permission_classes]
