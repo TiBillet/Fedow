@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class PlaceValidator(serializers.Serializer):
+    place_domain = serializers.CharField(max_length=100)
     place_name = serializers.CharField(max_length=100)
     admin_email = serializers.EmailField()
     admin_pub_pem = serializers.CharField(max_length=500)
@@ -40,6 +41,7 @@ class PlaceValidator(serializers.Serializer):
         place_name = self.validated_data['place_name']
         admin_email = self.validated_data['admin_email']
         admin_pub_pem = self.validated_data['admin_pub_pem']
+        place_domain = self.validated_data['place_domain']
 
         # Création de l'utilisateur admin
         try :
@@ -48,10 +50,15 @@ class PlaceValidator(serializers.Serializer):
             raise serializers.ValidationError(f"Error get or create user : {e}")
 
         # Création de la place
-        place = Place.objects.create(
-            name=place_name,
-            wallet=wallet_creator(),
-        )
+        try :
+            place = Place.objects.create(
+                name=place_name,
+                wallet=wallet_creator(),
+                lespass_domain=place_domain,
+            )
+        except Exception as e :
+            raise serializers.ValidationError(f"Error create place : {e}")
+
         # Ajout de l'admin dans la place
         place.admins.add(user)
         # Création de la clé API

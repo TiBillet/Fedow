@@ -31,20 +31,24 @@ class CheckoutStripe(models.Model):
     # Si recharge, alors un paiement stripe doit être lié
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
     datetime = models.DateTimeField(auto_now_add=True)
-    checkout_session_id_stripe = models.CharField(max_length=80, unique=True)
+    checkout_session_id_stripe = models.CharField(max_length=80, editable=False, blank=True, null=True)
     asset = models.ForeignKey('Asset', on_delete=models.PROTECT,
                               related_name='checkout_stripe')
-    OPEN, EXPIRE, PAID, WALLET_PRIMARY_OK, WALLET_USER_OK, CANCELED, ERROR = 'O', 'E', 'P', 'W', 'V', 'C', 'R'
+    CREATED, OPEN, PROGRESS, EXPIRE, PAID, WALLET_PRIMARY_OK, WALLET_USER_OK, CANCELED, ERROR = (
+        'N', 'O', 'G', 'E', 'P', 'W', 'V', 'C', 'R')
     STATUT_CHOICES = (
+        (CREATED, 'Créée'),
         (OPEN, 'En attente de paiement'),
-        (EXPIRE, 'Expiré'),
+        (PROGRESS, 'En cours de traitement'),
         (PAID, 'Payé'),
+        (EXPIRE, 'Expiré'),
         (WALLET_PRIMARY_OK, 'Wallet primaire chargé'),  # wallet primaire chargé
         (WALLET_USER_OK, 'Wallet user chargé'),  # wallet chargé
         (CANCELED, 'Annulée'),
         (ERROR, 'en erreur'),
     )
-    status = models.CharField(max_length=1, choices=STATUT_CHOICES, default=OPEN, verbose_name="Statut de la commande")
+    status = models.CharField(max_length=1, choices=STATUT_CHOICES, default=CREATED,
+                              verbose_name="Statut de la commande")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='checkout_stripe')
     metadata = models.CharField(editable=False, db_index=False, max_length=500)
 
@@ -646,6 +650,8 @@ class Place(models.Model):
                                             help_text="Public rsa Key of cashless server for signature.")
     cashless_admin_apikey = models.CharField(max_length=256, blank=True, null=True, editable=False,
                                              help_text="Encrypted API key of cashless server admin.")
+
+    lespass_domain = models.CharField(max_length=100, blank=True, null=True, editable=False)
 
     admins = models.ManyToManyField(FedowUser, related_name='admin_places')
 

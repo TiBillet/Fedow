@@ -420,7 +420,7 @@ class WalletGetOrCreate(serializers.Serializer):
             if attrs.get('public_pem') != self.user.wallet.public_pem:
                 raise serializers.ValidationError("Invalid pub pem")
 
-        else :
+        else:
             # L'utilisateur n'existe pas, on le fabrique avec sa clé publique
             self.user, self.created = get_or_create_user(
                 email,
@@ -749,7 +749,7 @@ class TransactionW2W(serializers.Serializer):
                     and self.asset.is_stripe_primary()):
                 # Si c'est une recharge depuis Stripe,
                 # on met la place de l'origine de la carte, si on a la carte :
-                if self.user_card :
+                if self.user_card:
                     self.place: Place = self.user_card.origin.place
 
             else:
@@ -763,7 +763,6 @@ class TransactionW2W(serializers.Serializer):
             logger.error(
                 f"{timezone.localtime()} ERROR ZERO ACTION FOUND - {request}")
             raise serializers.ValidationError("Unauthorized")
-
 
         # get sender token
         try:
@@ -783,6 +782,14 @@ class TransactionW2W(serializers.Serializer):
             logger.info(
                 f"{timezone.localtime()} INFO NewTransactionWallet2WalletValidator : receiver token does not exist")
             self.token_receiver = Token.objects.create(wallet=self.receiver, asset=self.asset, value=0)
+
+        # On vérifie qu'une transaction CREATION pour refill avec le même checkout id stripe n'existe déja ?
+        if Transaction.objects.filter(
+                action=Transaction.CREATION,
+                checkout_stripe=self.checkout_stripe,
+                asset__category=Asset.STRIPE_FED_FIAT,
+        ).exists():
+            raise serializers.ValidationError("Stripe token creation with this paiement already made")
 
         ### ALL CHECK OK ###
 

@@ -4,8 +4,8 @@ from django.contrib import admin
 from fedow_dashboard import urls as dashboard_urls
 from fedow_core.views import TransactionAPI, TestApiKey, HelloWorld, WalletAPI, PlaceAPI, FederationAPI, \
     Onboard_stripe_return, \
-    WebhookStripe, CheckoutStripeForChargePrimaryAsset, CardAPI, AssetAPI, get_new_place_token_for_test, \
-    root_tibillet_handshake
+    WebhookStripe, CardAPI, AssetAPI, get_new_place_token_for_test, \
+    root_tibillet_handshake, StripeAPI
 # from django.conf import settings
 from rest_framework import routers
 
@@ -20,7 +20,7 @@ router.register(r'federation', FederationAPI, basename='federation')
 router.register(r'asset', AssetAPI, basename='asset')
 router.register(r'wallet', WalletAPI, basename='wallet')
 router.register(r'card', CardAPI, basename='card')
-# router.register(r'membership', MembershipAPI, basename='membership')
+router.register(r'stripe', StripeAPI, basename='stripe')
 
 urlpatterns = [
     # Route pour test fedow :
@@ -28,9 +28,10 @@ urlpatterns = [
     path('root_tibillet_handshake/', root_tibillet_handshake),
 
     # Requete depuis le cashless pour le retour de l'onboarding stripe
+    # TODO, a mettre dans StripeAPI
     path('onboard_stripe_return/', Onboard_stripe_return.as_view()),
-
-    path('checkout_stripe_for_charge_primary_asset/', CheckoutStripeForChargePrimaryAsset.as_view()),
+    # Retour POST de stripe :
+    # TODO, a mettre dans StripeAPI
     path('webhook_stripe/', WebhookStripe.as_view()),
 
     path('admin/', admin.site.urls),
