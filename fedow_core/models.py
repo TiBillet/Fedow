@@ -105,11 +105,11 @@ class Asset(models.Model):
     SUBSCRIPTION = 'SUB'
 
     CATEGORIES = [
-        (TOKEN_LOCAL_FIAT, _('Token équivalent euro')),
-        (TOKEN_LOCAL_NOT_FIAT, _('Non fiduciaire')),
-        (STRIPE_FED_FIAT, _('Stripe Connect')),
-        (TIME, _("Monnaie temps, decompte d'utilisation")),
-        (FIDELITY, _("Points de fidélité, non fiat.")),
+        (TOKEN_LOCAL_FIAT, _('Fiduciaire')),
+        (TOKEN_LOCAL_NOT_FIAT, _('Cadeau')),
+        (STRIPE_FED_FIAT, _('Fiduciaire fédérée')),
+        (TIME, _("Monnaie temps")),
+        (FIDELITY, _("Points de fidélité")),
         (BADGE, _("Badgeuse/Pointeuse")),
         (SUBSCRIPTION, _('Adhésion ou abonnement')),
     ]
@@ -519,12 +519,13 @@ class Transaction(models.Model):
         else:
             raise Exception("Transaction hash already set.")
 
+
     class Meta:
         ordering = ['-datetime']
 
 
-#
-#
+# #
+# #
 # class Passage(models.Model):
 #     employee = models.ForeignKey(User, on_delete=models.CASCADE)
 #     timestamp = models.DateTimeField(auto_now_add=True)

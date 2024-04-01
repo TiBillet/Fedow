@@ -9,6 +9,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.core.management import call_command
 from django.core.signing import Signer
+from django.db.models import Q
 from django.http import JsonResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -36,9 +37,10 @@ logger = logging.getLogger(__name__)
 
 
 def dround(value):
-    if type(value) == Decimal:
-        return value.quantize(Decimal('1.00'))
-    return Decimal(value / 100).quantize(Decimal('1.00'))
+    # Si c'est un entier, on divise par 100
+    if type(value) == int:
+        return Decimal(value / 100).quantize(Decimal('1.00'))
+    return value.quantize(Decimal('1.00'))
 
 
 def get_api_place_user(request) -> tuple:
@@ -48,9 +50,9 @@ def get_api_place_user(request) -> tuple:
 
 
 class StandardResultsSetPagination(PageNumberPagination):
-    page_size = 100
+    page_size = 10
     page_size_query_param = 'page_size'
-    max_page_size = 1000
+    max_page_size = 100
 
 
 # Create your views here.
@@ -276,19 +278,20 @@ class WalletAPI(viewsets.ViewSet):
         logger.warning(f"WEBHOOK GET: {checkout_db.status}")
         # On attend un peu, la vérification est déja en cours par le webhook POST
         now = timezone.now()
-        while checkout_db.status == CheckoutStripe.PROGRESS\
-                and timezone.now() - now < timedelta(seconds=10) :
+        while checkout_db.status == CheckoutStripe.PROGRESS \
+                and timezone.now() - now < timedelta(seconds=10):
             time.sleep(1)
             logger.info('checkout db in progress. Waiting for POST ?')
             checkout_db.refresh_from_db()
 
         if checkout_db.status != CheckoutStripe.PAID:
             # On lance la validation au cas ou le webhook stripe POST ne s'est pas fait
-            try :
+            try:
                 checkout_db = StripeAPI.validate_stripe_checkout_and_make_transaction(
                     checkout_db, request)
             except ValueError as e:
-                return Response(f"Error validate_stripe_checkout_and_make_transaction : {e}", status=status.HTTP_400_BAD_REQUEST)
+                return Response(f"Error validate_stripe_checkout_and_make_transaction : {e}",
+                                status=status.HTTP_400_BAD_REQUEST)
             except Exception as e:
                 raise e
 
@@ -466,7 +469,8 @@ class StripeAPI(viewsets.ViewSet):
     def validate_stripe_checkout_and_make_transaction(checkout_db: CheckoutStripe, request):
         checkout_db.status = CheckoutStripe.PROGRESS
         checkout_db.save()
-        logger.info(f" >>----VALIDATOR---->> StripeAPI : validate_stripe_checkout_and_make_transaction : {checkout_db.status}")
+        logger.info(
+            f" >>----VALIDATOR---->> StripeAPI : validate_stripe_checkout_and_make_transaction : {checkout_db.status}")
         # Récupération de l'objet checkout chez Stripe
         # En allant chercher directement sur le serveur de stripe, on s'assure de la véracité du checktou
         config = Configuration.get_solo()
@@ -758,12 +762,35 @@ class TransactionAPI(viewsets.ViewSet):
     """
     pagination_class = StandardResultsSetPagination
 
+    @action(detail=False, methods=['GET'])
+    def paginated_list_by_wallet_signature(self, request):
+        wallet = request.wallet
+        # wallet = sender OR receiver
+        transactions = Transaction.objects.filter(Q(sender=wallet) | Q(receiver=wallet))
+
+        # Apply pagination
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(transactions, request)
+
+        serializer = TransactionSerializer(page, many=True, context={
+            'request': request,
+            'detailed_asset': True,
+            'serialized_sender': True,
+            'serialized_receiver': True,
+        })
+
+        # import ipdb; ipdb.set_trace()
+
+        return paginator.get_paginated_response(serializer.data)
+        # return Response(serializer.data)
+
     def list(self, request):
         serializer = TransactionSerializer(Transaction.objects.all(), many=True, context={'request': request})
         return Response(serializer.data)
 
     def retrieve(self, request, pk=None):
-        serializer = TransactionSerializer(Transaction.objects.get(hash=pk), context={'request': request})
+        transaction = get_object_or_404(Transaction, hash=pk)
+        serializer = TransactionSerializer(transaction, context={'request': request})
         return Response(serializer.data)
 
     def create(self, request):
@@ -790,6 +817,9 @@ class TransactionAPI(viewsets.ViewSet):
     def get_permissions(self):
         if self.action in ['create_membership', ]:
             permission_classes = [HasPlaceKeyAndWalletSignature]
+        elif self.action in [
+            'paginated_list_by_wallet_signature', ]:
+            permission_classes = [HasWalletSignature]
         elif self.action in ['retrieve', ]:
             permission_classes = [AllowAny]
         else:

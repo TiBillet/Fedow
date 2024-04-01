@@ -4,6 +4,7 @@ from time import sleep
 
 import stripe
 from cryptography.hazmat.primitives.asymmetric import rsa
+from django.core.cache import cache
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.generics import get_object_or_404
@@ -127,11 +128,13 @@ class WalletSerializer(serializers.ModelSerializer):
 
             # Uniquement les tokens acceptés par le lieu demandeur :
             if hasattr(request, 'place'):
+                logger.info(f"{timezone.localtime()} WalletSerializer from PLACE : {request.place}")
                 place = request.place
                 assets = place.accepted_assets()
                 return TokenSerializer(obj.tokens.filter(wallet=obj, asset__in=assets), many=True).data
 
         # Si pas de lieu, on envoi tous les tokens du wallet
+        logger.info(f"{timezone.localtime()} WalletSerializer without PLACE")
         return TokenSerializer(obj.tokens.filter(wallet=obj), many=True).data
 
     class Meta:
@@ -289,19 +292,21 @@ class AssetSerializer(serializers.ModelSerializer):
             'name',
             'currency_code',
             'category',
+            'get_category_display',
             'place_origin',
             'created_at',
             'last_update',
             'is_stripe_primary',
         )
 
+
     def to_representation(self, instance: Asset):
         # Add apikey user to representation
         rep = super().to_representation(instance)
         if self.context.get('action') == 'retrieve':
-            rep['total_token_value'] = instance.total_token_value()
-            rep['total_in_place'] = instance.total_in_place()
-            rep['total_in_wallet_not_place'] = instance.total_in_wallet_not_place()
+            rep['total_token_value'] = cache.get_or_set(f"{instance}_total_token_value", instance.total_token_value(), 5)
+            rep['total_in_place'] = cache.get_or_set(f"{instance}_total_in_place", instance.total_in_place(), 5)
+            rep['total_in_wallet_not_place'] = cache.get_or_set(f"{instance}_total_in_wallet_not_place", instance.total_in_wallet_not_place(), 5)
         return rep
 
 
@@ -843,12 +848,17 @@ class TransactionW2W(serializers.Serializer):
 
 class TransactionSerializer(serializers.ModelSerializer):
     card = CardSerializer(many=False)
+    serialized_asset = serializers.SerializerMethodField()
+    serialized_sender = serializers.SerializerMethodField()
+    serialized_receiver = serializers.SerializerMethodField()
+
 
     class Meta:
         model = Transaction
         fields = (
             "uuid",
             "action",
+            "get_action_display",
             "hash",
             "datetime",
             "subscription_first_datetime",
@@ -866,8 +876,25 @@ class TransactionSerializer(serializers.ModelSerializer):
             "previous_transaction",
             "comment",
             "verify_hash",
+            "serialized_asset",
+            "serialized_sender",
+            "serialized_receiver",
         )
 
+    def get_serialized_asset(self, obj):
+        if  self.context.get('detailed_asset'):
+            return AssetSerializer(obj.asset).data
+        return None
+
+    def get_serialized_sender(self, obj):
+        if  self.context.get('serialized_sender'):
+            return WalletSerializer(obj.sender).data
+        return None
+
+    def get_serialized_receiver(self, obj):
+        if  self.context.get('serialized_receiver'):
+            return WalletSerializer(obj.receiver).data
+        return None
 
 class FederationSerializer(serializers.ModelSerializer):
     places = PlaceSerializer(many=True)
