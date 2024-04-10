@@ -1,11 +1,14 @@
 # TiBillet - Federated tools for cooperative networks
 
-> [!IMPORTANT]  
+> [!NOTE]  
 > TLDR; A suite of free applications for managing your social and solidarity venue : Cash register, membership,
 > ticketing,
 > cashless, time currency, order taking and room management.
 > The current git repository is one of the building blocks of the TiBillet ecosystem: Fedow
 > To read more and talk with us : https://tibillet.org
+
+![dashboard demo image](https://raw.githubusercontent.com/TiBillet/Fedow/main/fedow_dashboard/static/img/img.png)
+
 
 ### EN : Introduction
 
@@ -56,7 +59,17 @@ Bisik, à la Raffinerie, et au Manapany Festival !
 > Work in progress. ALPHA RELEASE.
 > Go talk with us !
 
-![dashboard demo image](https://raw.githubusercontent.com/TiBillet/Fedow/main/fedow_dashboard/static/img/img.png)
+The current git repository is one of the building blocks of the TiBillet ecosystem: Fedow
+It contains the the federation engine.
+
+The engines are :
+
+- [Lespass](https://github.com/TiBillet/Lespass): ticketing, membership and landing page engines.
+
+- [LaBoutik](https://github.com/TiBillet/LaBoutik): Cash register, cashless system with RFID / NFC chip and order-taking system.
+
+- [Fedow](https://github.com/TiBillet/Fedow) : Federated and open wallet, the federation engine. A blockchain to share membership assets, local currencies and
+  time for several Lespass and LaBoutik instances.
 
 ## Presentation (EN)
 
