@@ -141,6 +141,7 @@ class WalletSerializer(serializers.ModelSerializer):
         model = Wallet
         fields = (
             'uuid',
+            'get_name',
             'tokens',
         )
 
@@ -297,6 +298,7 @@ class AssetSerializer(serializers.ModelSerializer):
             'created_at',
             'last_update',
             'is_stripe_primary',
+            'place_uuid_federated_with',
         )
 
 
@@ -304,9 +306,12 @@ class AssetSerializer(serializers.ModelSerializer):
         # Add apikey user to representation
         rep = super().to_representation(instance)
         if self.context.get('action') == 'retrieve':
-            rep['total_token_value'] = cache.get_or_set(f"{instance}_total_token_value", instance.total_token_value(), 5)
-            rep['total_in_place'] = cache.get_or_set(f"{instance}_total_in_place", instance.total_in_place(), 5)
-            rep['total_in_wallet_not_place'] = cache.get_or_set(f"{instance}_total_in_wallet_not_place", instance.total_in_wallet_not_place(), 5)
+            # get_or_set va toujours faire la fonction callable avant de vérifier le cache.
+            # Solution : soit retirer les () dans le callable, soit utiliser lambda si on a besoin de passer des arguments
+            # TODO: Attention, pour les test unitaire, desactiver le cache ?
+            rep['total_token_value'] = cache.get_or_set(f"{instance}_total_token_value", instance.total_token_value, 5)
+            rep['total_in_place'] = cache.get_or_set(f"{instance}_total_in_place", instance.total_in_place, 5)
+            rep['total_in_wallet_not_place'] = cache.get_or_set(f"{instance}_total_in_wallet_not_place", instance.total_in_wallet_not_place, 5)
         return rep
 
 

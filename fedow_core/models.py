@@ -133,6 +133,7 @@ class Asset(models.Model):
     def total_in_wallet_not_place(self):
         return self.tokens.filter(wallet__place__isnull=True).aggregate(total_value=Sum('value'))['total_value'] or 0
 
+    # Retourne uns string de nom
     def place_federated_with(self):
         places = set()
         for fed in self.federations.all():
@@ -143,6 +144,15 @@ class Asset(models.Model):
             return ", ".join(places_name)
         else:
             return _("No place federated with this asset")
+
+    # Retourne une list de uuid place
+    def place_uuid_federated_with(self):
+        places = set()
+        for fed in self.federations.all():
+            for place in fed.places.all():
+                places.add(place)
+        return [place.uuid for place in places]
+
 
     def is_stripe_primary(self):
         if (self.wallet_origin == Configuration.get_solo().primary_wallet
@@ -239,10 +249,9 @@ class Wallet(models.Model):
     def public_key(self) -> rsa.RSAPublicKey:
         return get_public_key(self.public_pem)
 
-    # TODO: DEMAIN, TESTER AVEC ET SANS PRIVATE
     # LA PRIVATE DOIT ETRE EXTERIEUR A FEDOW !
-    def private_key(self) -> rsa.RSAPrivateKey:
-        return get_private_key(self.private_pem)
+    # def private_key(self) -> rsa.RSAPrivateKey:
+    #     return get_private_key(self.private_pem)
 
     def __str__(self):
         return f"{self.get_name()} - {[(token.asset.name, token.value) for token in self.tokens.all()]}"
