@@ -4,11 +4,16 @@ SECRET_KEY=""
 # ./manage.py generate_fernet
 FERNET_KEY=""
 
-# Stripe
-STRIPE_TEST="True"
-STRIPE_KEY=""
-STRIPE_KEY_TEST=""
-STRIPE_ENDPOINT_SECRET_TEST=""
-
 # Domain
-DOMAIN="fedow.localhost"
+DOMAIN=""
+
+# Stripe api key
+STRIPE_KEY=""
+
+### FOR TEST AND DEBUG ###
+
+DEBUG=0
+TEST=0
+STRIPE_KEY_TEST=""
+STRIPE_TEST="True"
+STRIPE_ENDPOINT_SECRET_TEST=""
