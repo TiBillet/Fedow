@@ -1,7 +1,7 @@
-version: '3'
 services:
   django_fedow:
-    image: tibillet/fedow:alpha1
+#    image: tibillet/fedow:alpha1
+    build: .
     container_name: django_fedow
     hostname: django_fedow
     restart: always
