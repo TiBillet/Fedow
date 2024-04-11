@@ -21,7 +21,7 @@ COPY --chown=fedow:fedow ./backup /backup
 WORKDIR /home/fedow/Fedow
 RUN poetry install
 
-CMD ["bash", "start.sh"]
+# CMD ["bash", "start.sh"]
 
 # docker build -t tibillet/fedow:alpha1 .
 # docker push tibillet/fedow:alpha1
