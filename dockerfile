@@ -13,7 +13,11 @@ ENV POETRY_NO_INTERACTION=1
 RUN curl -sSL https://install.python-poetry.org | python3 -
 ENV PATH="/home/fedow/.local/bin:$PATH"
 
-RUN cd /home/fedow && git clone https://github.com/TiBillet/Fedow.git
+# RUN cd /home/fedow && git clone https://github.com/TiBillet/Fedow.git
+COPY --chown=fedow:fedow ./ /home/fedow/Fedow
+COPY --chown=fedow:fedow ./bashrc /home/fedow/.bashrc
+COPY --chown=fedow:fedow ./backup /backup
+
 WORKDIR /home/fedow/Fedow
 RUN poetry install
 
