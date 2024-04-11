@@ -1,0 +1,7 @@
+postgresql
+.env
+SaveDb
+img
+logs/gunicorn.logs
+logs/nginxAccess.log
+logs/nginxError.log
