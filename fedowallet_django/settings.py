@@ -24,10 +24,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get('SECRET_KEY')
 if len(SECRET_KEY) != 50:
-    raise ValueError('SECRET_KEY must be 50 characters long. run "./manage.py generate_secret_key"')
+    # logger.warning('SECRET_KEY must be 50 characters long. run generate_secret_key')
+    raise ValueError('SECRET_KEY must be 50 characters long. run generate_secret_key')
 
 FERNET_KEY = os.environ.get('FERNET_KEY')
 if len(FERNET_KEY) != 44:
+    # logger.warning('FERNET_KEY must be 32bit Fernet key')
     raise ValueError('FERNET_KEY must be 32bit Fernet key. run "./manage.py generate_fernet"')
 
 # SECURITY WARNING: don't run with debug turned on in production!

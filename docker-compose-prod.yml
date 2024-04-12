@@ -1,0 +1,42 @@
+services:
+  fedow_django:
+    image: tibillet/fedow:alpha1.2
+    container_name: fedow_django
+    hostname: fedow_django
+    restart: always
+    env_file: .env
+    user: fedow
+    volumes:
+      - ./database:/home/fedow/Fedow/database
+      - ./www:/home/fedow/Fedow/www
+      - ./logs:/home/fedow/Fedow/logs
+    networks:
+      - fedow_backend
+
+  fedow_nginx:
+    image: nginx
+    restart: always
+    container_name: fedow_nginx
+    hostname: fedow_nginx
+    volumes:
+      - ./www:/www
+      - ./logs:/logs
+      - ./nginx:/etc/nginx/conf.d
+    depends_on:
+      - fedow_django
+    links:
+      - fedow_django:fedow_django
+    networks:
+      - frontend
+      - fedow_backend
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=frontend
+      - traefik.http.routers.fedow_nginx.tls.certresolver=myresolver
+      - traefik.http.routers.fedow_nginx.rule=Host(`$DOMAIN`)
+
+
+networks:
+  frontend:
+    external: true
+  fedow_backend:

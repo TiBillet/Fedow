@@ -1,7 +1,6 @@
-postgresql
+database/db.sqlite3
 .env
 SaveDb
-img
 logs/gunicorn.logs
 logs/nginxAccess.log
 logs/nginxError.log

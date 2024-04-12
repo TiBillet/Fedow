@@ -163,6 +163,12 @@ FR : [https://tibillet.org/fr]
 
 ## Install
 
+### For production :
+
+See documentation on [https://tibillet.org/docs/install/docker_install](https://tibillet.org/docs/install/docker_install)
+
+### For dev/test :
+
 For any help, don't hesitate to talk with us on [Discord](https://discord.gg/ecb5jtP7vY)
 or [Rocket Chat](https://chat.communecter.org/channel/Tibillet)
 

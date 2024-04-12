@@ -1,13 +1,6 @@
-# ./manage.py generate_secret_key
 SECRET_KEY=""
-
-# ./manage.py generate_fernet
 FERNET_KEY=""
-
-# Domain
 DOMAIN=""
-
-# Stripe api key
 STRIPE_KEY=""
 
 ### FOR TEST AND DEBUG ###
