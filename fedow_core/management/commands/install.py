@@ -20,13 +20,14 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        config_exist = Configuration.objects.all().exists()
+        if config_exist:
+            self.stdout.write(
+                self.style.SUCCESS(f'Configuration and master wallet already exists continue'),
+                ending='\n')
+            return ' '
 
         try:
-            config = Configuration.get_solo()
-            self.stdout.write(self.style.SUCCESS(f'Configuration and master wallet already exists : {config.name}, continue'),
-                              ending='\n')
-
-        except Configuration.DoesNotExist as e:
             logger.info("Configuration does not exist -> go install")
             # Test si la clé stripe est ok
             stripe_key = settings.STRIPE_KEY_TEST if settings.STRIPE_TEST else settings.STRIPE_KEY
