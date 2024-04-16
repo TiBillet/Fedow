@@ -1,20 +1,11 @@
+import logging
 import os
-
+import stripe
 from django.conf import settings
 from django.core.management import call_command
-from rest_framework_api_key.models import APIKey
-
-from fedow_core.models import Configuration, Wallet, Asset, Federation, wallet_creator, Place
 from django.core.management.base import BaseCommand, CommandError
 
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.exceptions import InvalidSignature
-import logging
-
-from fedow_core.utils import rsa_generator
+from fedow_core.models import Configuration, Asset, Federation, wallet_creator
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +25,20 @@ class Command(BaseCommand):
             config = Configuration.get_solo()
             self.stdout.write(self.style.ERROR(f'Configuration and master wallet already exists : {config.name}'),
                               ending='\n')
+            raise Exception(f'Configuration and master wallet already exists : {config.name}')
+
         except Exception as e:
+            # Test si la clé stripe est ok
+            stripe_key = settings.STRIPE_KEY_TEST if settings.STRIPE_TEST else settings.STRIPE_KEY
+            stripe.api_key = stripe_key
+            try:
+                acc = stripe.Account.list()
+            except Exception as e:
+                logger.error(e)
+                self.stdout.write(self.style.ERROR(f'Stripe key not valid'),
+                                  ending='\n')
+                raise e
+
             instance_name = os.environ['DOMAIN']
 
             primary_wallet = wallet_creator(name="Primary Wallet", generate_rsa=True)
