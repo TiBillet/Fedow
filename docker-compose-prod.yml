@@ -1,6 +1,6 @@
 services:
   fedow_django:
-    image: tibillet/fedow:alpha1.2
+    image: tibillet/fedow:latest
     container_name: fedow_django
     hostname: fedow_django
     restart: always
@@ -34,6 +34,7 @@ services:
       - traefik.docker.network=frontend
       - traefik.http.routers.fedow_nginx.tls.certresolver=myresolver
       - traefik.http.routers.fedow_nginx.rule=Host(`$DOMAIN`)
+      - traefik.http.services.fedow_nginx.loadbalancer.server.port=80
 
 
 networks:

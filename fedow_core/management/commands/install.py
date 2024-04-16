@@ -23,11 +23,11 @@ class Command(BaseCommand):
 
         try:
             config = Configuration.get_solo()
-            self.stdout.write(self.style.ERROR(f'Configuration and master wallet already exists : {config.name}'),
+            self.stdout.write(self.style.SUCCESS(f'Configuration and master wallet already exists : {config.name}, continue'),
                               ending='\n')
-            raise Exception(f'Configuration and master wallet already exists : {config.name}')
 
-        except Exception as e:
+        except Configuration.DoesNotExist as e:
+            logger.info("Configuration does not exist -> go install")
             # Test si la clé stripe est ok
             stripe_key = settings.STRIPE_KEY_TEST if settings.STRIPE_TEST else settings.STRIPE_KEY
             stripe.api_key = stripe_key
@@ -76,3 +76,7 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.SUCCESS(f'Configuration, primary asset, wallet and token created : {instance_name}'),
                 ending='\n')
+
+        except Exception as e:
+            logger.error(e)
+            raise e

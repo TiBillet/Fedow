@@ -23,9 +23,13 @@ RUN poetry install
 
 CMD ["bash", "start.sh"]
 
-# docker build -t tibillet/fedow:alpha1.2 .
+
+# docker build -t fedow .
+
+# If version or nightly
+# docker tag fedow tibillet/fedow:alpha1.2
 # docker push tibillet/fedow:alpha1.2
 
 # if LTS :
-# docker tag tibillet/fedow:alpha1.2 tibillet/fedow:latest
+# docker tag fedow tibillet/fedow:latest
 # docker push tibillet/fedow:latest
