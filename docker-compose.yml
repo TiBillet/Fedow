@@ -1,4 +1,12 @@
 services:
+  fedow_memcached:
+    image: memcached:1.6
+    container_name: fedow_memcached
+    hostname: fedow_memcached
+    restart: always
+    networks:
+      - fedow_backend
+
   fedow_django:
 #    image: tibillet/fedow:alpha1
     build: .
@@ -7,6 +15,8 @@ services:
     restart: always
     env_file: .env
     user: fedow
+    links:
+      - fedow_memcached:memcached
     volumes:
       - ./ssh:/home/fedow/.ssh
       - ./:/home/fedow/Fedow
@@ -32,6 +42,8 @@ services:
       - traefik.docker.network=frontend
       - traefik.http.routers.fedow_nginx.tls.certresolver=myresolver
       - traefik.http.routers.fedow_nginx.rule=Host(`$DOMAIN`)
+      - traefik.http.services.fedow_nginx.loadbalancer.server.port=80
+
     networks:
       - frontend
       - fedow_backend
