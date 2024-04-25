@@ -10,7 +10,9 @@ then
   poetry run ./manage.py install
   poetry run ./manage.py createsuperuser --noinput --username root --email root@root.root
   poetry run ./manage.py shell_plus -c "User=get_user_model();root=User.objects.get(username='root');root.set_password('root');root.save()"
-  poetry run ./manage.py runserver 0.0.0.0:80
+  echo "start dev server : https://fedow.tibillet.localhost/dashboard/"
+  poetry run ./manage.py runserver 0.0.0.0:8000
+
 else
     echo "TEST environment variable is not set"
 fi

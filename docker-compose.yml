@@ -23,6 +23,12 @@ services:
     networks:
       - fedow_backend
     command: "bash start.sh"
+    extra_hosts:
+      - "demo.tibillet.localhost:172.17.0.1"
+      - "billetistan.tibillet.localhost:172.17.0.1"
+      - "fedow.tibillet.localhost:172.17.0.1"
+
+
 
   fedow_nginx:
     image: nginx
