@@ -7,7 +7,6 @@ poetry install
 echo "Poetry install ok"
 
 poetry run python3 manage.py migrate
-
 # Install if no asset created :
 poetry run python3 manage.py install
 # New static for nginx ?

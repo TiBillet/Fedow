@@ -202,6 +202,8 @@ class Asset(models.Model):
         self.id_price_stripe = price.id
         self.save()
 
+        return self.id_price_stripe
+
     def __str__(self):
         return f"{self.name} {self.currency_code}"
 

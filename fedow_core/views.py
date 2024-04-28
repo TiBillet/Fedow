@@ -598,7 +598,7 @@ class StripeAPI(viewsets.ViewSet):
             metadata=signed_data,
         )
 
-        # La demande a forcement un lesspass url
+        # La demande a forcément un lesspass url
         # SI ça vient d'un cashless : esce que ça doit vraiment venir d'un cashless sans lespass ?
         return_url = f'https://{place.lespass_domain}/my_account/{checkout_db.uuid}/return_refill_wallet/'
         data_checkout = {
@@ -614,10 +614,12 @@ class StripeAPI(viewsets.ViewSet):
             'client_reference_id': f"{user.pk}",
         }
 
+
         try:
             checkout_session = stripe.checkout.Session.create(**data_checkout)
         except Exception as e:
             logger.error(f"Creation of Stripe Checkout error : {e}")
+            import ipdb; ipdb.set_trace()
             raise Exception("Creation of Stripe Checkout error")
 
         checkout_db.checkout_session_id_stripe = checkout_session.id

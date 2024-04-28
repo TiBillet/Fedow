@@ -4,6 +4,7 @@ from time import sleep
 
 import stripe
 from cryptography.hazmat.primitives.asymmetric import rsa
+from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 from rest_framework import serializers
@@ -308,10 +309,16 @@ class AssetSerializer(serializers.ModelSerializer):
         if self.context.get('action') == 'retrieve':
             # get_or_set va toujours faire la fonction callable avant de vérifier le cache.
             # Solution : soit retirer les () dans le callable, soit utiliser lambda si on a besoin de passer des arguments
-            # TODO: Attention, pour les test unitaire, desactiver le cache ?
-            rep['total_token_value'] = cache.get_or_set(f"{instance}_total_token_value", instance.total_token_value, 5)
-            rep['total_in_place'] = cache.get_or_set(f"{instance}_total_in_place", instance.total_in_place, 5)
-            rep['total_in_wallet_not_place'] = cache.get_or_set(f"{instance}_total_in_wallet_not_place", instance.total_in_wallet_not_place, 5)
+
+            # Pour les test unitaire, desactiver le cache
+            if not settings.DEBUG:
+                rep['total_token_value'] = cache.get_or_set(f"{instance.uuid}_total_token_value", instance.total_token_value, 5)
+                rep['total_in_place'] = cache.get_or_set(f"{instance.uuid}_total_in_place", instance.total_in_place, 5)
+                rep['total_in_wallet_not_place'] = cache.get_or_set(f"{instance.uuid}_total_in_wallet_not_place", instance.total_in_wallet_not_place, 5)
+            else:
+                rep['total_token_value'] = instance.total_token_value()
+                rep['total_in_place'] = instance.total_in_place()
+                rep['total_in_wallet_not_place'] = instance.total_in_wallet_not_place()
         return rep
 
 
