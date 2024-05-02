@@ -6,11 +6,11 @@ export PATH="/home/fedow/.local/bin:$PATH"
 poetry install
 echo "Poetry install ok"
 
-poetry run python3 manage.py migrate
+#poetry run python3 manage.py migrate
 # Install if no asset created :
-poetry run python3 manage.py install
+#poetry run python3 manage.py install
 # New static for nginx ?
-poetry run python3 manage.py collectstatic --noinput
+#poetry run python3 manage.py collectstatic --noinput
 
 echo "Dev mode : sleep infinity"
 echo "To start the server : rsp"

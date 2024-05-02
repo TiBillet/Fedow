@@ -55,6 +55,13 @@ class HasAPIKey(BaseHasAPIKey):
 class CanCreatePlace(BaseHasAPIKey):
     model = CreatePlaceAPIKey
 
+    def get_key(self, request: HttpRequest) -> typing.Optional[str]:
+        return super().get_key(request)
+
+    def has_permission(self, request: HttpRequest, view: typing.Any) -> bool:
+        return super().has_permission(request, view)
+
+
 class HasWalletSignature(permissions.BasePermission):
     # On récupère l'uuid dans le wallet et on vérifie la signature avec la clé publique qui est stockée
     def get_signature(self, request: HttpRequest) -> str | bool:

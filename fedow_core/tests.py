@@ -674,7 +674,7 @@ class HandshakeTest(FedowTestCase):
 
         # Test with bad key
         apikey, key = APIKey.objects.create_key(name="bad_test")
-        response = self.client.post('/place/', data,
+        response = self.client.post('/place/handshake/', data,
                                     headers={
                                         'Authorization': f'Api-Key {key}',
                                         'Signature': signature,
@@ -689,7 +689,7 @@ class HandshakeTest(FedowTestCase):
         self.assertIsNone(place.cashless_admin_apikey)
 
         # Test with good keycashless_server_ip
-        response = self.client.post('/place/', data,
+        response = self.client.post('/place/handshake/', data,
                                     headers={
                                         'Authorization': f'Api-Key {temp_key}',
                                         'Signature': signature,
@@ -720,21 +720,11 @@ class HandshakeTest(FedowTestCase):
         self.assertEqual(fernet_decrypt(place.cashless_admin_apikey), data.get('cashless_admin_apikey'))
 
 
+"""
 class StripeTest(FedowTestCase):
 
     @tag("stripe")
     def xtest_create_checkout_and_REFILL(self):
-        ### RECHARGE AVEC ASSET PRINCIPAL STRIPE
-        ## Creation de monnaie. Reception d'un webhook stripe
-        ## A faire a la main en attendant une automatisation du paiement checkout
-        # Lancer stripe :
-        # stripe listen --forward-to http://127.0.0.1:8442/webhook_stripe/
-        #
-        # S'assurer que la clé de signature soit la même que dans le .env
-        # Créer un checkout et le payer :
-        # ./manage.py create_test_checkout
-        #
-        # Vérifier les Transactions et les Assets
-
-        # Tout est fait coté cashless
+        # Déplacé dans les test cahsless fedow.
         pass
+"""

@@ -20,9 +20,14 @@ services:
     volumes:
       - ./ssh:/home/fedow/.ssh
       - ./:/home/fedow/Fedow
+      - fedow_database:/home/fedow/Fedow/database
     networks:
       - fedow_backend
-    command: "bash start.sh"
+    # For production :
+#    command: "bash start.sh"
+    # For dev :
+    command: "bash start_dev.sh"
+
     extra_hosts:
       - "demo.tibillet.localhost:172.17.0.1"
       - "billetistan.tibillet.localhost:172.17.0.1"
@@ -54,6 +59,9 @@ services:
       - frontend
       - fedow_backend
 
+
+volumes:
+  fedow_database:
 
 networks:
   frontend:

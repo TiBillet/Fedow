@@ -153,7 +153,6 @@ class Asset(models.Model):
                 places.add(place)
         return [place.uuid for place in places]
 
-
     def is_stripe_primary(self):
         if (self.wallet_origin == Configuration.get_solo().primary_wallet
                 and self.id_price_stripe != None
@@ -162,17 +161,18 @@ class Asset(models.Model):
         return False
 
     def get_id_price_stripe(self,
-                            force=False,
-                            stripe_key=None,
+                            force_create=False,
                             ):
 
-        if self.id_price_stripe and not force:
+        if self.id_price_stripe and not force_create:
             return self.id_price_stripe
 
-        if stripe_key == None:
-            stripe_key = Configuration.get_solo().get_stripe_api()
-        stripe.api_key = stripe_key
+        stripe_key = Configuration.get_solo().get_stripe_api()
+        if not stripe_key:
+            logger.warning("No stripe key for create refill product")
+            return None
 
+        stripe.api_key = stripe_key
         # noinspection PyUnresolvedReferences
         images = []
         if self.img:
@@ -530,7 +530,6 @@ class Transaction(models.Model):
         else:
             raise Exception("Transaction hash already set.")
 
-
     class Meta:
         ordering = ['-datetime']
 
@@ -611,12 +610,29 @@ class Configuration(SingletonModel):
     # Wallet pour monnaie fédérée
     primary_wallet = models.OneToOneField(Wallet, on_delete=models.PROTECT, related_name='primary')
     stripe_endpoint_secret_enc = models.CharField(max_length=100, blank=True, null=True, editable=False)
+    stripe_api_key = models.CharField(max_length=100, blank=True, null=True, editable=False)
+
+    def set_stripe_api(self, string):
+        self.stripe_api_key = fernet_encrypt(string)
+        cache.clear()
+        self.save()
+        return True
 
     def get_stripe_api(self):
         if settings.STRIPE_TEST:
-            return settings.STRIPE_KEY_TEST
+            return os.environ.get('STRIPE_KEY_TEST')
         else:
-            return settings.STRIPE_KEY
+            # The stripe api key is not set
+            # You have to set it mannualy with self.set_stripe_api(api_key)
+            if not self.set_stripe_api:
+                logger.warning("The stripe api key is not set. Try to set with environment variable 'STRIPE_KEY'")
+                stripe_key_from_env = os.environ.get("STRIPE_KEY")
+                if not stripe_key_from_env:
+                    logger.error("No stripe key provided. Return None")
+                    return None
+                self.set_stripe_api(stripe_key_from_env)
+
+            return fernet_decrypt(self.stripe_api_key)
 
     def set_stripe_endpoint_secret(self, string):
         self.stripe_endpoint_secret_enc = fernet_encrypt(string)
