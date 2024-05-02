@@ -28,7 +28,12 @@ class Command(BaseCommand):
             return ' '
 
         try:
+            logger.info("Try stripe api key")
+            if not os.environ.get('STRIPE_KEY_TEST') and not os.environ.get('STRIPE_KEY'):
+                raise ValueError('STRIPE_KEY nor STRIPE_KEY_TEST')
+
             logger.info("Configuration does not exist -> go install")
+
 
             instance_name = os.environ['DOMAIN']
 
