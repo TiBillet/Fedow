@@ -208,7 +208,7 @@ class CardAPI(viewsets.ViewSet):
         # If the email is not active, we show only the refill button and the recent history
         wallet =card.get_wallet()
         data = {
-            'wallet' : wallet.uuid,
+            'wallet_uuid' : wallet.uuid,
             'is_wallet_ephemere': card.is_wallet_ephemere(),
         }
         return Response(data, status=status.HTTP_200_OK)
