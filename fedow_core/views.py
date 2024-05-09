@@ -3,6 +3,7 @@ import time
 from datetime import timedelta
 from decimal import Decimal
 from io import StringIO
+from uuid import UUID
 
 import stripe
 from django.conf import settings
@@ -196,6 +197,22 @@ class CardAPI(viewsets.ViewSet):
         logger.error(f"get_checkout error : {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=True, methods=['get'])
+    def qr_retrieve(self, request, pk=None):
+        # Validator pk est bien un uudi ? :
+        qrcode_uuid = UUID(pk)
+        card = get_object_or_404(Card, qrcode_uuid=qrcode_uuid)
+
+        # From qr code scan, we just send wallet uuid and is_wallet_ephemere
+        # If usr is not created, we ask for the email
+        # If the email is not active, we show only the refill button and the recent history
+        wallet =card.get_wallet()
+        data = {
+            'wallet' : wallet.uuid,
+            'is_wallet_ephemere': card.is_wallet_ephemere(),
+        }
+        return Response(data, status=status.HTTP_200_OK)
+
     def retrieve(self, request, pk=None):
         # Utilisé par les serveurs cashless comme un check card
         try:
@@ -226,7 +243,11 @@ class CardAPI(viewsets.ViewSet):
         return Response(card_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get_permissions(self):
-        permission_classes = [HasKeyAndPlaceSignature]
+        if self.action in ['qr_retrieve', ]:
+            # L'api Key de l'organisation au minimum
+            permission_classes = [HasOrganizationAPIKeyOnly]
+        else:
+            permission_classes = [HasKeyAndPlaceSignature]
         return [permission() for permission in permission_classes]
 
 
@@ -614,12 +635,12 @@ class StripeAPI(viewsets.ViewSet):
             'client_reference_id': f"{user.pk}",
         }
 
-
         try:
             checkout_session = stripe.checkout.Session.create(**data_checkout)
         except Exception as e:
             logger.error(f"Creation of Stripe Checkout error : {e}")
-            import ipdb; ipdb.set_trace()
+            import ipdb;
+            ipdb.set_trace()
             raise Exception("Creation of Stripe Checkout error")
 
         checkout_db.checkout_session_id_stripe = checkout_session.id
