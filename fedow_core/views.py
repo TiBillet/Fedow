@@ -30,7 +30,7 @@ from fedow_core.permissions import HasKeyAndPlaceSignature, HasAPIKey, IsStripe,
 from fedow_core.serializers import TransactionSerializer, WalletCreateSerializer, HandshakeValidator, \
     TransactionW2W, CardSerializer, CardCreateValidator, \
     AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator, \
-    FederationSerializer, BadgeValidator, WalletGetOrCreate
+    FederationSerializer, BadgeValidator, WalletGetOrCreate, LinkWalletCardQrCode
 from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict, b64_to_data, get_request_ip
 from fedow_core.validators import PlaceValidator
 
@@ -325,6 +325,28 @@ class WalletAPI(viewsets.ViewSet):
 
         return Response(f"Checkout Stripe non paid : {checkout_db.status}", status=status.HTTP_402_PAYMENT_REQUIRED)
 
+    @action(detail=False, methods=['POST'])
+    def linkwallet_cardqrcode(self, request):
+        link_serializer = LinkWalletCardQrCode(data=request.data, context={'request': request})
+        if not link_serializer.is_valid():
+            return Response(link_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        logger.info("FUUUUuuUUSION !")
+        card = link_serializer.validated_data['card_qrcode_uuid']
+        wallet_source = card.wallet_ephemere
+        wallet_target = link_serializer.validated_data['wallet']
+
+        fusionned_card = LinkWalletCardQrCode.fusion(
+            card=card,
+            wallet_source=wallet_source,
+            wallet_target=wallet_target,
+            request_obj=request,
+        )
+
+        serializer = CardSerializer(fusionned_card, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
     ### END ROUTE LESPAS
 
     def retrieve(self, request, pk=None):
@@ -365,7 +387,8 @@ class WalletAPI(viewsets.ViewSet):
             # L'api Key de l'organisation au minimum
             permission_classes = [HasOrganizationAPIKeyOnly]
         elif self.action in [
-            'retrieve_by_signature', ]:
+            'retrieve_by_signature',
+            'linkwallet_cardqrcode', ]:
             permission_classes = [HasWalletSignature]
         elif self.action in [
             'retrieve_from_refill_checkout',

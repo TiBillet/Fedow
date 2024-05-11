@@ -728,3 +728,6 @@ class StripeTest(FedowTestCase):
         # Déplacé dans les test cahsless fedow.
         pass
 """
+
+
+#TODO: Tester link avec wallet sans user -> False

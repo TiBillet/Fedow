@@ -302,7 +302,6 @@ class AssetSerializer(serializers.ModelSerializer):
             'place_uuid_federated_with',
         )
 
-
     def to_representation(self, instance: Asset):
         # Add apikey user to representation
         rep = super().to_representation(instance)
@@ -312,9 +311,11 @@ class AssetSerializer(serializers.ModelSerializer):
 
             # Pour les test unitaire, desactiver le cache
             if not settings.DEBUG:
-                rep['total_token_value'] = cache.get_or_set(f"{instance.uuid}_total_token_value", instance.total_token_value, 5)
+                rep['total_token_value'] = cache.get_or_set(f"{instance.uuid}_total_token_value",
+                                                            instance.total_token_value, 5)
                 rep['total_in_place'] = cache.get_or_set(f"{instance.uuid}_total_in_place", instance.total_in_place, 5)
-                rep['total_in_wallet_not_place'] = cache.get_or_set(f"{instance.uuid}_total_in_wallet_not_place", instance.total_in_wallet_not_place, 5)
+                rep['total_in_wallet_not_place'] = cache.get_or_set(f"{instance.uuid}_total_in_wallet_not_place",
+                                                                    instance.total_in_wallet_not_place, 5)
             else:
                 rep['total_token_value'] = instance.total_token_value()
                 rep['total_in_place'] = instance.total_in_place()
@@ -448,6 +449,47 @@ class WalletGetOrCreate(serializers.Serializer):
         return attrs
 
 
+class LinkWalletCardQrCode(serializers.Serializer):
+    wallet = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.filter(user__isnull=False))
+    card_qrcode_uuid = serializers.SlugRelatedField(slug_field='qrcode_uuid',
+                                                    queryset=Card.objects.filter(user__isnull=True))
+
+    @staticmethod
+    def fusion(wallet_source: Wallet, wallet_target: Wallet, card: Card,  request_obj) -> Card:
+        # Fusion de deux wallets : On réalise une transaction de la totalité de chaque token de la source vers le wallet target
+        # Exemple : On vide le wallet ephemere d'une carte en faveur du wallet de l'user
+        for token in wallet_source.tokens.filter(value__gt=0):
+            data = {
+                "amount": token.value,
+                "asset": f"{token.asset.pk}",
+                "sender": f"{wallet_source.pk}",
+                "receiver": f"{wallet_target.pk}",
+                "action": Transaction.FUSION,
+                "user_card_uuid": f"{card.pk}",
+            }
+
+            transaction_validator = TransactionW2W(data=data, context={'request': request_obj})
+            if not transaction_validator.is_valid():
+                logger.error(
+                    f"{timezone.localtime()} ERROR FUSION WalletCreateSerializer : {transaction_validator.errors}")
+                raise serializers.ValidationError(transaction_validator.errors)
+
+        # Verification que la transaciton a bien vidé le wallet wallet_source
+        wallet_source.refresh_from_db()
+        if wallet_source.tokens.filter(value__gt=0).exists():
+            raise serializers.ValidationError("wallet_source Wallet not empty after fusion")
+
+        # On retire le wallet ephemere de la carte après avoir vérifié qu'il est bien vide
+        # On ajoute l'user dans la carte
+        card.refresh_from_db()
+        card.user = wallet_target.user
+        if wallet_source == card.wallet_ephemere:
+            card.wallet_ephemere = None
+        card.save()
+
+        return card
+
+
 class WalletCreateSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
@@ -457,6 +499,7 @@ class WalletCreateSerializer(serializers.Serializer):
                                                     queryset=Card.objects.all(), required=False)
 
     public_pem = serializers.CharField(max_length=512, required=False, allow_null=True)
+
 
     def validate_public_pem(self, value):
         try:
@@ -476,6 +519,8 @@ class WalletCreateSerializer(serializers.Serializer):
         request = self.context.get('request')
         if request:
             ip = get_request_ip(request)
+
+        #TODO : Une route pour une action ! Trop de if
 
         # Récupération de l'email
         self.user = None
@@ -528,31 +573,10 @@ class WalletCreateSerializer(serializers.Serializer):
                 # Si carte avec wallet ephemere, on lie l'user avec le wallet ephemere
                 if card.wallet_ephemere != self.user.wallet:
                     # On vide le wallet ephemere en faveur du wallet de l'user
-                    for token in card.wallet_ephemere.tokens.filter(value__gt=0):
-                        data = {
-                            "amount": token.value,
-                            "asset": f"{token.asset.pk}",
-                            "sender": f"{card.wallet_ephemere.pk}",
-                            "receiver": f"{self.user.wallet.pk}",
-                            "user_card_uuid": f"{card.pk}",
-                            "action": Transaction.FUSION,
-                        }
-                        transaction_validator = TransactionW2W(data=data, context={'request': self.context['request']})
-                        if not transaction_validator.is_valid():
-                            logger.error(
-                                f"{timezone.localtime()} ERROR FUSION WalletCreateSerializer : {transaction_validator.errors}")
-                            raise serializers.ValidationError(transaction_validator.errors)
-
-                # On retire le wallet ephemere de la carte après avoir vérifié qu'il est bien vide
-                card.refresh_from_db()
-                card.wallet_ephemere.refresh_from_db()
-                if card.wallet_ephemere.tokens.filter(value__gt=0).exists():
-                    raise serializers.ValidationError("Wallet ephemere not empty after fusion")
-                card.wallet_ephemere = None
-
-                card.user = self.user
-                card.save()
-                return attrs
+                    LinkWalletCardQrCode.fusion(wallet_source=card.wallet_ephemere,
+                                wallet_target=self.user.wallet,
+                                card=card,
+                                request_obj=self.context['request'])
 
             if card.user == self.user:
                 return attrs
@@ -864,7 +888,6 @@ class TransactionSerializer(serializers.ModelSerializer):
     serialized_sender = serializers.SerializerMethodField()
     serialized_receiver = serializers.SerializerMethodField()
 
-
     class Meta:
         model = Transaction
         fields = (
@@ -894,19 +917,20 @@ class TransactionSerializer(serializers.ModelSerializer):
         )
 
     def get_serialized_asset(self, obj):
-        if  self.context.get('detailed_asset'):
+        if self.context.get('detailed_asset'):
             return AssetSerializer(obj.asset).data
         return None
 
     def get_serialized_sender(self, obj):
-        if  self.context.get('serialized_sender'):
+        if self.context.get('serialized_sender'):
             return WalletSerializer(obj.sender).data
         return None
 
     def get_serialized_receiver(self, obj):
-        if  self.context.get('serialized_receiver'):
+        if self.context.get('serialized_receiver'):
             return WalletSerializer(obj.receiver).data
         return None
+
 
 class FederationSerializer(serializers.ModelSerializer):
     places = PlaceSerializer(many=True)
