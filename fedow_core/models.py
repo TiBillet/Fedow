@@ -251,6 +251,11 @@ class Wallet(models.Model):
     def public_key(self) -> rsa.RSAPublicKey:
         return get_public_key(self.public_pem)
 
+    def has_user_card(self) -> bool:
+        if hasattr(self, 'user'):
+            return self.user.cards.count() > 0
+        return False
+
     # LA PRIVATE DOIT ETRE EXTERIEUR A FEDOW !
     # def private_key(self) -> rsa.RSAPrivateKey:
     #     return get_private_key(self.private_pem)

@@ -127,6 +127,7 @@ class WalletSerializer(serializers.ModelSerializer):
         if self.context.get('request'):
             request = self.context.get('request')
 
+            # Requete depuis le cashless
             # Uniquement les tokens acceptés par le lieu demandeur :
             if hasattr(request, 'place'):
                 logger.info(f"{timezone.localtime()} WalletSerializer from PLACE : {request.place}")
@@ -144,6 +145,7 @@ class WalletSerializer(serializers.ModelSerializer):
             'uuid',
             'get_name',
             'tokens',
+            'has_user_card',
         )
 
 
