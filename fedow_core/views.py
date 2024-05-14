@@ -644,6 +644,7 @@ class StripeAPI(viewsets.ViewSet):
 
         # La demande a forcément un lesspass url
         # SI ça vient d'un cashless : esce que ça doit vraiment venir d'un cashless sans lespass ?
+        # TODO: Oui, si ça vient d'un TPE STRIPE connecté à un pi ou un kiosk
         return_url = f'https://{place.lespass_domain}/my_account/{checkout_db.uuid}/return_refill_wallet/'
         data_checkout = {
             'success_url': f"{return_url}",
@@ -880,6 +881,7 @@ def root_tibillet_handshake(request):
         config = Configuration.get_solo()
 
         # create_place_apikey -> une seule par instance.
+        # DEBUG laisse passer pour test
         if config.create_place_apikey and not settings.DEBUG:
             logger.warning(f"root_tibillet_handshake : {ip} - Already done")
             return JsonResponse({
@@ -888,12 +890,12 @@ def root_tibillet_handshake(request):
 
         # La clé pour création de place pour la billetterie.
         # A lancer à la main sur la billetterie : ./manage.py root_fedow
-        # DEBUG laisse passer pour test
         api_key, key = CreatePlaceAPIKey.objects.create_key(
             name=f"billetterie_root_{ip}",
         )
         config.create_place_apikey = api_key
         config.save()
+
         return JsonResponse({
             "api_key": key,
             "fedow_pub_pem": config.primary_wallet.public_pem,

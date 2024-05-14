@@ -827,6 +827,7 @@ class Card(models.Model):
         return wallets
 
 
+
 class OrganizationAPIKey(AbstractAPIKey):
     place = models.ForeignKey(
         Place,
@@ -844,7 +845,7 @@ class OrganizationAPIKey(AbstractAPIKey):
         ordering = ("-created",)
         verbose_name = "API key"
         verbose_name_plural = "API keys"
-        unique_together = [['place', 'user']]
+        # unique_together = [['place', 'user', 'name']]
 
 
 ### CREATORS TOOLS

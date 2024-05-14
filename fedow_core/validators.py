@@ -59,22 +59,46 @@ class PlaceValidator(serializers.Serializer):
         except Exception as e :
             raise serializers.ValidationError(f"Error create place : {e}")
 
+        #### RETOUR POUR LESPASS :
+
         # Ajout de l'admin dans la place
         place.admins.add(user)
         # Création de la clé API
         api_key, key = OrganizationAPIKey.objects.create_key(
-            name=f"tibillet_{place_name}:{user.email}",
+            name=f"lespass_{place_name}:{user.email}",
             place=place,
             user=user,
         )
+
+        #### CREATION D'UNE CLE TEMP POUR CASHLESS,
+        # même methode que .manage.py place create :
+
+        handshake_cashless_api_key, hsc_key = OrganizationAPIKey.objects.create_key(
+            name=f"temp_{place_name}:{user.email}",
+            place=place,
+            user=user,
+        )
+        configuration = Configuration.get_solo()
+
+        # TODO: Envoyer la clé par email
+        json_key_to_cashless = {
+            "domain": configuration.domain,
+            "uuid": f"{place.uuid}",
+            "temp_key": key,
+        }
+
+        utf8_encoded_data = dict_to_b64_utf8(json_key_to_cashless)
+        place.save()
 
         # Serialization de la place :
         seralized_place = PlaceSerializer(place).data
         seralized_place.update({
             "key": key,
+            "json_key_to_cashless": json_key_to_cashless,
         })
 
         return seralized_place
+
 
 
     def validate(self, attrs):
