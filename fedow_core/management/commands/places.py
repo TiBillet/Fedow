@@ -80,7 +80,8 @@ class Command(BaseCommand):
                 except Place.DoesNotExist:
                     pass
 
-                #TODO: Passer par le validater CreatePlace : D'abord LesPass tenant, puis le cashless !
+                #TODO: Passer par le validater CreatePlace :
+                # D'abord LesPass tenant, puis le cashless !
                 place = Place.objects.create(
                     name=place_name,
                     description=description,

@@ -46,8 +46,10 @@ class HandshakeValidator(serializers.Serializer):
 
     def validate_cashless_ip(self, value):
         request = self.context.get('request')
-        if value != get_request_ip(request):
-            logger.error(f"{timezone.localtime()} ERROR Place create Invalid IP {get_request_ip(request)}")
+        ip_from_request = get_request_ip(request)
+        # Si on est en mode debug, on bypass la verification
+        if value != ip_from_request and not settings.DEBUG :
+            logger.error(f"{timezone.localtime()} ERROR Place create Invalid IP {value} != {ip_from_request}")
             raise serializers.ValidationError("Invalid IP")
         return value
 
