@@ -163,3 +163,5 @@ www/
 logs/gunicorn.logs
 logs/nginxAccess.log
 logs/nginxError.log
+
+tempo/
