@@ -29,10 +29,10 @@ services:
     command: "bash start_dev.sh"
 
     extra_hosts:
+      - "fedow.tibillet.localhost:172.17.0.1"
       - "demo.tibillet.localhost:172.17.0.1"
       - "billetistan.tibillet.localhost:172.17.0.1"
-      - "fedow.tibillet.localhost:172.17.0.1"
-
+      - "cashless.tibillet.localhost:172.17.0.1"
 
 
   fedow_nginx:

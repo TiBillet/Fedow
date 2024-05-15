@@ -44,5 +44,6 @@ class Command(BaseCommand):
             complete_tag_id_uuid='1b69895a-ade5-4a4b-aa9b-5caaa5492ab7',
             origin=origin,
         )
+
         # card.primary_places
 
