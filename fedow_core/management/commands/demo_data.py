@@ -29,11 +29,13 @@ class Command(BaseCommand):
             place=testplace,
             generation=1
         )
-        card, created = Card.objects.get_or_create(
-            number_printed='0c9e2d94'.upper(),
-            qrcode_uuid='0c9e2d94-0628-45df-b30d-c974ee4cc3e4',
-            first_tag_id='fb69895a'.upper(),
-            complete_tag_id_uuid='fb69895a-ade5-4a4b-aa9b-5caaa5492ab7',
+
+
+        card1, created = Card.objects.get_or_create(
+            number_printed='2c9e2d94'.upper(),
+            qrcode_uuid='2c9e2d94-0628-45df-b30d-c974ee4cc3e4',
+            first_tag_id='2b69895a'.upper(),
+            complete_tag_id_uuid='2b69895a-ade5-4a4b-aa9b-5caaa5492ab7',
             origin=origin,
         )
 

@@ -826,7 +826,8 @@ class Card(models.Model):
         wallets = place_origin.wallet_federated_with()
         return wallets
 
-
+    def __str__(self):
+        return f"{self.origin} : {self.number_printed}"
 
 class OrganizationAPIKey(AbstractAPIKey):
     place = models.ForeignKey(
