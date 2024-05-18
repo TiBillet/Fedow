@@ -72,28 +72,11 @@ class PlaceValidator(serializers.Serializer):
             user=user,
         )
 
-        #### CREATION D'UNE CLE TEMP POUR CASHLESS,
-        # même methode que .manage.py place create :
-        handshake_cashless_api_key, temp_key = OrganizationAPIKey.objects.create_key(
-            name=f"temp_{place_name}:{user.email}",
-            place=place,
-            user=user,
-        )
-        configuration = Configuration.get_solo()
-
-        # TODO: Envoyer la clé par email
-        json_key_to_cashless = {
-            "domain": configuration.domain,
-            "uuid": f"{place.uuid}",
-            "temp_key": temp_key,
-        }
-
         # Serialization de la place :
         # TODO: Chiffrer avec la clé publique du tenant
         seralized_place = PlaceSerializer(place).data
         seralized_place.update({
             "key": key,
-            "json_key_to_cashless": dict_to_b64_utf8(json_key_to_cashless),
         })
 
         return seralized_place

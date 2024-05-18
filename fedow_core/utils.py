@@ -178,3 +178,29 @@ def verify_signature(public_key: rsa.RSAPublicKey,
         return True
     except InvalidSignature:
         return False
+
+
+
+def rsa_encrypt_string(utf8_string=None, public_key: rsa.RSAPublicKey=None) -> str:
+    message = utf8_string.encode('utf-8')
+    ciphertext = public_key.encrypt(
+        message,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+    return base64.urlsafe_b64encode(ciphertext).decode('utf-8')
+
+def rsa_decrypt_string(utf8_enc_string: str, private_key: rsa.RSAPrivateKey) -> str:
+    ciphertext = base64.urlsafe_b64decode(utf8_enc_string)
+    plaintext = private_key.decrypt(
+        ciphertext,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+    return plaintext.decode('utf-8')

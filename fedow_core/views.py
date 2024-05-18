@@ -31,7 +31,8 @@ from fedow_core.serializers import TransactionSerializer, WalletCreateSerializer
     TransactionW2W, CardSerializer, CardCreateValidator, \
     AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator, \
     FederationSerializer, BadgeValidator, WalletGetOrCreate, LinkWalletCardQrCode
-from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict, b64_to_data, get_request_ip
+from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict, b64_to_data, get_request_ip, \
+    get_public_key, rsa_encrypt_string
 from fedow_core.validators import PlaceValidator
 
 logger = logging.getLogger(__name__)
@@ -432,6 +433,32 @@ class PlaceAPI(viewsets.ViewSet):
             return Response(seralized_place, status=status.HTTP_201_CREATED)
         return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
+    @action(detail=False, methods=['GET'])
+    def link_cashless_to_place(self, request):
+        place: Place = request.place
+        user = request.wallet.user
+
+        #TODO :A tester :
+        if user not in place.admins.all():
+            return Response("not an admin email",status=status.HTTP_403_FORBIDDEN)
+        if place.cashless_server_url is not None :
+            return Response("Laboutik place already conf",status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+        #### CREATION D'UNE CLE TEMP POUR CASHLESS,
+        # même methode que .manage.py place create :
+        handshake_cashless_api_key, temp_key = OrganizationAPIKey.objects.create_key(
+            name=f"temp_{place.name}:{user.email}",
+            place=place,
+            user=user,
+        )
+
+        admin_pub_key = get_public_key(user.wallet.public_pem)
+        rsa_cypher_message = rsa_encrypt_string(utf8_string=temp_key, public_key=admin_pub_key)
+        data ={"rsa_cypher_message": rsa_cypher_message }
+        return Response(data, status=status.HTTP_201_CREATED)
+
+
     @action(detail=False, methods=['POST'])
     def handshake(self, request):
         # HANDSHAKE with cashless server
@@ -497,12 +524,15 @@ class PlaceAPI(viewsets.ViewSet):
             return Response(serializers.data)
         return Response('405', status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
+    # noinspection PyTestUnpassedFixture
     def get_permissions(self):
         permission_classes = [HasKeyAndPlaceSignature]
         if self.action == 'handshake':
             permission_classes = [HasAPIKey]
         if self.action == 'create':
             permission_classes = [CanCreatePlace]
+        if self.action =='link_cashless_to_place':
+            permission_classes = [HasPlaceKeyAndWalletSignature]
         return [permission() for permission in permission_classes]
 
 
