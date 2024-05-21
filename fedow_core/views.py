@@ -99,7 +99,6 @@ class AssetAPI(viewsets.ViewSet):
     def create(self, request):
         # Création de l'asset :
         serializer = AssetCreateValidator(data=request.data, context={'request': request})
-
         if serializer.is_valid():
             # Sérialisation de l'asset
             asset_seralized = AssetSerializer(serializer.asset, context={'request': request})
@@ -121,15 +120,18 @@ class AssetAPI(viewsets.ViewSet):
 
     @action(detail=True, methods=['GET'])
     def retrieve_membership_asset(self, request, pk=None):
-        # Meme api que RETRIEVE, mais depuis billetterie : c'est une adhésion obligatoirement
-        asset = get_object_or_404(Asset, category=Asset.SUBSCRIPTION, pk=pk, )
+        # Meme api que RETRIEVE, mais depuis billetterie : c'est une adhésion ou une badgeuse
+        asset = get_object_or_404(Asset, pk=pk)
         serializer = AssetSerializer(asset, context={'request': request})
         return Response(serializer.data)
 
     @action(detail=False, methods=['POST'])
     def create_membership_asset(self, request):
-        # Meme api que CREATE, mais depuis billetterie : c'est une adhésion obligatoirement
-        if not request.data.get('category') == Asset.SUBSCRIPTION:
+        # Meme api que CREATE, mais depuis billetterie : c'est une adhésion ou une badgeuse
+        if not request.data.get('category') in [
+            Asset.SUBSCRIPTION,
+            Asset.BADGE,
+        ]:
             return Response('not a sub asset', status=status.HTTP_400_BAD_REQUEST)
         return self.create(request)
 
@@ -207,9 +209,9 @@ class CardAPI(viewsets.ViewSet):
         # From qr code scan, we just send wallet uuid and is_wallet_ephemere
         # If usr is not created, we ask for the email
         # If the email is not active, we show only the refill button and the recent history
-        wallet =card.get_wallet()
+        wallet = card.get_wallet()
         data = {
-            'wallet_uuid' : wallet.uuid,
+            'wallet_uuid': wallet.uuid,
             'is_wallet_ephemere': card.is_wallet_ephemere(),
         }
         return Response(data, status=status.HTTP_200_OK)
@@ -347,7 +349,6 @@ class WalletAPI(viewsets.ViewSet):
         serializer = CardSerializer(fusionned_card, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-
     ### END ROUTE LESPAS
 
     def retrieve(self, request, pk=None):
@@ -433,17 +434,16 @@ class PlaceAPI(viewsets.ViewSet):
             return Response(seralized_place, status=status.HTTP_201_CREATED)
         return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
     @action(detail=False, methods=['GET'])
     def link_cashless_to_place(self, request):
         place: Place = request.place
         user = request.wallet.user
 
-        #TODO :A tester :
+        # TODO :A tester :
         if user not in place.admins.all():
-            return Response("not an admin email",status=status.HTTP_403_FORBIDDEN)
-        if place.cashless_server_url is not None :
-            return Response("Laboutik place already conf",status=status.HTTP_405_METHOD_NOT_ALLOWED)
+            return Response("not an admin email", status=status.HTTP_403_FORBIDDEN)
+        if place.cashless_server_url is not None:
+            return Response("Laboutik place already conf", status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
         #### CREATION D'UNE CLE TEMP POUR CASHLESS,
         # même methode que .manage.py place create :
@@ -455,9 +455,8 @@ class PlaceAPI(viewsets.ViewSet):
 
         admin_pub_key = get_public_key(user.wallet.public_pem)
         rsa_cypher_message = rsa_encrypt_string(utf8_string=temp_key, public_key=admin_pub_key)
-        data ={"rsa_cypher_message": rsa_cypher_message }
+        data = {"rsa_cypher_message": rsa_cypher_message}
         return Response(data, status=status.HTTP_201_CREATED)
-
 
     @action(detail=False, methods=['POST'])
     def handshake(self, request):
@@ -531,7 +530,7 @@ class PlaceAPI(viewsets.ViewSet):
             permission_classes = [HasAPIKey]
         if self.action == 'create':
             permission_classes = [CanCreatePlace]
-        if self.action =='link_cashless_to_place':
+        if self.action == 'link_cashless_to_place':
             permission_classes = [HasPlaceKeyAndWalletSignature]
         return [permission() for permission in permission_classes]
 
