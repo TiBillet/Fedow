@@ -20,13 +20,7 @@
         <hr class="dark horizontal my-0">
         <div class="card-footer p-3">
             <p class="mb-0">Origine :
-                {% if asset.origin.place.uuid %}
-                    <a href="{% url 'place' asset.origin.place.uuid %}">
-                        {{ asset.origin.get_name | capfirst }}
-                    </a>
-                {% else %}
-                    {{ asset.origin.get_name | capfirst }}
-                {% endif %}
+                {{ asset.wallet_origin.place.name | capfirst }}
             </p>
         </div>
     </div>

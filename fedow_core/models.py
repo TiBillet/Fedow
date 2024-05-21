@@ -741,6 +741,7 @@ class Place(models.Model):
 
     def accepted_assets(self):
         place, assets, wallets = self.cached_federated_with()
+        # import ipdb; ipdb.set_trace()
         return assets
 
     def wallet_federated_with(self):

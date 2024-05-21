@@ -461,8 +461,8 @@ class PlaceAPI(viewsets.ViewSet):
 
     @action(detail=False, methods=['POST'])
     def handshake(self, request):
-        # HANDSHAKE with cashless server
-        # Request only work if came from Cashless server
+        # HANDSHAKE with laboutik server
+        # Request only work if came from laboutik server
         # with the right API key gived at the manual creation of new place
         validator = HandshakeValidator(data=request.data, context={'request': request})
         if validator.is_valid():
