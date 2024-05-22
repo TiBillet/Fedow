@@ -242,6 +242,15 @@ class CardAPI(viewsets.ViewSet):
             return Response(f"{len(card_serializer.validated_data)}", status=status.HTTP_201_CREATED,
                             content_type="application/json")
 
+        # Si c'est une erreur de déja créé, on renvoi un statut conflict.
+        # trouver qqch de plus élégant ?
+        first_error = card_serializer.errors[0]
+        if first_error.get('uuid'):
+            first_error = first_error['uuid'][0]
+            if first_error.code == 'unique':
+                logger.warning(f"Card create error : {card_serializer.errors}")
+                return Response(card_serializer.errors, status=status.HTTP_409_CONFLICT)
+
         logger.error(f"Card create error : {card_serializer.errors}")
         return Response(card_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -441,9 +450,21 @@ class PlaceAPI(viewsets.ViewSet):
 
         # TODO :A tester :
         if user not in place.admins.all():
+            logger.error("link_cashless_to_place : not an admin email")
             return Response("not an admin email", status=status.HTTP_403_FORBIDDEN)
+
+        # Ne se lance pas lors du premier Flush de Laboutik
+        # Les test laboutik on besoin que ce premier flush soit lancé
+        # pour vérifier qu'ils ont bien des adhésions et de la monnaie fédérée non stripe
         if place.cashless_server_url is not None:
-            return Response("Laboutik place already conf", status=status.HTTP_405_METHOD_NOT_ALLOWED)
+            if settings.TEST:
+                logger.warning("link_cashless_to_place: Laboutik place already conf, "
+                               "mais on est en mode test, on écrase. "
+                               "On ajoute aussi le cashless de test à la federation de Test")
+
+            else :
+                logger.error("link_cashless_to_place: Laboutik place already conf")
+                return Response("Laboutik place already conf", status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
         #### CREATION D'UNE CLE TEMP POUR CASHLESS,
         # même methode que .manage.py place create :
@@ -456,6 +477,7 @@ class PlaceAPI(viewsets.ViewSet):
         admin_pub_key = get_public_key(user.wallet.public_pem)
         rsa_cypher_message = rsa_encrypt_string(utf8_string=temp_key, public_key=admin_pub_key)
         data = {"rsa_cypher_message": rsa_cypher_message}
+
         return Response(data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['POST'])
@@ -475,10 +497,14 @@ class PlaceAPI(viewsets.ViewSet):
             place.cashless_admin_apikey = fernet_encrypt(validated_data.get('cashless_admin_apikey'))
             place.save()
 
+
             # Create the definitive key for the admin user
             api_key, place_fk, user = get_api_place_user(request)
+            if place_fk != place:
+                raise Exception("Place not match with the API key")
+            # Suppressoin de la clé temporaire
             api_key.delete()
-            assert place_fk == place, "Place not match with the API key"
+
 
             api_key, key = OrganizationAPIKey.objects.create_key(
                 name=f"{place.name}:{user.email}",
@@ -486,42 +512,70 @@ class PlaceAPI(viewsets.ViewSet):
                 user=user,
             )
 
-            # Creation du lien Onboard Stripe
-            url_onboard = create_account_link_for_onboard(place)
+            if settings.TEST:
+                #Mode test, on ajoute ce nouveau lieu dans la federation de test
+                # request.place = place
+                self.add_me_to_test_fed(place)
+
+
+            # Creation du lien Onboard Stripe seulement en prod
+            url_onboard = ""
+            if not settings.TEST :
+                url_onboard = create_account_link_for_onboard(place)
+
+
             data = {
                 "url_onboard": url_onboard,
                 "place_admin_apikey": key,
                 "place_wallet_uuid": str(place.wallet.uuid),
                 # "place_wallet_public_pem": place.wallet.public_pem,
             }
-            print(data)
+
+
 
             data_encoded = dict_to_b64_utf8(data)
+
+
             return Response(data_encoded, status=status.HTTP_202_ACCEPTED)
         return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=False, methods=['GET'])
-    def add_me_to_test_fed(self, request):
-        if settings.DEBUG:
+    def add_me_to_test_fed(self, place: Place):
+        if settings.TEST:
             # Récupération du lieu dans le request
-            place: Place = request.place
-            assets_created_by_the_place = place.wallet.assets_created.all()
-            asset_euro = assets_created_by_the_place.get(category=Asset.TOKEN_LOCAL_FIAT)
-            asset_badge = assets_created_by_the_place.get(category=Asset.BADGE)
+            logger.info("Test unitaire en route ! On ajoute dans la fédération de test "
+                        "le nouveau lieu créé par les tests de laboutik")
 
-            # Récupération de la fed test
-            fed_test = Federation.objects.get(name='TEST FED')
+            assets_created_by_the_place = place.wallet.assets_created.all()
+            fed_test, created = Federation.objects.get_or_create(name='TEST FED')
+
+            # t'es le flush ou t'es le test ?
+            # Si t'as un asset badge, tu es le flush TiBilletistan
+            try :
+                # On ajoute l'asset principal, créé par un flush normal.
+                # Il sera testé dans LaBoutik
+                asset_badge = assets_created_by_the_place.get(category=Asset.BADGE)
+                asset_adh, asset_abo = assets_created_by_the_place.filter(category=Asset.SUBSCRIPTION)
+                fed_test.assets.add(asset_badge)
+                fed_test.assets.add(asset_adh)
+                fed_test.assets.add(asset_abo)
+
+            except Exception as e :
+                logger.info(e)
+                # T'as pas de badge, t'es un test, on t'ajoute juste dans la fédé
+                # TODO: Ajouter l'asset du premier lieu créé par flush et tester
+                # asset_euro = assets_created_by_the_place.get(category=Asset.TOKEN_LOCAL_FIAT)
+                # fed_test.assets.add(asset_euro)
+
+            # Que tu sois test ou flush, on t'ajoute
             fed_test.places.add(place)
-            fed_test.assets.add(asset_euro)
-            fed_test.assets.add(asset_badge)
             # Save pour faire le clear cache
             fed_test.save()
             cache.clear()
 
-            accepted_assets = request.place.accepted_assets()
-            serializers = AssetSerializer(accepted_assets, many=True, context={'request': request})
-            return Response(serializers.data)
-        return Response('405', status=status.HTTP_405_METHOD_NOT_ALLOWED)
+            # accepted_assets = request.place.accepted_assets()
+            # serializers = AssetSerializer(accepted_assets, many=True, context={'request': request})
+            # return Response(serializers.data)
+        # return Response('405', status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     # noinspection PyTestUnpassedFixture
     def get_permissions(self):

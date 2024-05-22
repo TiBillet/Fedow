@@ -5,6 +5,7 @@ from time import sleep
 
 import stripe
 from cryptography.hazmat.primitives.asymmetric import rsa
+from django.conf import settings
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.generics import get_object_or_404
@@ -25,7 +26,10 @@ class PlaceValidator(serializers.Serializer):
 
     def validate_place_name(self, value):
         if Place.objects.filter(name=value).exists():
-            raise serializers.ValidationError("Place name already exists")
+            if settings.TEST:
+                logger.warning("Place name already exists, mais on est en TEST !!")
+            else :
+                raise serializers.ValidationError("Place name already exists")
         return value
 
     def validate_admin_pub_pem(self, value):
@@ -57,6 +61,7 @@ class PlaceValidator(serializers.Serializer):
                 lespass_domain=place_domain,
             )
         except Exception as e :
+            import ipdb; ipdb.set_trace()
             raise serializers.ValidationError(f"Error create place : {e}")
 
         #### RETOUR POUR LESPASS :

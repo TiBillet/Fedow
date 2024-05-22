@@ -7,12 +7,12 @@ set -e
 if [ "$TEST" = "1" ]
 then
   poetry run ./manage.py migrate
-  poetry run ./manage.py collectstatic --no-input
+#  poetry run ./manage.py collectstatic --no-input
   poetry run ./manage.py flush --no-input
   poetry run ./manage.py install
   poetry run ./manage.py demo_data
-  poetry run ./manage.py createsuperuser --noinput --username root --email root@root.root
-  poetry run ./manage.py shell_plus -c "User=get_user_model();root=User.objects.get(username='root');root.set_password('root');root.save()"
+#  poetry run ./manage.py createsuperuser --noinput --username root --email root@root.root
+#  poetry run ./manage.py shell_plus -c "User=get_user_model();root=User.objects.get(username='root');root.set_password('root');root.save()"
   echo "start dev server : https://$DOMAIN/dashboard/"
   poetry run ./manage.py runserver 0.0.0.0:8000
 else
