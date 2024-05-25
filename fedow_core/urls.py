@@ -22,6 +22,7 @@ router.register(r'wallet', WalletAPI, basename='wallet')
 router.register(r'card', CardAPI, basename='card')
 router.register(r'stripe', StripeAPI, basename='stripe')
 
+
 urlpatterns = [
     # Route pour test fedow :
     path('get_new_place_token_for_test/<str:name_enc>/', get_new_place_token_for_test),
