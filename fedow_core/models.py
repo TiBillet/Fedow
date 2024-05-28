@@ -449,7 +449,9 @@ class Transaction(models.Model):
             assert self.asset.category == Asset.SUBSCRIPTION, "Asset must be a subscription asset"
             assert self.sender.is_place(), "Sender must be a place wallet"
             assert self.sender.place.wallet == self.asset.wallet_origin, "Subscription wallet_origin must be the place"
-            assert self.receiver.user, "Receiver must be a user wallet"
+
+            # L'abonnement peut se faire sur une carte avec wallet epehemere
+            # assert self.receiver.user, "Receiver must be a user wallet"
 
             # On ajoute le montant de l'abonnement au wallet du client
             token_receiver.value += self.amount
