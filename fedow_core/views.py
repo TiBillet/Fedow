@@ -339,10 +339,12 @@ class WalletAPI(viewsets.ViewSet):
 
     @action(detail=False, methods=['POST'])
     def linkwallet_cardqrcode(self, request):
+
         link_serializer = LinkWalletCardQrCode(data=request.data, context={'request': request})
         if not link_serializer.is_valid():
             return Response(link_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+        #TODO: Peut être rajouter une condition pour éviter les vols de carte : l'un des deux wallet doit être vide ?
         logger.info("FUUUUuuUUSION !")
         card = link_serializer.validated_data['card_qrcode_uuid']
         wallet_source = card.wallet_ephemere

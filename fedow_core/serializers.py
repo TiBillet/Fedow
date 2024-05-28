@@ -462,6 +462,11 @@ class LinkWalletCardQrCode(serializers.Serializer):
     def fusion(wallet_source: Wallet, wallet_target: Wallet, card: Card,  request_obj) -> Card:
         # Fusion de deux wallets : On réalise une transaction de la totalité de chaque token de la source vers le wallet target
         # Exemple : On vide le wallet ephemere d'une carte en faveur du wallet de l'user
+
+        # On ajoute le place dans la requete pour les vérif transaction.
+        if not hasattr(request_obj, 'place'):
+            request_obj.place = card.origin.place
+
         for token in wallet_source.tokens.filter(value__gt=0):
             data = {
                 "amount": token.value,
