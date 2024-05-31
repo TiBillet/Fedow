@@ -195,7 +195,13 @@ class CardAPI(viewsets.ViewSet):
             }
             checkout_session = StripeAPI.create_stripe_checkout_for_federated_refill(user=serializer.user,
                                                                                      add_metadata=add_metadata)
-            return Response(checkout_session.url, status=status.HTTP_202_ACCEPTED)
+            if checkout_session:
+                return Response(checkout_session.url, status=status.HTTP_202_ACCEPTED)
+            else :
+                # Probablement pas de clé API Stripe, on envoie un
+                logger.warning(f"get_checkout : No stripe key provided on .env -> 417")
+                return Response('Ni stripe key provided', status=status.HTTP_417_EXPECTATION_FAILED)
+
 
         logger.error(f"get_checkout error : {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -295,7 +301,12 @@ class WalletAPI(viewsets.ViewSet):
                 'lespass_uuid': f"{place.uuid}"
             },
         )
-        return Response(checkout_session.url, status=status.HTTP_202_ACCEPTED)
+        if checkout_session:
+            return Response(checkout_session.url, status=status.HTTP_202_ACCEPTED)
+        else :
+            # Probablement pas de clé API Stripe, on envoie un
+            logger.warning(f"get_federated_token_refill_checkout : No stripe key provided on .env -> 417")
+            return Response('No stripe key provided', status=status.HTTP_417_EXPECTATION_FAILED)
 
     @action(detail=True, methods=['GET'])
     def retrieve_from_refill_checkout(self, request, pk=None):
@@ -683,6 +694,9 @@ class StripeAPI(viewsets.ViewSet):
         # Vérifier en POST et en GET, dans les methode de cette même classe
 
         config = Configuration.get_solo()
+        if not config.get_stripe_api():
+            return None
+
         stripe.api_key = config.get_stripe_api()
 
         # Vérification que l'email soit bien présent pour l'envoyer a Stripe

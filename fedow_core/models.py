@@ -631,11 +631,10 @@ class Configuration(SingletonModel):
         else:
             # The stripe api key is not set
             # You have to set it mannualy with self.set_stripe_api(api_key)
-            if not self.set_stripe_api:
-                logger.warning("The stripe api key is not set. Try to set with environment variable 'STRIPE_KEY'")
+            if not self.stripe_api_key:
                 stripe_key_from_env = os.environ.get("STRIPE_KEY")
                 if not stripe_key_from_env:
-                    logger.error("No stripe key provided. Return None")
+                    logger.error("No stripe key provided on .env > Return None")
                     return None
                 self.set_stripe_api(stripe_key_from_env)
 

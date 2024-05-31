@@ -36,12 +36,12 @@ if len(FERNET_KEY) != 44:
 DEBUG = os.environ.get('DEBUG') == 'True' or os.environ.get('DEBUG') == '1'
 TEST = os.environ.get('TEST') == 'True' or os.environ.get('TEST') == '1'
 
-ALLOWED_HOSTS = [os.environ.get('DOMAIN', 'localhost'), ]
-CSRF_TRUSTED_ORIGINS = [f"https://{os.environ.get('DOMAIN')}", ]
-if DEBUG:
-    ALLOWED_HOSTS.append('fedow.tibillet.localhost')
-    ALLOWED_HOSTS.append('*')
-    CSRF_TRUSTED_ORIGINS.append('https://fedow.tibillet.localhost')
+ALLOWED_HOSTS = [os.environ['DOMAIN'], ]
+CSRF_TRUSTED_ORIGINS = [f"https://{os.environ['DOMAIN']}", ]
+# if DEBUG:
+#     ALLOWED_HOSTS.append('fedow.tibillet.localhost')
+#     ALLOWED_HOSTS.append('*')
+#     CSRF_TRUSTED_ORIGINS.append('https://fedow.tibillet.localhost')
 
 # Sentry
 if not DEBUG:
