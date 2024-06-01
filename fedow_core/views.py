@@ -779,7 +779,11 @@ class StripeAPI(viewsets.ViewSet):
 
 def create_account_link_for_onboard(place: Place):
     conf = Configuration.get_solo()
-    stripe.api_key = conf.get_stripe_api()
+
+    api_key = conf.get_stripe_api()
+    if not api_key :
+        return ""
+    stripe.api_key = api_key
 
     place.refresh_from_db()
     if not place.stripe_connect_account:
