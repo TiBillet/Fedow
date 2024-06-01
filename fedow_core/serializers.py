@@ -49,8 +49,8 @@ class HandshakeValidator(serializers.Serializer):
         ip_from_request = get_request_ip(request)
         # Si on est en mode debug, on bypass la verification
         if value != ip_from_request and not settings.DEBUG :
-            logger.error(f"{timezone.localtime()} ERROR Place create Invalid IP {value} != {ip_from_request}")
-            raise serializers.ValidationError("Invalid IP")
+            logger.warning(f"{timezone.localtime()} ERROR Place create Invalid IP {value} != {ip_from_request}")
+            # raise serializers.ValidationError("Invalid IP")
         return value
 
     def validate(self, attrs: OrderedDict) -> OrderedDict:
