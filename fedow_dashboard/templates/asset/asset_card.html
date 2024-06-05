@@ -12,7 +12,7 @@
                 <h4 class="text-sm mb-0 text-capitalize"><a
                         href="{% url 'asset' asset.uuid %}">{{ asset.name | capfirst }}</a></h4>
                 <p class="mb-0">{{ asset.get_category_display }}</p>
-                <p class="mb-0">{{ asset.total_token_value | dround }} en circulation</p>
+                <p class="mb-0">{{ asset.total_in_wallet_not_place | dround }} en circulation</p>
                 {#                <p class="mb-0">Places : {{ asset.total_in_place | dround }}</p>#}
                 {#                <p class="mb-0">Wallet : {{ asset.total_in_wallet_not_place | dround }}</p>#}
             </div>

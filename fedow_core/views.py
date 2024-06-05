@@ -918,6 +918,12 @@ class TransactionAPI(viewsets.ViewSet):
         # wallet = sender OR receiver
         transactions = Transaction.objects.filter(Q(sender=wallet) | Q(receiver=wallet))
 
+        #On va récupérer aussi les transactions pour afficher ceux avant une éventuelle fusion
+        if transactions.filter(action=Transaction.FUSION).exists():
+            ex_wallet = transactions.filter(action=Transaction.FUSION).last().sender
+            transactions = Transaction.objects.filter(Q(sender=wallet) | Q(receiver=wallet) |
+                                                      Q(sender=ex_wallet) | Q(receiver=ex_wallet))
+
         # Apply pagination
         paginator = StandardResultsSetPagination()
         page = paginator.paginate_queryset(transactions, request)
