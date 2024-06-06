@@ -20,7 +20,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         print(
-            "CSV format: \n<url for qrcode: https://xxx.yyy.zzz/qr/uuid8>,<printed number : 8 char>,<RFID first_tag_id:8 char>\n")
+            "CSV format: \n<url for qrcode: https://xxx.yyy.zzz/qr/uuid4>,<printed number : 8 char>,<RFID first_tag_id:8 char>\n")
         # file = open('data/retour_usine_raff_gen_2.csv')
         input_fichier_csv = input('path fichier csv ? \n')
         file = open(input_fichier_csv)
