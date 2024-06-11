@@ -222,6 +222,10 @@ class CardAPI(viewsets.ViewSet):
         }
         return Response(data, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['get'])
+    def retrieve_from_wallet(self, request):
+        pass
+
     def retrieve(self, request, pk=None):
         # Utilisé par les serveurs cashless comme un check card
         try:

@@ -8,7 +8,7 @@ services:
       - fedow_backend
 
   fedow_django:
-#    image: tibillet/fedow:alpha1
+#    image: tibillet/fedow:latest
     build: .
     container_name: fedow_django
     hostname: fedow_django
