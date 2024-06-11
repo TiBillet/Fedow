@@ -222,9 +222,23 @@ class CardAPI(viewsets.ViewSet):
         }
         return Response(data, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=['get'])
-    def retrieve_from_wallet(self, request):
-        pass
+    @action(detail=False, methods=['get'])
+    def retrieve_card_by_signature(self, request):
+        # La méthode d'auth diffère d'un retrive standard et donne le wallet plutot que le place
+        wallet: Wallet = request.wallet
+        cards = wallet.user.cards.all()
+        serializer = CardSerializer(cards, context={'request': request}, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'])
+    def lost_my_card_by_signature(self, request):
+        wallet: Wallet = request.wallet
+        card = get_object_or_404(Card, user=wallet.user, number_printed=request.data.get('number_printed'))
+        card.user = None
+        card.wallet_ephemere = None
+        card.primary_places.clear()
+        card.save()
+        return Response('wallet and user detached from card', status=status.HTTP_200_OK)
 
     def retrieve(self, request, pk=None):
         # Utilisé par les serveurs cashless comme un check card
@@ -268,6 +282,8 @@ class CardAPI(viewsets.ViewSet):
         if self.action in ['qr_retrieve', ]:
             # L'api Key de l'organisation au minimum
             permission_classes = [HasOrganizationAPIKeyOnly]
+        elif self.action in ['retrieve_card_by_signature', 'lost_my_card_by_signature' ]:
+            permission_classes = [HasWalletSignature]
         else:
             permission_classes = [HasKeyAndPlaceSignature]
         return [permission() for permission in permission_classes]

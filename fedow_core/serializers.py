@@ -221,6 +221,7 @@ class CardRefundOrVoidValidator(serializers.Serializer):
         self.transactions = transactions
         if attrs.get('action') == Transaction.VOID:
             self.user_card.user = None
+            self.user_card.primary_places.clear()
             self.user_card.wallet_ephemere = None
             self.user_card.save()
 
