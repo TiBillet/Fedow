@@ -501,16 +501,13 @@ class LinkWalletCardQrCode(serializers.Serializer):
         return card
 
 
-class WalletCreateSerializer(serializers.Serializer):
+class WalletCheckoutSerializer(serializers.Serializer):
     email = serializers.EmailField()
-
     card_first_tag_id = serializers.SlugRelatedField(slug_field='first_tag_id',
                                                      queryset=Card.objects.all(), required=False)
     card_qrcode_uuid = serializers.SlugRelatedField(slug_field='qrcode_uuid',
                                                     queryset=Card.objects.all(), required=False)
-
-    public_pem = serializers.CharField(max_length=512, required=False, allow_null=True)
-
+    public_pem = serializers.CharField(max_length=512)
 
     def validate_public_pem(self, value):
         try:
@@ -822,7 +819,6 @@ class TransactionW2W(serializers.Serializer):
             # Check if sender has enough value
             if token_sender.value < self.amount and action in [Transaction.SALE, Transaction.TRANSFER]:
                 logger.error(f"\n{timezone.localtime()} ERROR sender not enough value - {request}\n")
-                # import ipdb; ipdb.set_trace()
                 raise serializers.ValidationError("Not enough token on sender wallet")
         except Token.DoesNotExist:
             raise serializers.ValidationError("Sender token does not exist")

@@ -27,7 +27,7 @@ from fedow_core.models import Transaction, Place, Configuration, Asset, Checkout
     OrganizationAPIKey, Card, Federation, CreatePlaceAPIKey
 from fedow_core.permissions import HasKeyAndPlaceSignature, HasAPIKey, IsStripe, CanCreatePlace, \
     HasOrganizationAPIKeyOnly, HasWalletSignature, HasPlaceKeyAndWalletSignature
-from fedow_core.serializers import TransactionSerializer, WalletCreateSerializer, HandshakeValidator, \
+from fedow_core.serializers import TransactionSerializer, WalletCheckoutSerializer, HandshakeValidator, \
     TransactionW2W, CardSerializer, CardCreateValidator, \
     AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator, \
     FederationSerializer, BadgeValidator, WalletGetOrCreate, LinkWalletCardQrCode
@@ -184,11 +184,10 @@ class CardAPI(viewsets.ViewSet):
 
     @action(detail=False, methods=['post'])
     def get_checkout(self, request):
-        # Même sérializer que la création, sauf qu'on vérifie que le mail soit bien présent.
         if not request.data.get('email'):
             return Response("Email missing", status=status.HTTP_406_NOT_ACCEPTABLE)
 
-        serializer = WalletCreateSerializer(data=request.data, context={'request': request})
+        serializer = WalletCheckoutSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             add_metadata = {
                 "card_uuid": f"{serializer.card.uuid}",
@@ -397,13 +396,13 @@ class WalletAPI(viewsets.ViewSet):
         serializer = WalletSerializer(Wallet.objects.get(pk=pk), context={'request': request})
         return Response(serializer.data)
 
-    def create(self, request):
-        wallet_create_serializer = WalletCreateSerializer(data=request.data, context={'request': request})
-        if wallet_create_serializer.is_valid():
-            wallet_uuid = wallet_create_serializer.data['wallet']
-            return Response(f"{wallet_uuid}", status=status.HTTP_201_CREATED)
-
-        return Response(wallet_create_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    # def create(self, request):
+    #     wallet_create_serializer = WalletCreateSerializer(data=request.data, context={'request': request})
+    #     if wallet_create_serializer.is_valid():
+    #         wallet_uuid = wallet_create_serializer.data['wallet']
+    #         return Response(f"{wallet_uuid}", status=status.HTTP_201_CREATED)
+    #
+    #     return Response(wallet_create_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['POST'])
     def get_or_create(self, request):

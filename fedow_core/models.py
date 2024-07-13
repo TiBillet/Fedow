@@ -413,8 +413,8 @@ class Transaction(models.Model):
         # Si on utilise auto_now, le verify hash n'aura pas la même date car il est créé après le save, donc après le hash.
         self.last_check = timezone.localtime()
 
-        token_sender, created = Token.objects.get_or_create(wallet=self.sender, asset=self.asset)
-        token_receiver, created = Token.objects.get_or_create(wallet=self.receiver, asset=self.asset)
+        token_sender = Token.objects.get(wallet=self.sender, asset=self.asset)
+        token_receiver = Token.objects.get(wallet=self.receiver, asset=self.asset)
 
         ## Check previous transaction
         # Le hash ne peut se faire que si la transaction précédente est validée
@@ -926,6 +926,12 @@ def asset_creator(name: str = None,
         wallet_origin=wallet_origin,
         category=category,
         created_at=created_at,
+    )
+
+    # Création du token qui va envoyer et recevoir le premier block
+    token = Token.objects.create(
+        asset=asset,
+        wallet=wallet_origin,
     )
 
     # Création du premier block
