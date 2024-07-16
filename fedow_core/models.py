@@ -219,7 +219,9 @@ class Wallet(models.Model):
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=False)
     name = models.CharField(max_length=100, blank=True, null=True)
 
+    #Todo: plus utile, private stockée dans Lespass
     private_pem = models.CharField(max_length=2048, editable=False, null=True, blank=True)
+
     public_pem = models.CharField(max_length=512, editable=False, null=True, blank=True)
 
     ip = models.GenericIPAddressField(verbose_name="Ip source", default='0.0.0.0')

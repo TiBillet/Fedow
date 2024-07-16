@@ -189,18 +189,19 @@ class CardAPI(viewsets.ViewSet):
 
         serializer = WalletCheckoutSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
-            add_metadata = {
-                "card_uuid": f"{serializer.card.uuid}",
-            }
-            checkout_session = StripeAPI.create_stripe_checkout_for_federated_refill(user=serializer.user,
-                                                                                     add_metadata=add_metadata)
+            checkout_session = StripeAPI.create_stripe_checkout_for_federated_refill(
+                user=serializer.user,
+                add_metadata={
+                    "card_uuid": f"{serializer.card.uuid}",
+                },
+            )
+
             if checkout_session:
                 return Response(checkout_session.url, status=status.HTTP_202_ACCEPTED)
-            else :
+            else:
                 # Probablement pas de clé API Stripe, on envoie un
                 logger.warning(f"get_checkout : No stripe key provided on .env -> 417")
                 return Response('Ni stripe key provided', status=status.HTTP_417_EXPECTATION_FAILED)
-
 
         logger.error(f"get_checkout error : {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -281,7 +282,7 @@ class CardAPI(viewsets.ViewSet):
         if self.action in ['qr_retrieve', ]:
             # L'api Key de l'organisation au minimum
             permission_classes = [HasOrganizationAPIKeyOnly]
-        elif self.action in ['retrieve_card_by_signature', 'lost_my_card_by_signature' ]:
+        elif self.action in ['retrieve_card_by_signature', 'lost_my_card_by_signature']:
             permission_classes = [HasWalletSignature]
         else:
             permission_classes = [HasKeyAndPlaceSignature]
@@ -322,7 +323,7 @@ class WalletAPI(viewsets.ViewSet):
         )
         if checkout_session:
             return Response(checkout_session.url, status=status.HTTP_202_ACCEPTED)
-        else :
+        else:
             # Probablement pas de clé API Stripe, on envoie un
             logger.warning(f"get_federated_token_refill_checkout : No stripe key provided on .env -> 417")
             return Response('No stripe key provided', status=status.HTTP_417_EXPECTATION_FAILED)
@@ -374,11 +375,15 @@ class WalletAPI(viewsets.ViewSet):
         if not link_serializer.is_valid():
             return Response(link_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        #TODO: Peut être rajouter une condition pour éviter les vols de carte : l'un des deux wallet doit être vide ?
         logger.info("FUUUUuuUUSION !")
         card = link_serializer.validated_data['card_qrcode_uuid']
-        wallet_source = card.wallet_ephemere
-        wallet_target = link_serializer.validated_data['wallet']
+
+        wallet_source: Wallet = card.wallet_ephemere
+        wallet_target: Wallet = link_serializer.validated_data['wallet']
+
+        if wallet_target.tokens.all().count() > 0 and wallet_target.has_user_card():
+            # Pour éviter le vol de compte (si je possède l'email d'une personne, je peux linker son wallet avec une nouvelle carte vierge)
+            return Response('Wallet conflict : target wallet got a card with tokens.', status=status.HTTP_409_CONFLICT)
 
         fusionned_card = LinkWalletCardQrCode.fusion(
             card=card,
@@ -472,6 +477,7 @@ class PlaceAPI(viewsets.ViewSet):
         validator = PlaceValidator(data=request.data, context={'request': request})
         if validator.is_valid():
             seralized_place = validator.create_place()
+            # seralized_place = validator.migrate_place()
             return Response(seralized_place, status=status.HTTP_201_CREATED)
         return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -494,7 +500,7 @@ class PlaceAPI(viewsets.ViewSet):
                                "mais on est en mode test, on écrase. "
                                "On ajoute aussi le cashless de test à la federation de Test")
 
-            else :
+            else:
                 logger.error("link_cashless_to_place: Laboutik place already conf")
                 return Response("Laboutik place already conf", status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
@@ -529,14 +535,12 @@ class PlaceAPI(viewsets.ViewSet):
             place.cashless_admin_apikey = fernet_encrypt(validated_data.get('cashless_admin_apikey'))
             place.save()
 
-
             # Create the definitive key for the admin user
             api_key, place_fk, user = get_api_place_user(request)
             if place_fk != place:
                 raise Exception("Place not match with the API key")
             # Suppressoin de la clé temporaire
             api_key.delete()
-
 
             api_key, key = OrganizationAPIKey.objects.create_key(
                 name=f"{place.name}:{user.email}",
@@ -545,16 +549,14 @@ class PlaceAPI(viewsets.ViewSet):
             )
 
             if settings.TEST:
-                #Mode test, on ajoute ce nouveau lieu dans la federation de test
+                # Mode test, on ajoute ce nouveau lieu dans la federation de test
                 # request.place = place
                 self.add_me_to_test_fed(place)
 
-
             # Creation du lien Onboard Stripe seulement en prod
             url_onboard = ""
-            if not settings.TEST :
+            if not settings.TEST:
                 url_onboard = create_account_link_for_onboard(place)
-
 
             data = {
                 "url_onboard": url_onboard,
@@ -563,15 +565,13 @@ class PlaceAPI(viewsets.ViewSet):
                 # "place_wallet_public_pem": place.wallet.public_pem,
             }
 
-
-
             data_encoded = dict_to_b64_utf8(data)
-
 
             return Response(data_encoded, status=status.HTTP_202_ACCEPTED)
         return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def add_me_to_test_fed(self, place: Place):
+        # import ipdb; ipdb.set_trace()
         if settings.TEST:
             # Récupération du lieu dans le request
             logger.info("Test unitaire en route ! On ajoute dans la fédération de test "
@@ -582,7 +582,7 @@ class PlaceAPI(viewsets.ViewSet):
 
             # t'es le flush ou t'es le test ?
             # Si t'as un asset badge, tu es le flush TiBilletistan
-            try :
+            try:
                 # On ajoute l'asset principal, créé par un flush normal.
                 # Il sera testé dans LaBoutik
                 asset_badge = assets_created_by_the_place.get(category=Asset.BADGE)
@@ -591,7 +591,7 @@ class PlaceAPI(viewsets.ViewSet):
                 fed_test.assets.add(asset_adh)
                 fed_test.assets.add(asset_abo)
 
-            except Exception as e :
+            except Exception as e:
                 logger.info(e)
                 # T'as pas de badge, t'es un test, on t'ajoute juste dans la fédé
                 # TODO: Ajouter l'asset du premier lieu créé par flush et tester
@@ -611,13 +611,14 @@ class PlaceAPI(viewsets.ViewSet):
 
     # noinspection PyTestUnpassedFixture
     def get_permissions(self):
-        permission_classes = [HasKeyAndPlaceSignature]
         if self.action == 'handshake':
             permission_classes = [HasAPIKey]
-        if self.action == 'create':
+        elif self.action == 'create':
             permission_classes = [CanCreatePlace]
-        if self.action == 'link_cashless_to_place':
+        elif self.action == 'link_cashless_to_place':
             permission_classes = [HasPlaceKeyAndWalletSignature]
+        else :
+            permission_classes = [HasKeyAndPlaceSignature]
         return [permission() for permission in permission_classes]
 
 
@@ -800,7 +801,7 @@ def create_account_link_for_onboard(place: Place):
     conf = Configuration.get_solo()
 
     api_key = conf.get_stripe_api()
-    if not api_key :
+    if not api_key:
         return ""
     stripe.api_key = api_key
 
@@ -937,7 +938,7 @@ class TransactionAPI(viewsets.ViewSet):
         # wallet = sender OR receiver
         transactions = Transaction.objects.filter(Q(sender=wallet) | Q(receiver=wallet))
 
-        #On va récupérer aussi les transactions pour afficher ceux avant une éventuelle fusion
+        # On va récupérer aussi les transactions pour afficher ceux avant une éventuelle fusion
         if transactions.filter(action=Transaction.FUSION).exists():
             ex_wallet = transactions.filter(action=Transaction.FUSION).last().sender
             transactions = Transaction.objects.filter(Q(sender=wallet) | Q(receiver=wallet) |

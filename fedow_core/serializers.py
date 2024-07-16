@@ -441,6 +441,12 @@ class WalletGetOrCreate(serializers.Serializer):
         if FedowUser.objects.filter(email=email).exists():
             self.user = FedowUser.objects.get(email=email)
             # Check si pub == user pub
+
+            # if not self.user.wallet.public_pem:
+            #     self.user.wallet.public_pem = attrs.get('public_pem')
+            #     self.user.wallet.save()
+            #     self.created = True
+
             if attrs.get('public_pem') != self.user.wallet.public_pem:
                 raise serializers.ValidationError("Invalid pub pem")
 
@@ -505,8 +511,20 @@ class WalletCheckoutSerializer(serializers.Serializer):
     email = serializers.EmailField()
     card_first_tag_id = serializers.SlugRelatedField(slug_field='first_tag_id',
                                                      queryset=Card.objects.all(), required=False)
+
+    def validate(self, attrs):
+        # On trace l'ip de la requete
+        ip = None
+        request = self.context.get('request')
+        if request:
+            ip = get_request_ip(request)
+
+    """
+    # plus besoin, les pem et qrcode sont gérés par lespass
+
     card_qrcode_uuid = serializers.SlugRelatedField(slug_field='qrcode_uuid',
                                                     queryset=Card.objects.all(), required=False)
+
     public_pem = serializers.CharField(max_length=512)
 
     def validate_public_pem(self, value):
@@ -520,16 +538,12 @@ class WalletCheckoutSerializer(serializers.Serializer):
         print(f"public_key is_valid")
         self.sended_public_key = public_key
         return value
+    """
 
-    def validate(self, attrs):
-        # On trace l'ip de la requete
-        ip = None
-        request = self.context.get('request')
-        if request:
-            ip = get_request_ip(request)
 
-        #TODO : Une route pour une action ! Trop de if
-
+    """
+        # Methode utilisé uniquement pour les test strip de laboutik
+        
         # Récupération de l'email
         self.user = None
         email = attrs.get('email')
@@ -537,7 +551,7 @@ class WalletCheckoutSerializer(serializers.Serializer):
         if user_exist:
             self.user = FedowUser.objects.get(email=email)
 
-        card: Card = attrs.get('card_first_tag_id') or attrs.get('card_qrcode_uuid')
+        card: Card = attrs.get('card_first_tag_id')
         self.card = card
 
         # Si l'email seul est envoyé et qu'il n'existe pas : on le créé
@@ -599,6 +613,7 @@ class WalletCheckoutSerializer(serializers.Serializer):
         self.wallet = self.user.wallet
         representation['wallet'] = f"{self.user.wallet.uuid}"
         return representation
+    """
 
 
 class CardSerializer(serializers.ModelSerializer):

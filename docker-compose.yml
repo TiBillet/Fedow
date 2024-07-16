@@ -34,7 +34,6 @@ services:
       - "billetistan.tibillet.localhost:172.17.0.1"
       - "cashless.tibillet.localhost:172.17.0.1"
 
-
   fedow_nginx:
     image: nginx
     restart: always
