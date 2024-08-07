@@ -246,7 +246,7 @@ class CardCreateValidator(serializers.ModelSerializer):
 
         if self.origin.generation != value:
             raise serializers.ValidationError("One generation per request")
-
+        
         return value
 
     def create(self, validated_data):
@@ -257,7 +257,8 @@ class CardCreateValidator(serializers.ModelSerializer):
         is_primary = validated_data.pop('is_primary', False)
         validated_data.pop('generation')
         validated_data['origin'] = self.origin
-
+        
+        print(f"attemp to create card : {validated_data['number_printed']}")
         card = Card.objects.create(**validated_data)
         if is_primary:
             self.origin.place.primary_cards.add(card)
@@ -273,7 +274,7 @@ class CardCreateValidator(serializers.ModelSerializer):
                 token, created = Token.objects.get_or_create(uuid=pre_token.get("token_uuid"), asset=asset,
                                                              wallet=wallet)
                 print(f"token {token} created {created}")
-                sleep(0.1)
+                # sleep(0.1)
         return card
 
     class Meta:

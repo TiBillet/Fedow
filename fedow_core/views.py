@@ -486,9 +486,10 @@ class PlaceAPI(viewsets.ViewSet):
         place: Place = request.place
         user = request.wallet.user
 
+
         # TODO :A tester :
         if user not in place.admins.all():
-            logger.error("link_cashless_to_place : not an admin email")
+            logger.error(f"link_cashless_to_place : {user.email} not an admin email")
             return Response("not an admin email", status=status.HTTP_403_FORBIDDEN)
 
         # Ne se lance pas lors du premier Flush de Laboutik

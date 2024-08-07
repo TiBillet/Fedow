@@ -1,5 +1,6 @@
 database/db.sqlite3
 .env
+env*
 SaveDb
 logs/gunicorn.logs
 logs/nginxAccess.log

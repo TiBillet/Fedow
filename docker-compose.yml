@@ -68,4 +68,4 @@ networks:
   fedow_backend:
 
 
-# docker build -t fedow . && docker tag fedow tibillet/fedow:latest && docker tag fedow tibillet/fedow:0.9.5 && docker push tibillet/fedow:latest && docker push tibillet/fedow:0.9.5
+# docker build -t fedow . && docker tag fedow tibillet/fedow:latest && docker tag fedow tibillet/fedow:0.9.6 && docker push tibillet/fedow:latest && docker push tibillet/fedow:0.9.6
