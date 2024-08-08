@@ -1,4 +1,6 @@
 database/db.sqlite3
+backup/dumps/*.gz
+backup/dumps/*.sqlite3
 .env
 env*
 SaveDb
