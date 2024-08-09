@@ -394,6 +394,9 @@ class TokenSerializer(serializers.ModelSerializer):
 
             'is_primary_stripe_token',
             'last_transaction_datetime',
+
+            # Only for subscription or membership asset :
+            'start_membership_date',
         )
 
 

@@ -57,6 +57,8 @@ def asset_view(request, pk):
         # seulement les 50 dernières transactions :
         'transactions': asset.transactions.all().order_by('-datetime')[:50],
     }
+    if asset.category == Asset.SUBSCRIPTION:
+        return render(request, 'asset/asset_transactions_membership.html', context=context)
     return render(request, 'asset/asset_transactions.html', context=context)
 
 

@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 class CheckoutStripe(models.Model):
-    # Si recharge, alors un paiement stripe doit être lié
+    # Si recharge, un paiement stripe doit être lié
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
     datetime = models.DateTimeField(auto_now_add=True)
     checkout_session_id_stripe = models.CharField(max_length=80, editable=False, blank=True, null=True)
@@ -145,7 +145,7 @@ class Asset(models.Model):
         else:
             return _("No place federated with this asset")
 
-    # Retourne une list de uuid place
+    # Retourne une list d'uuid place
     def place_uuid_federated_with(self):
         places = set()
         for fed in self.federations.all():
@@ -273,11 +273,6 @@ class Token(models.Model):
     wallet = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name='tokens')
     asset = models.ForeignKey(Asset, on_delete=models.PROTECT, related_name='tokens')
 
-    def last_transaction_datetime(self):
-        last_transaction = self.asset.transactions.all().order_by('datetime').last()
-        if last_transaction:
-            return last_transaction.datetime
-        return None
 
     def name(self):
         return self.asset.name
@@ -295,6 +290,24 @@ class Token(models.Model):
         if self.asset.is_stripe_primary() and self.wallet.is_primary():
             return True
         return False
+
+    def last_transaction(self):
+        # The transaction the most recent
+        return self.asset.transactions.all().order_by('datetime').last()
+
+    def last_transaction_datetime(self):
+        last_transaction = self.last_transaction()
+        if last_transaction:
+            return last_transaction.datetime
+        return None
+
+    def start_membership_date(self):
+        # Only for membership asset
+        if self.asset.category == Asset.SUBSCRIPTION :
+            last_transaction: Transaction = self.last_transaction()
+            if last_transaction:
+                return last_transaction.subscription_start_datetime
+        return None
 
     def __str__(self):
         return f"{self.wallet.get_name()} - {self.asset.name} {self.value}"
