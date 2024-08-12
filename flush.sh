@@ -7,7 +7,7 @@ set -e
 if [ "$TEST" = "1" ]
 then
   poetry run ./manage.py migrate
-#  poetry run ./manage.py collectstatic --no-input
+  poetry run ./manage.py collectstatic --no-input
   poetry run ./manage.py flush --no-input
   poetry run ./manage.py install
   poetry run ./manage.py demo_data
