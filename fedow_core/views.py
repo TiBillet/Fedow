@@ -373,6 +373,7 @@ class WalletAPI(viewsets.ViewSet):
 
         link_serializer = LinkWalletCardQrCode(data=request.data, context={'request': request})
         if not link_serializer.is_valid():
+            logger.error(f"linkwallet_cardqrcode filter(user__isnull=True) : {link_serializer.errors}")
             return Response(link_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         logger.info("FUUUUuuUUSION !")
@@ -381,6 +382,7 @@ class WalletAPI(viewsets.ViewSet):
         wallet_source: Wallet = card.wallet_ephemere
         wallet_target: Wallet = link_serializer.validated_data['wallet']
 
+        #TODO: A remettre en prod !
         # if wallet_target.tokens.all().count() > 0 and wallet_target.has_user_card():
             # Pour éviter le vol de compte :
             # si je possède l'email d'une personne, je peux linker son wallet avec une nouvelle carte vierge de ma possession
