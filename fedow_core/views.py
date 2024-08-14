@@ -382,11 +382,10 @@ class WalletAPI(viewsets.ViewSet):
         wallet_source: Wallet = card.wallet_ephemere
         wallet_target: Wallet = link_serializer.validated_data['wallet']
 
-        #TODO: A remettre en prod !
-        # if wallet_target.tokens.all().count() > 0 and wallet_target.has_user_card():
+        if wallet_target.tokens.all().count() > 0 and wallet_target.has_user_card():
             # Pour éviter le vol de compte :
             # si je possède l'email d'une personne, je peux linker son wallet avec une nouvelle carte vierge de ma possession
-            # return Response('Wallet conflict : target wallet got a card with tokens.', status=status.HTTP_409_CONFLICT)
+            return Response('Wallet conflict : target wallet got a card with tokens.', status=status.HTTP_409_CONFLICT)
 
         fusionned_card = LinkWalletCardQrCode.fusion(
             card=card,
