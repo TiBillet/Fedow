@@ -292,8 +292,10 @@ class Token(models.Model):
         return False
 
     def last_transaction(self):
-        # The transaction the most recent
-        return self.asset.transactions.all().order_by('datetime').last()
+        # The transaction the most recent of the wallet
+        return self.asset.transactions.filter(
+            Q(sender=self.wallet) | Q(receiver=self.wallet)
+        ).order_by('datetime').last()
 
     def last_transaction_datetime(self):
         last_transaction = self.last_transaction()
