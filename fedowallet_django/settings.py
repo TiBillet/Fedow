@@ -38,8 +38,8 @@ TEST = os.environ.get('TEST') == 'True' or os.environ.get('TEST') == '1'
 
 ALLOWED_HOSTS = [os.environ['DOMAIN'], ]
 CSRF_TRUSTED_ORIGINS = [f"https://{os.environ['DOMAIN']}", ]
-# if DEBUG:
-#     ALLOWED_HOSTS.append('fedow.tibillet.localhost')
+if DEBUG:
+    ALLOWED_HOSTS.append('127.0.0.1') # pour webhook stripe test
 #     ALLOWED_HOSTS.append('*')
 #     CSRF_TRUSTED_ORIGINS.append('https://fedow.tibillet.localhost')
 
