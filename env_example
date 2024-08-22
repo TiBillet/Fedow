@@ -1,13 +1,23 @@
-SECRET_KEY=''
-FERNET_KEY=''
-DOMAIN=''
+##########################
+# TiBillet / Fedow
+# All the env are needed
+##########################
+
+SECRET_KEY='' # see documentation to create one
+FERNET_KEY='' # see documentation to create one
+DOMAIN='' # ex : fedow.tibillet.localhost
+
+# Prod or test key are needed
 STRIPE_KEY=''
+or
+STRIPE_KEY_TEST=''
+STRIPE_TEST=0 # set to 1 if only test key provided
 
-### FOR TEST AND DEBUG ###
 
+### OPTIONAL : FOR DEV & TEST ###
+# Don't push on production with 1 !
+
+STRIPE_ENDPOINT_SECRET_TEST=''
 DEBUG=0
 TEST=0
 
-STRIPE_TEST=0
-STRIPE_KEY_TEST=''
-STRIPE_ENDPOINT_SECRET_TEST=''
