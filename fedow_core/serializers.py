@@ -136,6 +136,7 @@ class WalletSerializer(serializers.ModelSerializer):
                 logger.info(f"{timezone.localtime()} WalletSerializer from PLACE : {request.place}")
                 place = request.place
                 assets = place.accepted_assets()
+                logger.info(f"{timezone.localtime()} Wallet : {obj}")
                 return TokenSerializer(obj.tokens.filter(wallet=obj, asset__in=assets), many=True).data
 
         # Si pas de lieu, on envoi tous les tokens du wallet
@@ -646,7 +647,7 @@ class CardSerializer(serializers.ModelSerializer):
         )
 
 
-class BadgeValidator(serializers.Serializer):
+class BadgeCardValidator(serializers.Serializer):
     first_tag_id = serializers.CharField(min_length=8, max_length=8)
     primary_card_firstTagId = serializers.CharField(min_length=8, max_length=8)
     asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all())
@@ -677,6 +678,34 @@ class BadgeValidator(serializers.Serializer):
             "metadata": self.initial_data,
             "primary_card": self.primary_card,
             "card": self.card,
+            "subscription_start_datetime": None
+        }
+        transaction = Transaction.objects.create(**transaction_dict)
+        self.transaction = transaction
+        return attrs
+
+class BadgeWalletValidator(serializers.Serializer):
+    asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all())
+    pos_uuid = serializers.UUIDField(required=False, allow_null=True)
+    pos_name = serializers.CharField(required=False, allow_null=True)
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        self.place: Place = request.place
+        self.wallet: Wallet = request.wallet
+
+        # TODO: Vérifier l'abonnement
+        transaction_dict = {
+            "ip": get_request_ip(request),
+            "checkout_stripe": None,
+            "sender": self.wallet,
+            "receiver": self.place.wallet,
+            "asset": attrs.get('asset'),
+            "amount": 0,
+            "action": Transaction.BADGE,
+            "metadata": self.initial_data,
+            "primary_card": None,
+            "card": None,
             "subscription_start_datetime": None
         }
         transaction = Transaction.objects.create(**transaction_dict)

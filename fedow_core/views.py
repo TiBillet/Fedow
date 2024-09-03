@@ -30,7 +30,7 @@ from fedow_core.permissions import HasKeyAndPlaceSignature, HasAPIKey, IsStripe,
 from fedow_core.serializers import TransactionSerializer, WalletCheckoutSerializer, HandshakeValidator, \
     TransactionW2W, CardSerializer, CardCreateValidator, \
     AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator, \
-    FederationSerializer, BadgeValidator, WalletGetOrCreate, LinkWalletCardQrCode
+    FederationSerializer, BadgeCardValidator, WalletGetOrCreate, LinkWalletCardQrCode, BadgeWalletValidator
 from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict, b64_to_data, get_request_ip, \
     get_public_key, rsa_encrypt_string
 from fedow_core.validators import PlaceValidator
@@ -162,7 +162,7 @@ class CardAPI(viewsets.ViewSet):
 
     @action(detail=False, methods=['post'])
     def badge(self, request):
-        validator = BadgeValidator(data=request.data, context={'request': request})
+        validator = BadgeCardValidator(data=request.data, context={'request': request})
         if validator.is_valid():
             transaction = validator.transaction
             transaction_serialized = TransactionSerializer(transaction, context={'request': request})
@@ -328,6 +328,17 @@ class WalletAPI(viewsets.ViewSet):
             logger.warning(f"get_federated_token_refill_checkout : No stripe key provided on .env -> 417")
             return Response('No stripe key provided', status=status.HTTP_417_EXPECTATION_FAILED)
 
+    # @action(detail=False, methods=['POST'])
+    # def badge(self, request):
+    #     validator = BadgeWalletValidator(data=request.data, context={'request': request})
+    #     if validator.is_valid():
+    #         transaction = validator.transaction
+    #         transaction_serialized = TransactionSerializer(transaction, context={'request': request})
+    #         return Response(transaction_serialized.data, status=status.HTTP_201_CREATED)
+    #
+    #     logger.error(f"{timezone.now()} Card update error : {validator.errors}")
+    #     return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)
+
     @action(detail=True, methods=['GET'])
     def retrieve_from_refill_checkout(self, request, pk=None):
         # C'est la methode statique StripeAPI qui fabrique le chackout pour refill :
@@ -384,7 +395,7 @@ class WalletAPI(viewsets.ViewSet):
 
         if wallet_target.tokens.all().count() > 0 and wallet_target.has_user_card():
             # Pour éviter le vol de compte :
-            # si je possède l'email d'une personne, je peux linker son wallet avec une nouvelle carte vierge de ma possession
+            # si je possède l'email d'une personne, je peux linker son wallet avec une nouvelle carte vierge de ma possession.
             return Response('Wallet conflict : target wallet got a card with tokens.', status=status.HTTP_409_CONFLICT)
 
         fusionned_card = LinkWalletCardQrCode.fusion(
@@ -487,7 +498,6 @@ class PlaceAPI(viewsets.ViewSet):
     def link_cashless_to_place(self, request):
         place: Place = request.place
         user = request.wallet.user
-
 
         # TODO :A tester :
         if user not in place.admins.all():
@@ -620,7 +630,7 @@ class PlaceAPI(viewsets.ViewSet):
             permission_classes = [CanCreatePlace]
         elif self.action == 'link_cashless_to_place':
             permission_classes = [HasPlaceKeyAndWalletSignature]
-        else :
+        else:
             permission_classes = [HasKeyAndPlaceSignature]
         return [permission() for permission in permission_classes]
 

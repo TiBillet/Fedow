@@ -9,7 +9,7 @@ DOMAIN='' # ex : fedow.tibillet.localhost
 
 # Prod or test key are needed
 STRIPE_KEY=''
-or
+# or
 STRIPE_KEY_TEST=''
 STRIPE_TEST=0 # set to 1 if only test key provided
 

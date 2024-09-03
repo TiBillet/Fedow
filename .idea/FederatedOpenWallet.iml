@@ -17,6 +17,7 @@
       <sourceFolder url="file://$MODULE_DIR$/fedow_dashboard/static" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/htmlcov" />
       <excludeFolder url="file://$MODULE_DIR$/www" />
+      <excludeFolder url="file://$MODULE_DIR$/logs" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
