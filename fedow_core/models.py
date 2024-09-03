@@ -308,7 +308,9 @@ class Token(models.Model):
         if self.asset.category == Asset.SUBSCRIPTION :
             last_transaction: Transaction = self.last_transaction()
             if last_transaction:
-                return last_transaction.subscription_start_datetime
+                if last_transaction.subscription_start_datetime:
+                    return last_transaction.subscription_start_datetime
+                return last_transaction.datetime
         return None
 
     def __str__(self):

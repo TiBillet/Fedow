@@ -248,8 +248,9 @@ class CardAPI(viewsets.ViewSet):
 
             logger.info(f"\nCHECK CARTE N° {card.number_printed} - TagId {card.first_tag_id}")
             for token in serializer.data['wallet']['tokens']:
-                logger.info(f"Asset {token['asset']['name']} : {dround(token['value'])}")
-            logger.info("\n")
+                logger.info(f"Asset {token['asset']['name']} : {dround(token['value'])}\n")
+
+            # import ipdb; ipdb.set_trace()
 
             return Response(serializer.data, status=status.HTTP_200_OK)
         except Card.DoesNotExist:
