@@ -731,14 +731,14 @@ class Place(models.Model):
         places, assets, wallets = set(), set(), set()
         for federation in self.federations.all():
             places.update(federation.places.all())
-            assets.update(federation.assets.all())
+            assets.update(federation.assets.filter(archive=False))
             wallets.update([place.wallet for place in federation.places.all()])
 
         # On a joute automatiquement l'asset stripe primaire
         assets.add(Asset.objects.get(category=Asset.STRIPE_FED_FIAT))
 
         # Les assets créé par le lieu
-        assets.update(self.wallet.assets_created.all())
+        assets.update(self.wallet.assets_created.filter(archive=False))
         # Soi-même
         wallets.add(self.wallet)
         places.add(self)

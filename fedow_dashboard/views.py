@@ -85,7 +85,7 @@ def index(request):
     """
     context = {
         'federations': Federation.objects.all(),
-        'assets': Asset.objects.all(),
+        'assets': Asset.objects.filter(archive=False),
         'places': Place.objects.all(),
         'wallets': Wallet.objects.all(),
         'cards': Card.objects.all(),
