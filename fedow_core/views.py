@@ -108,7 +108,7 @@ class AssetAPI(viewsets.ViewSet):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def list(self, request):
-        accepted_assets = request.place.ac&cepted_assets()
+        accepted_assets = request.place.accepted_assets()
         serializers = AssetSerializer(accepted_assets, many=True, context={'request': request})
         return Response(serializers.data)
 
