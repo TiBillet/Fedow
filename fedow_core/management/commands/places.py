@@ -1,13 +1,7 @@
-import base64
-import json
-
 from django.core.management.base import BaseCommand, CommandError
-from django.utils.text import slugify
-from rest_framework_api_key.models import APIKey
 
-from fedow_core.models import Asset, Place, Wallet, Configuration, get_or_create_user, OrganizationAPIKey, Federation, \
-    wallet_creator
-from fedow_core.utils import rsa_generator, dict_to_b64_utf8
+from fedow_core.models import Place, Configuration, get_or_create_user, OrganizationAPIKey, wallet_creator
+from fedow_core.utils import dict_to_b64_utf8
 
 """
 Pense bête :
@@ -80,7 +74,7 @@ class Command(BaseCommand):
                 except Place.DoesNotExist:
                     pass
 
-                #TODO: Passer par le validater CreatePlace :
+                # TODO: Passer par le validater CreatePlace :
                 # D'abord LesPass tenant, puis le cashless !
                 place = Place.objects.create(
                     name=place_name,

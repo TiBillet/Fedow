@@ -64,6 +64,7 @@ class Asset(models.Model):
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=False)
     name = models.CharField(max_length=100, unique=True)
     currency_code = models.CharField(max_length=3)
+    archive = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(default=timezone.now)
     last_update = models.DateTimeField(auto_now=True, verbose_name="Dernière modification des informations de l'asset")

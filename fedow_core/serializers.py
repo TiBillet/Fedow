@@ -717,7 +717,7 @@ class TransactionW2W(serializers.Serializer):
     amount = serializers.IntegerField()
     sender = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
     receiver = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
-    asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all())
+    asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.filter(archive=False))
     subscription_start_datetime = serializers.DateTimeField(required=False)
     action = serializers.ChoiceField(choices=Transaction.TYPE_ACTION, required=False, allow_null=True)
 
