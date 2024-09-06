@@ -48,7 +48,7 @@ class HandshakeValidator(serializers.Serializer):
         request = self.context.get('request')
         ip_from_request = get_request_ip(request)
         # Si on est en mode debug, on bypass la verification
-        if value != ip_from_request and not settings.DEBUG :
+        if value != ip_from_request and not settings.DEBUG:
             # TODO: en prod, on a toujours l'ip du docker ...
             logger.warning(f"{timezone.localtime()} WARNING Place create Invalid IP {value} != {ip_from_request}")
             # raise serializers.ValidationError("Invalid IP")
@@ -247,7 +247,7 @@ class CardCreateValidator(serializers.ModelSerializer):
 
         if self.origin.generation != value:
             raise serializers.ValidationError("One generation per request")
-        
+
         return value
 
     def create(self, validated_data):
@@ -258,7 +258,7 @@ class CardCreateValidator(serializers.ModelSerializer):
         is_primary = validated_data.pop('is_primary', False)
         validated_data.pop('generation')
         validated_data['origin'] = self.origin
-        
+
         print(f"attemp to create card : {validated_data['number_printed']}")
         card = Card.objects.create(**validated_data)
         if is_primary:
@@ -339,7 +339,7 @@ class AssetCreateValidator(serializers.Serializer):
     created_at = serializers.DateTimeField(required=False)
 
     def validate_name(self, value):
-        if Asset.objects.filter(name=value).exists():
+        if Asset.objects.filter(name=value, archive=False).exists():
             raise serializers.ValidationError("Asset already exists")
         return value
 
@@ -372,10 +372,9 @@ class AssetCreateValidator(serializers.Serializer):
         #     federation = Federation.objects.get(name='TEST FED')
         #     federation.assets.add(self.asset)
 
-        if self.asset:
-            return attrs
-        else:
+        if not self.asset:
             raise serializers.ValidationError("Asset creation failed")
+        return attrs
 
 
 class TokenSerializer(serializers.ModelSerializer):
@@ -472,7 +471,7 @@ class LinkWalletCardQrCode(serializers.Serializer):
                                                     queryset=Card.objects.filter(user__isnull=True))
 
     @staticmethod
-    def fusion(wallet_source: Wallet, wallet_target: Wallet, card: Card,  request_obj) -> Card:
+    def fusion(wallet_source: Wallet, wallet_target: Wallet, card: Card, request_obj) -> Card:
         # Fusion de deux wallets : On réalise une transaction de la totalité de chaque token de la source vers le wallet target
         # Exemple : On vide le wallet ephemere d'une carte en faveur du wallet de l'user
 
@@ -544,7 +543,6 @@ class WalletCheckoutSerializer(serializers.Serializer):
         self.sended_public_key = public_key
         return value
     """
-
 
     """
         # Methode utilisé uniquement pour les test strip de laboutik
@@ -684,6 +682,7 @@ class BadgeCardValidator(serializers.Serializer):
         self.transaction = transaction
         return attrs
 
+
 class BadgeWalletValidator(serializers.Serializer):
     asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all())
     pos_uuid = serializers.UUIDField(required=False, allow_null=True)
@@ -788,10 +787,10 @@ class TransactionW2W(serializers.Serializer):
             if not self.user_card:
                 raise serializers.ValidationError("User card is required for sale transaction")
             # Si le lieu du wallet est dans la délégation d'autorité du wallet de la carte
-            if not self.receiver in self.user_card.get_authority_delegation():
+            # if not self.receiver in self.user_card.get_authority_delegation():
                 # Place must be in card user wallet authority delegation
-                logger.warning(f"{timezone.localtime()} WARNING sender not in receiver authority delegation")
-                raise serializers.ValidationError("Unauthorized")
+                # logger.warning(f"{timezone.localtime()} WARNING sender not in receiver authority delegation")
+                # raise serializers.ValidationError("Unauthorized")
             if self.asset not in self.place.accepted_assets():
                 raise serializers.ValidationError("Asset not accepted")
             # Toute validation passée, c'est une vente
