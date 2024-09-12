@@ -9,6 +9,13 @@ from fedow_core.models import Place, Card, Origin
 
 
 class Command(BaseCommand):
+    # def add_arguments(self, parser):
+        # Positional arguments
+        # parser.add_argument('gen', action='store_true',
+        #                     help='Generation')
+        # parser.add_argument('place', action='store_true',
+        #                     help='Generation')
+
     def is_string_an_url(self, url_string):
         validate_url = URLValidator()
 

@@ -1,8 +1,8 @@
+from django.core.cache import cache
 from django.core.management.base import BaseCommand, CommandError
-from rest_framework_api_key.models import APIKey
 
 from fedow_core.models import Federation, Asset, Place
-from django.core.cache import cache
+
 cache.clear()
 
 class Command(BaseCommand):

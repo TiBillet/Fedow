@@ -30,7 +30,8 @@ from fedow_core.permissions import HasKeyAndPlaceSignature, HasAPIKey, IsStripe,
 from fedow_core.serializers import TransactionSerializer, WalletCheckoutSerializer, HandshakeValidator, \
     TransactionW2W, CardSerializer, CardCreateValidator, \
     AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator, \
-    FederationSerializer, BadgeCardValidator, WalletGetOrCreate, LinkWalletCardQrCode, BadgeWalletValidator
+    FederationSerializer, BadgeCardValidator, WalletGetOrCreate, LinkWalletCardQrCode, BadgeWalletValidator, \
+    OriginSerializer
 from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict, b64_to_data, get_request_ip, \
     get_public_key, rsa_encrypt_string
 from fedow_core.validators import PlaceValidator
@@ -206,6 +207,7 @@ class CardAPI(viewsets.ViewSet):
         logger.error(f"get_checkout error : {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
     @action(detail=True, methods=['get'])
     def qr_retrieve(self, request, pk=None):
         # Validator pk est bien un uudi ? :
@@ -216,9 +218,12 @@ class CardAPI(viewsets.ViewSet):
         # If usr is not created, we ask for the email
         # If the email is not active, we show only the refill button and the recent history
         wallet = card.get_wallet()
+
+        origin_serialized = OriginSerializer(card.origin).data
         data = {
             'wallet_uuid': wallet.uuid,
             'is_wallet_ephemere': card.is_wallet_ephemere(),
+            'origin': origin_serialized,
         }
         return Response(data, status=status.HTTP_200_OK)
 
@@ -342,16 +347,18 @@ class WalletAPI(viewsets.ViewSet):
 
     @action(detail=True, methods=['GET'])
     def retrieve_from_refill_checkout(self, request, pk=None):
-        # C'est la methode statique StripeAPI qui fabrique le chackout pour refill :
-        #   create_stripe_checkout_for_federated_refill
-        # Le retour stripe va vers lespas, qui va venir vérifier ici que le paiement s'est bien passé
+        # Fonction qui vérifie que le paiement a bien eu lieu.
+        # A la demande de LesPass
+
+        # Pour la fabrication du checkout, c'est la methode statique StripeAPI : create_stripe_checkout_for_federated_refill
+        # TODO: faire un serializer pour verifier checkout.user == user et checkout.place == place
         place = request.place
         wallet = request.wallet
         user = wallet.user
-        # TODO: faire un serializer pour verifier checkout.user == user et checkout.place == place
 
         checkout_db = get_object_or_404(CheckoutStripe, pk=pk)
         logger.warning(f"WEBHOOK GET: {checkout_db.status}")
+
         # On attend un peu, la vérification est déja en cours par le webhook POST
         now = timezone.now()
         while checkout_db.status == CheckoutStripe.PROGRESS \

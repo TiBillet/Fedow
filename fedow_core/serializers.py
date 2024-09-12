@@ -116,6 +116,7 @@ class PlaceSerializer(serializers.ModelSerializer):
             'dokos_id',
             'wallet',
             'stripe_connect_valid',
+            'lespass_domain',
         )
 
     def validate(self, attrs):
@@ -275,7 +276,6 @@ class CardCreateValidator(serializers.ModelSerializer):
                 token, created = Token.objects.get_or_create(uuid=pre_token.get("token_uuid"), asset=asset,
                                                              wallet=wallet)
                 print(f"token {token} created {created}")
-                # sleep(0.1)
         return card
 
     class Meta:

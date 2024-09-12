@@ -1,18 +1,11 @@
 import logging
-from collections import OrderedDict
-from time import sleep
 
-import stripe
-from cryptography.hazmat.primitives.asymmetric import rsa
 from django.conf import settings
-from django.utils import timezone
 from rest_framework import serializers
-from rest_framework.generics import get_object_or_404
 
-from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction, OrganizationAPIKey, Asset, Token, \
-    get_or_create_user, Origin, asset_creator, Configuration, Federation, CheckoutStripe, wallet_creator
+from fedow_core.models import Place, OrganizationAPIKey, get_or_create_user, wallet_creator
 from fedow_core.serializers import PlaceSerializer
-from fedow_core.utils import get_request_ip, get_public_key, dict_to_b64, verify_signature, dict_to_b64_utf8
+from fedow_core.utils import get_public_key
 
 logger = logging.getLogger(__name__)
 
