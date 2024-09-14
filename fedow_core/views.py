@@ -126,6 +126,17 @@ class AssetAPI(viewsets.ViewSet):
         serializer = AssetSerializer(asset, context={'request': request})
         return Response(serializer.data)
 
+    @action(detail=True, methods=['GET'])
+    def archive_asset(self, request, pk=None):
+        # Seul les place d'origin peuvent archiver
+        asset = get_object_or_404(Asset, pk=pk)
+        if request.place != asset.place_origin():
+            return Response('FORBIDDEN', status=status.HTTP_403_FORBIDDEN)
+
+        asset.archive = True
+        asset.save()
+        return Response('ARCHIVED', status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['POST'])
     def create_membership_asset(self, request):
         # Meme api que CREATE, mais depuis billetterie : c'est une adhésion ou une badgeuse
@@ -138,7 +149,7 @@ class AssetAPI(viewsets.ViewSet):
 
     def get_permissions(self):
         # Pour les routes depuis la billetterie : L'api Key de l'organisation au minimum
-        if self.action in ['retrieve_membership_asset', 'create_membership_asset']:
+        if self.action in ['retrieve_membership_asset', 'create_membership_asset', 'archive_asset']:
             permission_classes = [HasOrganizationAPIKeyOnly]
         else:
             permission_classes = [HasKeyAndPlaceSignature]
