@@ -788,9 +788,9 @@ class TransactionW2W(serializers.Serializer):
                 raise serializers.ValidationError("User card is required for sale transaction")
             # Si le lieu du wallet est dans la délégation d'autorité du wallet de la carte
             # if not self.receiver in self.user_card.get_authority_delegation():
-                # Place must be in card user wallet authority delegation
-                # logger.warning(f"{timezone.localtime()} WARNING sender not in receiver authority delegation")
-                # raise serializers.ValidationError("Unauthorized")
+            # Place must be in card user wallet authority delegation
+            # logger.warning(f"{timezone.localtime()} WARNING sender not in receiver authority delegation")
+            # raise serializers.ValidationError("Unauthorized")
             if self.asset not in self.place.accepted_assets():
                 raise serializers.ValidationError("Asset not accepted")
             # Toute validation passée, c'est une vente
@@ -974,45 +974,33 @@ class CachedTransactionSerializer(serializers.ModelSerializer):
         )
 
     def get_card(self, obj):
-        # Serializer card cached:
         if obj.card:
-            cached_serialized_card = cache.get(f'serialized_card_{obj.card.uuid}')
-            if not cached_serialized_card:
-                cached_serialized_card = CardSerializer(obj.card, many=False).data
-                cache.set(f'serialized_card_{obj.card.uuid}', cached_serialized_card, 300)
-            return cached_serialized_card
+            # get_or_set va toujours faire la fonction callable avant de vérifier le cache.
+            # Solution : soit retirer les () dans le callable, soit utiliser lambda si on a besoin de passer des arguments
+            return cache.get_or_set(f'serialized_card_{obj.card.uuid}',
+                                    lambda: CardSerializer(obj.card, many=False).data,
+                                    300)
         return None
 
     def get_serialized_asset(self, obj):
         if self.context.get('detailed_asset'):
-            # On met en cache pour éviter le flood de la db :
-            cached_serialized_asset = cache.get(f'serialized_asset_{obj.asset.uuid}')
-            if not cached_serialized_asset:
-                cached_serialized_asset = AssetSerializer(obj.asset).data
-                cache.set(f'serialized_asset_{obj.asset.uuid}', cached_serialized_asset, 300)
-            return cached_serialized_asset
+            return cache.get_or_set(f'serialized_asset_{obj.asset.uuid}',
+                                    lambda: AssetSerializer(obj.asset).data,
+                                    300)
         return None
 
     def get_serialized_sender(self, obj):
         if self.context.get('serialized_sender'):
-            # On met en cache pour éviter le flood de la db :
-            cached_serialized_wallet = cache.get(f'serialized_wallet_{obj.sender.uuid}')
-            if not cached_serialized_wallet:
-                cached_serialized_wallet = WalletSerializer(obj.sender).data
-                logger.info("serialized_wallet SET")
-                cache.set(f'serialized_wallet_{obj.sender.uuid}', cached_serialized_wallet, 300)
-            return cached_serialized_wallet
+            return cache.get_or_set(f'serialized_wallet_{obj.sender.uuid}',
+                                    lambda: WalletSerializer(obj.sender).data,
+                                    300)
         return None
 
     def get_serialized_receiver(self, obj):
         if self.context.get('serialized_receiver'):
-            # On met en cache pour éviter le flood de la db :
-            cached_serialized_wallet = cache.get(f'serialized_wallet_{obj.receiver.uuid}')
-            if not cached_serialized_wallet:
-                cached_serialized_wallet = WalletSerializer(obj.receiver).data
-                logger.info("serialized_wallet SET")
-                cache.set(f'serialized_wallet_{obj.receiver.uuid}', cached_serialized_wallet, 60)
-            return cached_serialized_wallet
+            return cache.get_or_set(f'serialized_wallet_{obj.receiver.uuid}',
+                                    lambda: WalletSerializer(obj.receiver).data,
+                                    300)
         return None
 
 
