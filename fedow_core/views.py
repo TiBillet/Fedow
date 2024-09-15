@@ -31,7 +31,7 @@ from fedow_core.serializers import TransactionSerializer, WalletCheckoutSerializ
     TransactionW2W, CardSerializer, CardCreateValidator, \
     AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator, \
     FederationSerializer, BadgeCardValidator, WalletGetOrCreate, LinkWalletCardQrCode, BadgeWalletValidator, \
-    OriginSerializer
+    OriginSerializer, CachedTransactionSerializer
 from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict, b64_to_data, get_request_ip, \
     get_public_key, rsa_encrypt_string
 from fedow_core.validators import PlaceValidator
@@ -980,7 +980,12 @@ class TransactionAPI(viewsets.ViewSet):
         paginator = StandardResultsSetPagination()
         page = paginator.paginate_queryset(transactions, request)
 
-        serializer = TransactionSerializer(page, many=True, context={
+        # On fabrique un sérializer avec moins d'info que le complet
+        # pour l'affichage de la liste des transactions.
+        # Moins preneur de ressources
+        # serializer = CachedTransactionSerializer(page, many=True, context={'request': request})
+
+        serializer = CachedTransactionSerializer(page, many=True, context={
             'request': request,
             'detailed_asset': True,
             'serialized_sender': True,

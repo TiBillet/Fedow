@@ -936,11 +936,13 @@ class TransactionW2W(serializers.Serializer):
         return attrs
 
 
-class TransactionSerializer(serializers.ModelSerializer):
-    card = CardSerializer(many=False)
+class CachedTransactionSerializer(serializers.ModelSerializer):
+    # Un serializer qui est sensé gérer plusieurs transaction par liste : on utilise le cache
+    # Utilisé uniquement pour la vue DERNIERE TRANSACTION de Lespass : my_account
     serialized_asset = serializers.SerializerMethodField()
     serialized_sender = serializers.SerializerMethodField()
     serialized_receiver = serializers.SerializerMethodField()
+    card = serializers.SerializerMethodField()
 
     class Meta:
         model = Transaction
@@ -968,22 +970,82 @@ class TransactionSerializer(serializers.ModelSerializer):
             "serialized_asset",
             "serialized_sender",
             "serialized_receiver",
+            "card",
         )
+
+    def get_card(self, obj):
+        # Serializer card cached:
+        if obj.card:
+            cached_serialized_card = cache.get(f'serialized_card_{obj.card.uuid}')
+            if not cached_serialized_card:
+                cached_serialized_card = CardSerializer(obj.card, many=False).data
+                cache.set(f'serialized_card_{obj.card.uuid}', cached_serialized_card, 300)
+            return cached_serialized_card
+        return None
 
     def get_serialized_asset(self, obj):
         if self.context.get('detailed_asset'):
-            return AssetSerializer(obj.asset).data
+            # On met en cache pour éviter le flood de la db :
+            cached_serialized_asset = cache.get(f'serialized_asset_{obj.asset.uuid}')
+            if not cached_serialized_asset:
+                cached_serialized_asset = AssetSerializer(obj.asset).data
+                cache.set(f'serialized_asset_{obj.asset.uuid}', cached_serialized_asset, 300)
+            return cached_serialized_asset
         return None
 
     def get_serialized_sender(self, obj):
         if self.context.get('serialized_sender'):
-            return WalletSerializer(obj.sender).data
+            # On met en cache pour éviter le flood de la db :
+            cached_serialized_wallet = cache.get(f'serialized_wallet_{obj.sender.uuid}')
+            if not cached_serialized_wallet:
+                cached_serialized_wallet = WalletSerializer(obj.sender).data
+                logger.info("serialized_wallet SET")
+                cache.set(f'serialized_wallet_{obj.sender.uuid}', cached_serialized_wallet, 300)
+            return cached_serialized_wallet
         return None
 
     def get_serialized_receiver(self, obj):
         if self.context.get('serialized_receiver'):
-            return WalletSerializer(obj.receiver).data
+            # On met en cache pour éviter le flood de la db :
+            cached_serialized_wallet = cache.get(f'serialized_wallet_{obj.receiver.uuid}')
+            if not cached_serialized_wallet:
+                cached_serialized_wallet = WalletSerializer(obj.receiver).data
+                logger.info("serialized_wallet SET")
+                cache.set(f'serialized_wallet_{obj.receiver.uuid}', cached_serialized_wallet, 60)
+            return cached_serialized_wallet
         return None
+
+
+class TransactionSerializer(serializers.ModelSerializer):
+    # Serializer gourmant :
+    # card va chercher le wallet et tous les assets/tokens associés
+    # Aucun cache utilisé, donne l'info en temps réel
+    card = CardSerializer(many=False)
+
+    class Meta:
+        model = Transaction
+        fields = (
+            "uuid",
+            "action",
+            "get_action_display",
+            "hash",
+            "datetime",
+            "subscription_first_datetime",
+            "subscription_start_datetime",
+            "subscription_type",
+            "last_check",
+            "sender",
+            "receiver",
+            "asset",
+            "amount",
+            "comment",
+            "metadata",
+            "card",
+            "primary_card",
+            "previous_transaction",
+            "comment",
+            "verify_hash",
+        )
 
 
 class FederationSerializer(serializers.ModelSerializer):
