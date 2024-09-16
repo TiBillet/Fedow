@@ -97,7 +97,7 @@ class Command(BaseCommand):
         )
 
         # Lancer stripe :
-        # stripe listen --forward-to http://127.0.0.1:8000/webhook_stripe/
+        # stripe listen --forward-to https://fedow.tibillet.localhost/webhook_stripe/ --skip-verify
         # S'assurer que la clé de signature soit la même que dans le .env
         line_items = [{
             "price": f"{id_price_stripe}",

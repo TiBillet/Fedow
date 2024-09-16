@@ -67,5 +67,6 @@ networks:
     external: true
   fedow_backend:
 
+# Pour test Stripe : stripe listen --forward-to https://fedow.tibillet.localhost/webhook_stripe/ --skip-verify
 
 # docker build -t fedow . && docker tag fedow tibillet/fedow:latest && docker tag fedow tibillet/fedow:0.9.6 && docker push tibillet/fedow:latest && docker push tibillet/fedow:0.9.6
