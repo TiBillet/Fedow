@@ -196,6 +196,8 @@ class CardAPI(viewsets.ViewSet):
 
     @action(detail=False, methods=['post'])
     def get_checkout(self, request):
+        #TODO: A virer, utilisé uniquement dans les tests laboutik
+        # Les tests devrait demander via lespass
         if not request.data.get('email'):
             return Response("Email missing", status=status.HTTP_406_NOT_ACCEPTABLE)
 
