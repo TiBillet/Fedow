@@ -684,6 +684,7 @@ class StripeAPI(viewsets.ViewSet):
         primary_token = Token.objects.get(uuid=unsigned_data.get('primary_token'))
         user_token = Token.objects.get(uuid=unsigned_data.get('user_token'))
 
+        # is_primary_stripe_token est le token stripe du wallet principal (pas le token stripe d'un wallet user)
         if not primary_token.is_primary_stripe_token():
             raise ValueError("Token not primary")
 
