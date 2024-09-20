@@ -194,6 +194,7 @@ class CardAPI(viewsets.ViewSet):
         card.save()
         return Response("OK", status=status.HTTP_200_OK)
 
+    """
     @action(detail=False, methods=['post'])
     def get_checkout(self, request):
         #TODO: A virer, utilisé uniquement dans les tests laboutik
@@ -219,6 +220,7 @@ class CardAPI(viewsets.ViewSet):
 
         logger.error(f"get_checkout error : {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    """
 
 
     @action(detail=True, methods=['get'])
