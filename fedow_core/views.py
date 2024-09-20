@@ -407,11 +407,11 @@ class WalletAPI(viewsets.ViewSet):
             return Response(link_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         logger.info("FUUUUuuUUSION !")
-        card = link_serializer.validated_data['card_qrcode_uuid']
+        card: Card = link_serializer.validated_data['card_qrcode_uuid']
 
-        wallet_source: Wallet = card.wallet_ephemere
+        wallet_source: Wallet = card.get_wallet()
         wallet_target: Wallet = link_serializer.validated_data['wallet']
-
+        import ipdb; ipdb.set_trace()
         if wallet_target.tokens.all().count() > 0 and wallet_target.has_user_card():
             # Pour éviter le vol de compte :
             # si je possède l'email d'une personne, je peux linker son wallet avec une nouvelle carte vierge de ma possession.
