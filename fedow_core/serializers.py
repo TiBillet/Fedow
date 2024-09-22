@@ -201,6 +201,8 @@ class CardRefundOrVoidValidator(serializers.Serializer):
         wallet: Wallet = self.user_card.get_wallet()
         self.ex_wallet_serialized = WalletSerializer(wallet, context=self.context).data
 
+        # C'est ici qu'on prend les asset à rembourser
+        # TODO: Selectionner aussi l'asset primaire
         for token in wallet.tokens.filter(
                 value__gt=0,
                 asset__wallet_origin=request.place.wallet,

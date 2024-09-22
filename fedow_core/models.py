@@ -543,7 +543,12 @@ class Transaction(models.Model):
             assert self.receiver.is_place(), "Receiver must be a place wallet"
             assert self.asset.wallet_origin == self.receiver, "Asset wallet_origin must be the place"
 
+            # Decrement token sende
             token_sender.value -= self.amount
+            # Not increment token recever : C'est un remboursement d'asset locale,
+            # le lieu a remboursé en espèce, il ne stocke plus l'asset
+            #TODO : Si c'est un asset fédéré, on incrémente ici car c'est le virement stripe qui décrémentera
+
 
         # ALL VALIDATOR PASSED : HASH CREATION
         if not self.hash:
