@@ -411,7 +411,6 @@ class WalletAPI(viewsets.ViewSet):
 
         wallet_source: Wallet = card.get_wallet()
         wallet_target: Wallet = link_serializer.validated_data['wallet']
-        import ipdb; ipdb.set_trace()
         if wallet_target.tokens.all().count() > 0 and wallet_target.has_user_card():
             # Pour éviter le vol de compte :
             # si je possède l'email d'une personne, je peux linker son wallet avec une nouvelle carte vierge de ma possession.
