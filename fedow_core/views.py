@@ -818,8 +818,6 @@ class StripeAPI(viewsets.ViewSet):
             checkout_session = stripe.checkout.Session.create(**data_checkout)
         except Exception as e:
             logger.error(f"Creation of Stripe Checkout error : {e}")
-            import ipdb;
-            ipdb.set_trace()
             raise Exception("Creation of Stripe Checkout error")
 
         checkout_db.checkout_session_id_stripe = checkout_session.id

@@ -188,7 +188,7 @@ AUTH_USER_MODEL = 'fedow_core.FedowUser'
 STRIPE_KEY_TEST = os.environ.get('STRIPE_KEY_TEST')
 STRIPE_KEY = os.environ.get('STRIPE_KEY')
 STRIPE_TEST = os.environ.get('STRIPE_TEST') == '1'
-if not STRIPE_KEY_TEST and not STRIPE_KEY:
+if not STRIPE_KEY_TEST and not STRIPE_KEY and not DEBUG:
     raise ValueError('STRIPE_KEY nor STRIPE_KEY_TEST')
 
 # -------------------------------------/

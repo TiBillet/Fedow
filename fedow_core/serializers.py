@@ -195,21 +195,33 @@ class CardRefundOrVoidValidator(serializers.Serializer):
         if self.primary_card not in request.place.primary_cards.all():
             raise serializers.ValidationError("Primary card must be in place primary cards")
 
+        # On s'assure que la place ai bien un token fédéré si besoin
+        if not self.place.wallet.tokens.filter(asset__category=Asset.STRIPE_FED_FIAT).exists():
+            stripe_fed = Asset.objects.get(category=Asset.STRIPE_FED_FIAT)
+            self.place.wallet.tokens.create(asset=stripe_fed)
+
         if not self.user_card:
             raise serializers.ValidationError("User card is required for void or refund")
 
         wallet: Wallet = self.user_card.get_wallet()
         self.ex_wallet_serialized = WalletSerializer(wallet, context=self.context).data
 
-        for token in wallet.tokens.filter(
+
+        # C'est ici qu'on prend les asset à rembourser
+        local_tokens = wallet.tokens.filter(
                 value__gt=0,
                 asset__wallet_origin=request.place.wallet,
-                asset__category__in=[Asset.TOKEN_LOCAL_FIAT, Asset.TOKEN_LOCAL_NOT_FIAT]):
+                asset__category__in=[Asset.TOKEN_LOCAL_FIAT, Asset.TOKEN_LOCAL_NOT_FIAT])
+        fed_token = wallet.tokens.filter(
+                value__gt=0,
+                asset__category=Asset.STRIPE_FED_FIAT)
+
+        for token in (local_tokens | fed_token ) :
             transaction_dict = {
                 "ip": get_request_ip(request),
                 "checkout_stripe": None,
                 "sender": self.user_card.get_wallet(),
-                "receiver": request.place.wallet,
+                "receiver": self.place.wallet,
                 "asset": token.asset,
                 "amount": token.value,
                 "action": Transaction.REFUND,

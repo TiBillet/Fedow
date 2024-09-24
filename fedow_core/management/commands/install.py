@@ -21,7 +21,7 @@ class Command(BaseCommand):
 
         try:
             logger.info("Try stripe api key")
-            if not os.environ.get('STRIPE_KEY_TEST') and not os.environ.get('STRIPE_KEY'):
+            if not os.environ.get('STRIPE_KEY_TEST') and not os.environ.get('STRIPE_KEY') and not settings.DEBUG:
                 raise ValueError('STRIPE_KEY nor STRIPE_KEY_TEST')
 
             logger.info("Configuration does not exist -> go install")
@@ -57,7 +57,6 @@ class Command(BaseCommand):
 
             # Primary federation creation
             primary_federation = Federation.objects.create(name="Fedow")
-
 
             # CONFIGURE STRIPE
             # Test si la clé stripe est ok
