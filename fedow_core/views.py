@@ -222,7 +222,6 @@ class CardAPI(viewsets.ViewSet):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     """
 
-
     @action(detail=True, methods=['get'])
     def qr_retrieve(self, request, pk=None):
         # Validator pk est bien un uudi ? :
@@ -323,6 +322,38 @@ class WalletAPI(viewsets.ViewSet):
         wallet: Wallet = request.wallet
         serializer = WalletSerializer(wallet, context={'request': request})
         return Response(serializer.data)
+
+    @action(detail=False, methods=['GET'])
+    def refund_fed_by_signature(self, request):
+        # La méthode d'auth diffère d'un retrive standard et donne le wallet plutot que le place
+        wallet: Wallet = request.wallet
+        fed_token = wallet.tokens.get(asset__category=Asset.STRIPE_FED_FIAT)
+        to_refund = fed_token.value
+
+        # le paiement le plus récent
+        # Peut être trouver le moyen de filtrer amount > to_refund ?
+        checkout_db = (CheckoutStripe.objects.filter(
+            status=CheckoutStripe.PAID,
+            user=wallet.user,
+        ).order_by('-datetime').first())
+
+        if not checkout_db:
+            logger.error("Pas de paiement stripe pour ce wallet")
+            return Response("Pas de paiement stripe pour ce wallet", status=status.HTTP_402_PAYMENT_REQUIRED)
+
+        try :
+            refund = checkout_db.refund_payment_intent(to_refund)
+        except Exception as e :
+            logger.error(f"refund not ok : {e}")
+            return Response(f"refund not ok : {e}", status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+        # lancer une transaction refund !
+        import ipdb;
+        ipdb.set_trace()
+
+        wallet.refresh_from_db()
+        serializer = WalletSerializer(wallet, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
 
     @action(detail=False, methods=['POST'])
     def get_federated_token_refill_checkout(self, request):
@@ -471,7 +502,9 @@ class WalletAPI(viewsets.ViewSet):
             permission_classes = [HasOrganizationAPIKeyOnly]
         elif self.action in [
             'retrieve_by_signature',
-            'linkwallet_cardqrcode', ]:
+            'linkwallet_cardqrcode',
+            'refund_fed_by_signature',
+        ]:
             permission_classes = [HasWalletSignature]
         elif self.action in [
             'retrieve_from_refill_checkout',

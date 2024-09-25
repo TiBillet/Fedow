@@ -10,6 +10,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractUser
 from django.core.cache import cache
+from django.core.signing import Signer
 from django.db import models
 from django.db.models import UniqueConstraint, Q, Sum
 from django.utils import timezone
@@ -18,8 +19,9 @@ from rest_framework_api_key.models import AbstractAPIKey
 from solo.models import SingletonModel
 from stdimage import JPEGField
 from stdimage.validators import MaxSizeValidator, MinSizeValidator
+from stripe import InvalidRequestError
 
-from fedow_core.utils import get_public_key, get_private_key, fernet_decrypt, fernet_encrypt, rsa_generator
+from fedow_core.utils import get_public_key, fernet_decrypt, fernet_encrypt, rsa_generator, utf8_b64_to_dict
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +53,39 @@ class CheckoutStripe(models.Model):
                               verbose_name="Statut de la commande")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='checkout_stripe')
     metadata = models.CharField(editable=False, db_index=False, max_length=500)
+
+    def unsign_metadata(self):
+        signer = Signer()
+        return utf8_b64_to_dict(signer.unsign(self.metadata))
+
+    def get_stripe_checkout(self):
+        config = Configuration.get_solo()
+        stripe.api_key = config.get_stripe_api()
+        checkout = stripe.checkout.Session.retrieve(self.checkout_session_id_stripe)
+        return checkout
+
+    def refund_payment_intent(self, amount):
+        if not amount :
+            raise Exception(f"CheckoutStripe Refund : {self.uuid} without amount")
+        config = Configuration.get_solo()
+        stripe.api_key = config.get_stripe_api()
+        checkout = stripe.checkout.Session.retrieve(self.checkout_session_id_stripe)
+        payment_intent = checkout.payment_intent
+        try :
+            refund = stripe.Refund.create(
+                payment_intent=payment_intent,
+                reason='requested_by_customer',
+                amount=amount,
+            )
+        except InvalidRequestError as e:
+            logger.error(f"CheckoutStripe Refund InvalidRequestError {e}")
+            raise InvalidRequestError(f"CheckoutStripe Refund InvalidRequestError {e}")
+        except Exception as e:
+            logger.error(f"CheckoutStripe Refund Exception : {e}")
+            raise e
+
+        return refund
+
 
     def __str__(self):
         self.user: FedowUser
