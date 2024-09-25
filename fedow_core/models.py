@@ -576,18 +576,23 @@ class Transaction(models.Model):
 
         if self.action == Transaction.REFUND:
             assert self.amount == token_sender.value, "Amount must be equal to token sender value, we clear the ephemeral wallet"
-            assert self.receiver.is_place(), "Receiver must be a place wallet"
+
+            # Pour les assets locaux et cadeaux :
             if self.asset.category != Asset.STRIPE_FED_FIAT:
+                assert self.receiver.is_place(), "Receiver must be a place wallet"
                 assert self.asset.wallet_origin == self.receiver, "Asset wallet_origin must be the place"
 
-            # Decrement token sender
+            # Decrement token user qui se fait rembourser
             token_sender.value -= self.amount
             # Ne pas incrémenter le wallet place si c'est un remboursement d'asset locale,
             # le lieu a remboursé en espèce, il ne stocke plus l'asset
 
-            # Si c'est un asset fédéré, on incrémente ici car c'est le virement stripe des vrai € qui décrémentera
-            if self.asset.category == Asset.STRIPE_FED_FIAT:
+            # Si c'est un asset fédéré et un lieu qui rembourse, on incrémente le wallet du lieu
+            # pour pouvoir le rembourser dans un deuxième temps : il a remboursé en espèce l'user
+            # Si c'est STRIPE FED mais pas lieu : c'est un remboursement d'user en ligne
+            if self.asset.category == Asset.STRIPE_FED_FIAT and self.receiver.is_place():
                 token_receiver.value += self.amount
+
 
         # ALL VALIDATOR PASSED : HASH CREATION
         if not self.hash:

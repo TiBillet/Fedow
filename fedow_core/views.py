@@ -348,8 +348,22 @@ class WalletAPI(viewsets.ViewSet):
             return Response(f"refund not ok : {e}", status=status.HTTP_409_CONFLICT)
 
         # lancer une transaction refund !
-        import ipdb;
-        ipdb.set_trace()
+
+        import ipdb; ipdb.set_trace()
+        transaction_dict = {
+            "ip": get_request_ip(request),
+            "checkout_stripe": checkout_db,
+            "sender": wallet,
+            "receiver": wallet,
+            "asset": fed_token.asset,
+            "amount": to_refund,
+            "action": Transaction.REFUND,
+            "primary_card": None,
+            "card": None,
+            "subscription_start_datetime": None
+        }
+        transaction = Transaction.objects.create(**transaction_dict)
+        transactions.append(TransactionSerializer(transaction, context=self.context).data)
 
         wallet.refresh_from_db()
         serializer = WalletSerializer(wallet, context={'request': request})
