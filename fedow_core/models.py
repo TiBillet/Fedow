@@ -79,7 +79,7 @@ class CheckoutStripe(models.Model):
             )
         except InvalidRequestError as e:
             logger.error(f"CheckoutStripe Refund InvalidRequestError {e}")
-            raise InvalidRequestError(f"CheckoutStripe Refund InvalidRequestError {e}")
+            raise Exception(f"CheckoutStripe Refund InvalidRequestError {e}")
         except Exception as e:
             logger.error(f"CheckoutStripe Refund Exception : {e}")
             raise e

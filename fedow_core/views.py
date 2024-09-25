@@ -345,7 +345,7 @@ class WalletAPI(viewsets.ViewSet):
             refund = checkout_db.refund_payment_intent(to_refund)
         except Exception as e :
             logger.error(f"refund not ok : {e}")
-            return Response(f"refund not ok : {e}", status=status.HTTP_405_METHOD_NOT_ALLOWED)
+            return Response(f"refund not ok : {e}", status=status.HTTP_409_CONFLICT)
 
         # lancer une transaction refund !
         import ipdb;
