@@ -274,7 +274,7 @@ class Wallet(models.Model):
     def is_primary(self):
         # primary is the related name of the Wallet Configuration foreign key
         # On peux récupérer cet object dans les controleurs de cette façon : Wallet.objects.get(primary__isnull=False)
-        if getattr(self, 'primary', None):
+        if getattr(self, 'primary', False):
             # le self.primary devrait suffire (config est un singleton),
             # mais on vérifie quand même
             if self.primary == Configuration.get_solo():
@@ -282,7 +282,7 @@ class Wallet(models.Model):
         return False
 
     def is_place(self):
-        if getattr(self, 'place', None):
+        if getattr(self, 'place', False):
             return True
         return False
 
@@ -590,7 +590,9 @@ class Transaction(models.Model):
             # Si c'est un asset fédéré et un lieu qui rembourse, on incrémente le wallet du lieu
             # pour pouvoir le rembourser dans un deuxième temps : il a remboursé en espèce l'user
             # Si c'est STRIPE FED mais pas lieu : c'est un remboursement d'user en ligne
-            if self.asset.category == Asset.STRIPE_FED_FIAT and self.receiver.is_place():
+            if (self.asset.category == Asset.STRIPE_FED_FIAT
+                    and self.receiver.is_place())\
+                    and not self.receiver.is_primary() :
                 token_receiver.value += self.amount
 
 

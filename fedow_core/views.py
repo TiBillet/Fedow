@@ -329,6 +329,9 @@ class WalletAPI(viewsets.ViewSet):
         wallet: Wallet = request.wallet
         fed_token = wallet.tokens.get(asset__category=Asset.STRIPE_FED_FIAT)
         to_refund = fed_token.value
+        # Le wallet primaire qui sera le receiver :
+        config = Configuration.get_solo()
+        primary_wallet = config.primary_wallet
 
         # le paiement le plus récent
         # Peut être trouver le moyen de filtrer amount > to_refund ?
@@ -347,14 +350,17 @@ class WalletAPI(viewsets.ViewSet):
             logger.error(f"refund not ok : {e}")
             return Response(f"refund not ok : {e}", status=status.HTTP_409_CONFLICT)
 
-        # lancer une transaction refund !
+        if not refund.status == 'succeeded':
+            logger.error(f"refund not succeeded : {refund}")
+            return Response(f"refund not succeeded : {refund}", status=status.HTTP_406_NOT_ACCEPTABLE)
 
-        import ipdb; ipdb.set_trace()
+
+        # lancer une transaction refund !
         transaction_dict = {
             "ip": get_request_ip(request),
             "checkout_stripe": checkout_db,
             "sender": wallet,
-            "receiver": wallet,
+            "receiver": primary_wallet,
             "asset": fed_token.asset,
             "amount": to_refund,
             "action": Transaction.REFUND,
@@ -363,7 +369,6 @@ class WalletAPI(viewsets.ViewSet):
             "subscription_start_datetime": None
         }
         transaction = Transaction.objects.create(**transaction_dict)
-        transactions.append(TransactionSerializer(transaction, context=self.context).data)
 
         wallet.refresh_from_db()
         serializer = WalletSerializer(wallet, context={'request': request})
