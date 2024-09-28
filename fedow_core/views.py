@@ -3,6 +3,7 @@ import time
 from datetime import timedelta
 from decimal import Decimal
 from io import StringIO
+from unicodedata import category
 from uuid import UUID
 
 import stripe
@@ -30,7 +31,7 @@ from fedow_core.permissions import HasKeyAndPlaceSignature, HasAPIKey, IsStripe,
 from fedow_core.serializers import TransactionSerializer, WalletCheckoutSerializer, HandshakeValidator, \
     TransactionW2W, CardSerializer, CardCreateValidator, \
     AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator, \
-    FederationSerializer, BadgeCardValidator, WalletGetOrCreate, LinkWalletCardQrCode, BadgeWalletValidator, \
+    FederationSerializer, BadgeCardValidator, WalletGetOrCreate, LinkWalletCardQrCode, BadgeByWalletSignatureValidator, \
     OriginSerializer, CachedTransactionSerializer
 from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict, b64_to_data, get_request_ip, \
     get_public_key, rsa_encrypt_string
@@ -349,16 +350,32 @@ class WalletAPI(viewsets.ViewSet):
             logger.warning(f"get_federated_token_refill_checkout : No stripe key provided on .env -> 417")
             return Response('No stripe key provided', status=status.HTTP_417_EXPECTATION_FAILED)
 
-    # @action(detail=False, methods=['POST'])
-    # def badge(self, request):
-    #     validator = BadgeWalletValidator(data=request.data, context={'request': request})
-    #     if validator.is_valid():
-    #         transaction = validator.transaction
-    #         transaction_serialized = TransactionSerializer(transaction, context={'request': request})
-    #         return Response(transaction_serialized.data, status=status.HTTP_201_CREATED)
-    #
-    #     logger.error(f"{timezone.now()} Card update error : {validator.errors}")
-    #     return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)
+    @action(detail=True, methods=['GET'])
+    def badge(self, request, pk):
+        asset = get_object_or_404(Asset, pk=pk, category=Asset.BADGE)
+        wallet: Wallet = request.wallet
+        place: Place = request.place
+
+        # creation des tokens si premiere fois
+        Token.objects.get_or_create(wallet=wallet, asset=asset)
+        Token.objects.get_or_create(wallet=place.wallet, asset=asset)
+
+        transaction_dict = {
+            "ip": get_request_ip(request),
+            "checkout_stripe": None,
+            "sender": wallet,
+            "receiver": place.wallet,
+            "asset": asset,
+            "amount": 0,
+            "action": Transaction.BADGE,
+            "metadata": None,
+            "primary_card": None,
+            "card": None,
+            "subscription_start_datetime": None
+        }
+        transaction = Transaction.objects.create(**transaction_dict)
+        transaction_serialized = TransactionSerializer(transaction, context={'request': request})
+        return Response(transaction_serialized.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['GET'])
     def retrieve_from_refill_checkout(self, request, pk=None):
@@ -430,6 +447,8 @@ class WalletAPI(viewsets.ViewSet):
         serializer = CardSerializer(fusionned_card, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+
+
     ### END ROUTE LESPAS
 
     def retrieve(self, request, pk=None):
@@ -475,7 +494,7 @@ class WalletAPI(viewsets.ViewSet):
             permission_classes = [HasWalletSignature]
         elif self.action in [
             'retrieve_from_refill_checkout',
-            'get_federated_token_refill_checkout', ]:
+            'get_federated_token_refill_checkout', 'badge']:
             permission_classes = [HasPlaceKeyAndWalletSignature, ]
         else:
             permission_classes = [HasKeyAndPlaceSignature]
@@ -985,8 +1004,6 @@ class TransactionAPI(viewsets.ViewSet):
         # On fabrique un sérializer avec moins d'info que le complet
         # pour l'affichage de la liste des transactions.
         # Moins preneur de ressources
-        # serializer = CachedTransactionSerializer(page, many=True, context={'request': request})
-
         serializer = CachedTransactionSerializer(page, many=True, context={
             'request': request,
             'detailed_asset': True,
@@ -998,6 +1015,38 @@ class TransactionAPI(viewsets.ViewSet):
 
         return paginator.get_paginated_response(serializer.data)
         # return Response(serializer.data)
+
+
+    @action(detail=False, methods=['GET'])
+    def retrieve_badge_with_signature(self, request):
+        wallet: Wallet = request.wallet
+        transactions = wallet.transactions_sent.filter(
+            action=Transaction.BADGE).order_by('card', 'datetime')
+        # Apply pagination
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(transactions, request)
+        serializer = CachedTransactionSerializer(page, many=True, context={
+            'request': request,
+            'detailed_asset': True,
+            'serialized_sender': True,
+            'serialized_receiver': True,
+        })
+        return paginator.get_paginated_response(serializer.data)
+
+
+    @action(detail=True, methods=['GET'])
+    def badge_with_signature(self, request, pk=None):
+        asset = get_object_or_404(Asset, uuid=pk)
+        import ipdb; ipdb.set_trace()
+        validator = BadgeCardValidator(data=request.data, context={'request': request})
+        if validator.is_valid():
+            transaction = validator.transaction
+            transaction_serialized = TransactionSerializer(transaction, context={'request': request})
+            return Response(transaction_serialized.data, status=status.HTTP_201_CREATED)
+
+        logger.error(f"{timezone.now()} Card update error : {validator.errors}")
+        return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
     def list(self, request):
         serializer = TransactionSerializer(Transaction.objects.all(), many=True, context={'request': request})
@@ -1033,7 +1082,8 @@ class TransactionAPI(viewsets.ViewSet):
         if self.action in ['create_membership', ]:
             permission_classes = [HasPlaceKeyAndWalletSignature]
         elif self.action in [
-            'paginated_list_by_wallet_signature', ]:
+            'paginated_list_by_wallet_signature',
+            'retrieve_badge_with_signature',]:
             permission_classes = [HasWalletSignature]
         elif self.action in ['retrieve', ]:
             permission_classes = [AllowAny]

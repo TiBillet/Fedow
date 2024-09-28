@@ -683,7 +683,6 @@ class BadgeCardValidator(serializers.Serializer):
         # creation du token badge s'il n'existe pas :
         Token.objects.get_or_create(wallet=place.wallet, asset=asset)
 
-        # TODO: Vérifier l'abonnement
         transaction_dict = {
             "ip": get_request_ip(request),
             "checkout_stripe": None,
@@ -702,22 +701,19 @@ class BadgeCardValidator(serializers.Serializer):
         return attrs
 
 
-class BadgeWalletValidator(serializers.Serializer):
-    asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all())
-    pos_uuid = serializers.UUIDField(required=False, allow_null=True)
-    pos_name = serializers.CharField(required=False, allow_null=True)
+class BadgeByWalletSignatureValidator(serializers.Serializer):
+    asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.filter(category=Asset.BADGE))
 
     def validate(self, attrs):
         request = self.context.get('request')
-        self.place: Place = request.place
-        self.wallet: Wallet = request.wallet
+        place: Place = request.place
+        wallet: Wallet = request.wallet
 
-        # TODO: Vérifier l'abonnement
         transaction_dict = {
             "ip": get_request_ip(request),
             "checkout_stripe": None,
-            "sender": self.wallet,
-            "receiver": self.place.wallet,
+            "sender": wallet,
+            "receiver": place.wallet,
             "asset": attrs.get('asset'),
             "amount": 0,
             "action": Transaction.BADGE,
