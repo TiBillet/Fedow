@@ -660,7 +660,7 @@ class CardSerializer(serializers.ModelSerializer):
 class BadgeCardValidator(serializers.Serializer):
     first_tag_id = serializers.CharField(min_length=8, max_length=8)
     primary_card_firstTagId = serializers.CharField(min_length=8, max_length=8)
-    asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all())
+    asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.filter(category=Asset.BADGE))
     pos_uuid = serializers.UUIDField(required=False, allow_null=True)
     pos_name = serializers.CharField(required=False, allow_null=True)
 
@@ -673,16 +673,23 @@ class BadgeCardValidator(serializers.Serializer):
         return primary_card_firstTagId
 
     def validate(self, attrs):
+        asset: Asset = attrs.get('asset')
+        # création du token badge s'il n'existe pas :
+        card_wallet = self.card.get_wallet()
+        Token.objects.get_or_create(wallet=card_wallet, asset=asset)
+
         request = self.context.get('request')
-        self.place: Place = request.place
+        place: Place = request.place
+        # creation du token badge s'il n'existe pas :
+        Token.objects.get_or_create(wallet=place.wallet, asset=asset)
 
         # TODO: Vérifier l'abonnement
         transaction_dict = {
             "ip": get_request_ip(request),
             "checkout_stripe": None,
-            "sender": self.card.get_wallet(),
-            "receiver": request.place.wallet,
-            "asset": attrs.get('asset'),
+            "sender": card_wallet,
+            "receiver": place.wallet,
+            "asset": asset,
             "amount": 0,
             "action": Transaction.BADGE,
             "metadata": self.initial_data,
