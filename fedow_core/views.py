@@ -333,27 +333,30 @@ class WalletAPI(viewsets.ViewSet):
         config = Configuration.get_solo()
         primary_wallet = config.primary_wallet
 
-        # le paiement le plus récent
-        # Peut être trouver le moyen de filtrer amount > to_refund ?
-        checkout_db = (CheckoutStripe.objects.filter(
-            status=CheckoutStripe.PAID,
-            user=wallet.user,
-        ).order_by('-datetime').first())
+        # le paiement le plus récent suppérieur à ce qu'il faut rembourser
+        checkout_db = None
+        for checkout in CheckoutStripe.objects.filter(
+                status=CheckoutStripe.PAID,
+                user=wallet.user).order_by('-datetime'):
+            checkout_stripe = checkout.get_stripe_checkout()
+            amount_total = checkout_stripe.amount_total
+            if amount_total >= to_refund:
+                checkout_db = checkout
+                break
 
         if not checkout_db:
             logger.error("Pas de paiement stripe pour ce wallet")
             return Response("Pas de paiement stripe pour ce wallet", status=status.HTTP_402_PAYMENT_REQUIRED)
 
-        try :
+        try:
             refund = checkout_db.refund_payment_intent(to_refund)
-        except Exception as e :
+        except Exception as e:
             logger.error(f"refund not ok : {e}")
             return Response(f"refund not ok : {e}", status=status.HTTP_409_CONFLICT)
 
         if not refund.status == 'succeeded':
             logger.error(f"refund not succeeded : {refund}")
             return Response(f"refund not succeeded : {refund}", status=status.HTTP_406_NOT_ACCEPTABLE)
-
 
         # lancer une transaction refund !
         transaction_dict = {
