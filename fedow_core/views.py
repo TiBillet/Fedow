@@ -1017,22 +1017,6 @@ class TransactionAPI(viewsets.ViewSet):
         # return Response(serializer.data)
 
 
-    @action(detail=False, methods=['GET'])
-    def retrieve_badge_with_signature(self, request):
-        wallet: Wallet = request.wallet
-        transactions = wallet.transactions_sent.filter(
-            action=Transaction.BADGE).order_by('card', 'datetime')
-        # Apply pagination
-        paginator = StandardResultsSetPagination()
-        page = paginator.paginate_queryset(transactions, request)
-        serializer = CachedTransactionSerializer(page, many=True, context={
-            'request': request,
-            'detailed_asset': True,
-            'serialized_sender': True,
-            'serialized_receiver': True,
-        })
-        return paginator.get_paginated_response(serializer.data)
-
 
     @action(detail=True, methods=['GET'])
     def badge_with_signature(self, request, pk=None):
