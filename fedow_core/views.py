@@ -1021,7 +1021,6 @@ class TransactionAPI(viewsets.ViewSet):
     @action(detail=True, methods=['GET'])
     def badge_with_signature(self, request, pk=None):
         asset = get_object_or_404(Asset, uuid=pk)
-        import ipdb; ipdb.set_trace()
         validator = BadgeCardValidator(data=request.data, context={'request': request})
         if validator.is_valid():
             transaction = validator.transaction
