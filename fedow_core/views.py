@@ -188,12 +188,16 @@ class CardAPI(viewsets.ViewSet):
     def set_primary(self, request):
         place: Place = request.place
         card = Card.objects.get(first_tag_id=request.data.get('first_tag_id'))
-        if place in card.primary_places.all():
-            return Response("Déja OK", status=status.HTTP_208_ALREADY_REPORTED)
-
-        card.primary_places.add(place)
-        card.save()
-        return Response("OK", status=status.HTTP_200_OK)
+        delete = request.data.get('delete')
+        if delete :
+            card.primary_places.remove(place)
+            return Response("remove ok", status=status.HTTP_205_RESET_CONTENT)
+        else :
+            if place in card.primary_places.all():
+                return Response("Déja OK", status=status.HTTP_208_ALREADY_REPORTED)
+            card.primary_places.add(place)
+            card.save()
+            return Response("OK", status=status.HTTP_200_OK)
 
     """
     @action(detail=False, methods=['post'])
