@@ -3,7 +3,7 @@ FROM python:3.10-bullseye
 RUN apt update
 RUN apt upgrade -y
 
-RUN apt-get install -y nano iputils-ping curl borgbackup cron git
+RUN apt-get install -y nano iputils-ping curl borgbackup cron git sqlite3
 
 RUN useradd -ms /bin/bash fedow
 USER fedow
