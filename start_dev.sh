@@ -14,6 +14,9 @@ echo "Poetry install ok"
 
 echo "Dev mode : sleep infinity"
 echo "To start the server : rsp"
+sqlite3 ./database/db.sqlite3 'PRAGMA journal_mode=WAL;'
+sqlite3 ./database/db.sqlite3 'PRAGMA synchronous=normal;'
+
 sleep infinity
 
 #echo "Run GUNICORN"
