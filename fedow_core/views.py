@@ -1038,13 +1038,13 @@ class TransactionAPI(viewsets.ViewSet):
         serializer = TransactionSerializer(Transaction.objects.all(), many=True, context={'request': request})
         return Response(serializer.data)
 
-    def retrieve(self, request, pk=None):
+    def retrieve(self, request, pk):
         transaction = get_object_or_404(Transaction, uuid=pk)
         serializer = TransactionSerializer(transaction, context={'request': request})
         return Response(serializer.data)
 
     @action(detail=True, methods=['GET'])
-    def get_from_hash(self, request, pk=None):
+    def get_from_hash(self, request, pk):
         transaction = get_object_or_404(Transaction, hash=pk)
         serializer = TransactionSerializer(transaction, context={'request': request})
         return Response(serializer.data)
