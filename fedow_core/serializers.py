@@ -206,17 +206,16 @@ class CardRefundOrVoidValidator(serializers.Serializer):
         wallet: Wallet = self.user_card.get_wallet()
         self.ex_wallet_serialized = WalletSerializer(wallet, context=self.context).data
 
-
         # C'est ici qu'on prend les asset à rembourser
         local_tokens = wallet.tokens.filter(
-                value__gt=0,
-                asset__wallet_origin=request.place.wallet,
-                asset__category__in=[Asset.TOKEN_LOCAL_FIAT, Asset.TOKEN_LOCAL_NOT_FIAT])
+            value__gt=0,
+            asset__wallet_origin=request.place.wallet,
+            asset__category__in=[Asset.TOKEN_LOCAL_FIAT, Asset.TOKEN_LOCAL_NOT_FIAT])
         fed_token = wallet.tokens.filter(
-                value__gt=0,
-                asset__category=Asset.STRIPE_FED_FIAT)
+            value__gt=0,
+            asset__category=Asset.STRIPE_FED_FIAT)
 
-        for token in (local_tokens | fed_token ) :
+        for token in (local_tokens | fed_token):
             transaction_dict = {
                 "ip": get_request_ip(request),
                 "checkout_stripe": None,
@@ -390,8 +389,104 @@ class AssetCreateValidator(serializers.Serializer):
         return attrs
 
 
+class OriginSerializer(serializers.ModelSerializer):
+    place = PlaceSerializer()
+
+    class Meta:
+        model = Origin
+        fields = (
+            'place',
+            'generation',
+            'img',
+        )
+
+
+class CardSerializer(serializers.ModelSerializer):
+    # Un MethodField car le wallet peut être celui de l'user ou celui de la carte anonyme.
+    # Faut lancer la fonction get_wallet() pour avoir le bon wallet...
+    wallet = serializers.SerializerMethodField()
+    origin = OriginSerializer()
+
+    def get_place_origin(self, obj: Card):
+        return f"{obj.origin.place.name} V{obj.origin.generation}"
+
+    def get_wallet(self, obj: Card):
+        wallet: Wallet = obj.get_wallet()
+        return WalletSerializer(wallet, context=self.context).data
+
+    class Meta:
+        model = Card
+        fields = (
+            'first_tag_id',
+            'wallet',
+            'origin',
+            'uuid',
+            'qrcode_uuid',
+            'number_printed',
+            'is_wallet_ephemere',
+        )
+
+
+class TransactionSerializer(serializers.ModelSerializer):
+    # Serializer gourmant :
+    # card va chercher le wallet et tous les assets/tokens associés
+    # Aucun cache utilisé, donne l'info en temps réel
+    card = CardSerializer(many=False)
+
+    class Meta:
+        model = Transaction
+        fields = (
+            "uuid",
+            "action",
+            "get_action_display",
+            "hash",
+            "datetime",
+            "subscription_first_datetime",
+            "subscription_start_datetime",
+            "subscription_type",
+            "last_check",
+            "sender",
+            "receiver",
+            "asset",
+            "amount",
+            "comment",
+            "metadata",
+            "card",
+            "primary_card",
+            "previous_transaction",
+            "comment",
+            "verify_hash",
+        )
+
+
+class TransactionSimpleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Transaction
+        fields = (
+            "uuid",
+            "action",
+            "get_action_display",
+            "hash",
+            "datetime",
+            "subscription_first_datetime",
+            "subscription_start_datetime",
+            "subscription_type",
+            "last_check",
+            "sender",
+            "receiver",
+            "asset",
+            "amount",
+            "comment",
+            "metadata",
+            "primary_card",
+            "previous_transaction",
+            "comment",
+            "verify_hash",
+        )
+
 class TokenSerializer(serializers.ModelSerializer):
     asset = AssetSerializer(many=False)
+    last_transaction = TransactionSimpleSerializer(many=False)
 
     class Meta:
         model = Token
@@ -406,22 +501,11 @@ class TokenSerializer(serializers.ModelSerializer):
             'asset_category',
 
             'is_primary_stripe_token',
+
+            'last_transaction',
+            # Todo, a virer, déja dans last_transaction :
             'last_transaction_datetime',
-
-            # Only for subscription or membership asset :
             'start_membership_date',
-        )
-
-
-class OriginSerializer(serializers.ModelSerializer):
-    place = PlaceSerializer()
-
-    class Meta:
-        model = Origin
-        fields = (
-            'place',
-            'generation',
-            'img',
         )
 
 
@@ -630,32 +714,6 @@ class WalletCheckoutSerializer(serializers.Serializer):
         representation['wallet'] = f"{self.user.wallet.uuid}"
         return representation
     """
-
-
-class CardSerializer(serializers.ModelSerializer):
-    # Un MethodField car le wallet peut être celui de l'user ou celui de la carte anonyme.
-    # Faut lancer la fonction get_wallet() pour avoir le bon wallet...
-    wallet = serializers.SerializerMethodField()
-    origin = OriginSerializer()
-
-    def get_place_origin(self, obj: Card):
-        return f"{obj.origin.place.name} V{obj.origin.generation}"
-
-    def get_wallet(self, obj: Card):
-        wallet: Wallet = obj.get_wallet()
-        return WalletSerializer(wallet, context=self.context).data
-
-    class Meta:
-        model = Card
-        fields = (
-            'first_tag_id',
-            'wallet',
-            'origin',
-            'uuid',
-            'qrcode_uuid',
-            'number_printed',
-            'is_wallet_ephemere',
-        )
 
 
 class BadgeCardValidator(serializers.Serializer):
@@ -1018,38 +1076,6 @@ class CachedTransactionSerializer(serializers.ModelSerializer):
                                     lambda: WalletSerializer(obj.receiver).data,
                                     300)
         return None
-
-
-class TransactionSerializer(serializers.ModelSerializer):
-    # Serializer gourmant :
-    # card va chercher le wallet et tous les assets/tokens associés
-    # Aucun cache utilisé, donne l'info en temps réel
-    card = CardSerializer(many=False)
-
-    class Meta:
-        model = Transaction
-        fields = (
-            "uuid",
-            "action",
-            "get_action_display",
-            "hash",
-            "datetime",
-            "subscription_first_datetime",
-            "subscription_start_datetime",
-            "subscription_type",
-            "last_check",
-            "sender",
-            "receiver",
-            "asset",
-            "amount",
-            "comment",
-            "metadata",
-            "card",
-            "primary_card",
-            "previous_transaction",
-            "comment",
-            "verify_hash",
-        )
 
 
 class FederationSerializer(serializers.ModelSerializer):

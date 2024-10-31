@@ -79,7 +79,6 @@ class PlaceValidator(serializers.Serializer):
                 lespass_domain=place_domain,
             )
         except Exception as e :
-            import ipdb; ipdb.set_trace()
             raise serializers.ValidationError(f"Error create place : {e}")
 
         #### RETOUR POUR LESPASS :
@@ -96,7 +95,6 @@ class PlaceValidator(serializers.Serializer):
         )
 
         # Serialization de la place :
-        # TODO: Chiffrer avec la clé publique du tenant
         seralized_place = PlaceSerializer(place).data
         seralized_place.update({
             "key": key,

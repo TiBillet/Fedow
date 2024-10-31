@@ -257,6 +257,7 @@ class CardAPI(viewsets.ViewSet):
 
     @action(detail=False, methods=['post'])
     def lost_my_card_by_signature(self, request):
+        # Même actions que dans void, mais sans le vidage de carte
         wallet: Wallet = request.wallet
         card = get_object_or_404(Card, user=wallet.user, number_printed=request.data.get('number_printed'))
         card.user = None
@@ -1015,8 +1016,6 @@ class TransactionAPI(viewsets.ViewSet):
             'serialized_receiver': True,
         })
 
-        # import ipdb; ipdb.set_trace()
-
         return paginator.get_paginated_response(serializer.data)
         # return Response(serializer.data)
 
@@ -1040,6 +1039,12 @@ class TransactionAPI(viewsets.ViewSet):
         return Response(serializer.data)
 
     def retrieve(self, request, pk=None):
+        transaction = get_object_or_404(Transaction, uuid=pk)
+        serializer = TransactionSerializer(transaction, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['GET'])
+    def get_from_hash(self, request, pk=None):
         transaction = get_object_or_404(Transaction, hash=pk)
         serializer = TransactionSerializer(transaction, context={'request': request})
         return Response(serializer.data)

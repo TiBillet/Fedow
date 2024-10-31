@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 import os
+from unicodedata import category
 from uuid import uuid4
 
 import stripe
@@ -133,6 +134,14 @@ class Asset(models.Model):
 
     def total_in_wallet_not_place(self):
         return self.tokens.filter(wallet__place__isnull=True).aggregate(total_value=Sum('value'))['total_value'] or 0
+
+    # def total_in_wallet_by_card_origin(self):
+    #     return Token.objects.filter(
+    #         wallet__place__isnull=True,
+    #         asset__category=Asset.STRIPE_FED_FIAT,
+    #         value__gt=0).filter(
+    #         Q(wallet__user__cards__isnull = False) | Q(wallet__card_ephemere__isnull=False)
+    #     ).values('wallet__user__cards__origin__place__name')
 
     # Retourne uns string de nom
     def place_federated_with(self):
@@ -293,7 +302,9 @@ class Token(models.Model):
         return False
 
     def last_transaction(self):
-        # The transaction the most recent of the wallet
+        # The transaction the most recent of the wallet.
+        # exclude transaction Fusion
+        #TODO: mettre en cache, souvent appelé
         return self.asset.transactions.filter(
             Q(sender=self.wallet) | Q(receiver=self.wallet)
         ).order_by('datetime').last()
