@@ -33,31 +33,6 @@ class PlaceValidator(serializers.Serializer):
             raise serializers.ValidationError("Public key not valid, must be 2048 min rsa key")
         return value
 
-    #  A degager une fois les migrations ok
-    # def migrate_place(self):
-    #     place_name = self.validated_data['place_name']
-    #     admin_email = self.validated_data['admin_email']
-    #     admin_pub_pem = self.validated_data['admin_pub_pem']
-    #     place_domain = self.validated_data['place_domain']
-    #     place = Place.objects.get(name=place_name)
-    #     exapi = OrganizationAPIKey.objects.filter(place=place)
-    #
-    #     user = exapi.first().user
-    #     user.public_pem=admin_pub_pem
-    #     exapi.delete()
-    #
-    #     api_key, key = OrganizationAPIKey.objects.create_key(
-    #         name=f"lespass_{place_name}:{user.email}",
-    #         place=place,
-    #         user=user,
-    #     )
-    #     seralized_place = PlaceSerializer(place).data
-    #     seralized_place.update({
-    #         "key": key,
-    #     })
-    #
-    #     return seralized_place
-
 
     def create_place(self):
         place_name = self.validated_data['place_name']

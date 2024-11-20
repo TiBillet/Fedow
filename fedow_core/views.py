@@ -611,6 +611,9 @@ class PlaceAPI(viewsets.ViewSet):
                 # Mode test, on ajoute ce nouveau lieu dans la federation de test
                 # request.place = place
                 self.add_me_to_test_fed(place)
+                # C'est un test place : le handshake lespass a pas été réalisé, on rentre l'adresse
+                place.lespass_domain = Place.objects.get(name='Lespass').lespass_domain
+                place.save()
 
             # Creation du lien Onboard Stripe seulement en prod
             url_onboard = ""
@@ -1137,6 +1140,7 @@ def get_new_place_token_for_test(request, name_enc):
                          '--email', f'{faker.email()}',
                          stdout=out)
             encoded_data = out.getvalue().split('\n')[-2]
+
             return JsonResponse({"encoded_data": encoded_data})
 
     raise Http404()
