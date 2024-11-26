@@ -12,8 +12,8 @@ from django.core.cache import cache
 from django.core.management import call_command
 from django.core.signing import Signer
 from django.db.models import Q
-from django.http import JsonResponse, Http404
-from django.shortcuts import get_object_or_404
+from django.http import JsonResponse, Http404, HttpResponse
+from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from faker import Faker
 from rest_framework import viewsets, status
@@ -38,6 +38,10 @@ from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict,
 from fedow_core.validators import PlaceValidator
 
 logger = logging.getLogger(__name__)
+
+
+def index(request):
+    return render(request, 'index.html', context={})
 
 
 def dround(value):

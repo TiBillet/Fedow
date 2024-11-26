@@ -90,7 +90,6 @@ class Asset(models.Model):
     wallet_origin = models.ForeignKey('Wallet', on_delete=models.PROTECT,
                                       related_name='assets_created',
                                       help_text="Lieu ou configuration d'origine",
-                                      editable=False,
                                       )
 
     def place_origin(self):

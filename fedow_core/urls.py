@@ -5,7 +5,7 @@ from fedow_dashboard import urls as dashboard_urls
 from fedow_core.views import TransactionAPI, TestApiKey, HelloWorld, WalletAPI, PlaceAPI, FederationAPI, \
     Onboard_stripe_return, \
     WebhookStripe, CardAPI, AssetAPI, get_new_place_token_for_test, \
-    root_tibillet_handshake, StripeAPI
+    root_tibillet_handshake, StripeAPI, index
 # from django.conf import settings
 from rest_framework import routers
 
@@ -37,5 +37,6 @@ urlpatterns = [
 
     path('admin/', admin.site.urls),
     path('dashboard/', include(dashboard_urls)),
+    path('', index, name='index'),
     path('', include(router.urls)),
 ]
