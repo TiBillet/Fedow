@@ -967,25 +967,6 @@ def asset_creator(name: str = None,
         created_at=created_at,
     )
 
-    # Création du token qui va envoyer et recevoir le premier block
-    token = Token.objects.create(
-        asset=asset,
-        wallet=wallet_origin,
-    )
-
-    # Création du premier block
-    first_block = Transaction.objects.create(
-        ip=ip,
-        checkout_stripe=None,
-        sender=wallet_origin,
-        receiver=wallet_origin,
-        asset=asset,
-        amount=int(0),
-        datetime=created_at,
-        action=Transaction.FIRST,
-        card=None,
-        primary_card=None,
-    )
     print(f"First block created for {asset.name}")
     cache.clear()
     print(f"cache cleared")
