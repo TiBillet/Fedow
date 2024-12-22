@@ -813,8 +813,8 @@ class TransactionW2W(serializers.Serializer):
 
     def validate_amount(self, value):
         # Positive amount only
-        if value <= 0:
-            raise serializers.ValidationError("Amount must be positive")
+        if value < 0:
+            raise serializers.ValidationError("Amount cannot be negative")
         return value
 
     def validate_primary_card(self, value):
