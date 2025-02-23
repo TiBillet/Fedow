@@ -63,7 +63,7 @@ class Command(BaseCommand):
             stripe_key = config.get_stripe_api()
             try:
                 stripe.api_key = stripe_key
-                acc = stripe.Account.list()
+                acc = stripe.Price.list()
                 price_stripe_id_refill_fed = fed_asset.get_id_price_stripe()
 
             except Exception as e:
