@@ -231,7 +231,6 @@ class CardAPI(viewsets.ViewSet):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     """
 
-
     @action(detail=True, methods=['get'])
     def qr_retrieve(self, request, pk=None):
         # Validator pk est bien un uudi ? :
@@ -333,6 +332,60 @@ class WalletAPI(viewsets.ViewSet):
         wallet: Wallet = request.wallet
         serializer = WalletSerializer(wallet, context={'request': request})
         return Response(serializer.data)
+
+    @action(detail=False, methods=['GET'])
+    def refund_fed_by_signature(self, request):
+        # La méthode d'auth diffère d'un retrive standard et donne le wallet plutot que le place
+        wallet: Wallet = request.wallet
+        fed_token = wallet.tokens.get(asset__category=Asset.STRIPE_FED_FIAT)
+        to_refund = fed_token.value
+        # Le wallet primaire qui sera le receiver :
+        config = Configuration.get_solo()
+        primary_wallet = config.primary_wallet
+
+        # le paiement le plus récent suppérieur à ce qu'il faut rembourser
+        checkout_db = None
+        for checkout in CheckoutStripe.objects.filter(
+                status=CheckoutStripe.PAID,
+                user=wallet.user).order_by('-datetime'):
+            checkout_stripe = checkout.get_stripe_checkout()
+            amount_total = checkout_stripe.amount_total
+            if amount_total >= to_refund:
+                checkout_db = checkout
+                break
+
+        if not checkout_db:
+            logger.error("Pas de paiement stripe pour ce wallet")
+            return Response("Pas de paiement stripe pour ce wallet", status=status.HTTP_402_PAYMENT_REQUIRED)
+
+        try:
+            refund = checkout_db.refund_payment_intent(to_refund)
+        except Exception as e:
+            logger.error(f"refund not ok : {e}")
+            return Response(f"refund not ok : {e}", status=status.HTTP_409_CONFLICT)
+
+        if not refund.status == 'succeeded':
+            logger.error(f"refund not succeeded : {refund}")
+            return Response(f"refund not succeeded : {refund}", status=status.HTTP_406_NOT_ACCEPTABLE)
+
+        # lancer une transaction refund !
+        transaction_dict = {
+            "ip": get_request_ip(request),
+            "checkout_stripe": checkout_db,
+            "sender": wallet,
+            "receiver": primary_wallet,
+            "asset": fed_token.asset,
+            "amount": to_refund,
+            "action": Transaction.REFUND,
+            "primary_card": None,
+            "card": None,
+            "subscription_start_datetime": None
+        }
+        transaction = Transaction.objects.create(**transaction_dict)
+
+        wallet.refresh_from_db()
+        serializer = WalletSerializer(wallet, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
 
     @action(detail=False, methods=['POST'])
     def get_federated_token_refill_checkout(self, request):
@@ -499,7 +552,9 @@ class WalletAPI(viewsets.ViewSet):
             permission_classes = [HasOrganizationAPIKeyOnly]
         elif self.action in [
             'retrieve_by_signature',
-            'linkwallet_cardqrcode', ]:
+            'linkwallet_cardqrcode',
+            'refund_fed_by_signature',
+        ]:
             permission_classes = [HasWalletSignature]
         elif self.action in [
             'retrieve_from_refill_checkout',

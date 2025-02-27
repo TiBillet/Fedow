@@ -11,6 +11,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractUser
 from django.core.cache import cache
+from django.core.signing import Signer
 from django.db import models
 from django.db.models import UniqueConstraint, Q, Sum
 from django.utils import timezone
@@ -19,8 +20,9 @@ from rest_framework_api_key.models import AbstractAPIKey
 from solo.models import SingletonModel
 from stdimage import JPEGField
 from stdimage.validators import MaxSizeValidator, MinSizeValidator
+from stripe import InvalidRequestError
 
-from fedow_core.utils import get_public_key, get_private_key, fernet_decrypt, fernet_encrypt, rsa_generator
+from fedow_core.utils import get_public_key, fernet_decrypt, fernet_encrypt, rsa_generator, utf8_b64_to_dict
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +54,39 @@ class CheckoutStripe(models.Model):
                               verbose_name="Statut de la commande")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='checkout_stripe')
     metadata = models.CharField(editable=False, db_index=False, max_length=500)
+
+    def unsign_metadata(self):
+        signer = Signer()
+        return utf8_b64_to_dict(signer.unsign(self.metadata))
+
+    def get_stripe_checkout(self):
+        config = Configuration.get_solo()
+        stripe.api_key = config.get_stripe_api()
+        checkout = stripe.checkout.Session.retrieve(self.checkout_session_id_stripe)
+        return checkout
+
+    def refund_payment_intent(self, amount):
+        if not amount :
+            raise Exception(f"CheckoutStripe Refund : {self.uuid} without amount")
+        config = Configuration.get_solo()
+        stripe.api_key = config.get_stripe_api()
+        checkout = stripe.checkout.Session.retrieve(self.checkout_session_id_stripe)
+        payment_intent = checkout.payment_intent
+        try :
+            refund = stripe.Refund.create(
+                payment_intent=payment_intent,
+                reason='requested_by_customer',
+                amount=amount,
+            )
+        except InvalidRequestError as e:
+            logger.error(f"CheckoutStripe Refund InvalidRequestError {e}")
+            raise Exception(f"CheckoutStripe Refund InvalidRequestError {e}")
+        except Exception as e:
+            logger.error(f"CheckoutStripe Refund Exception : {e}")
+            raise e
+
+        return refund
+
 
     def __str__(self):
         self.user: FedowUser
@@ -247,7 +282,7 @@ class Wallet(models.Model):
     def is_primary(self):
         # primary is the related name of the Wallet Configuration foreign key
         # On peux récupérer cet object dans les controleurs de cette façon : Wallet.objects.get(primary__isnull=False)
-        if getattr(self, 'primary', None):
+        if getattr(self, 'primary', False):
             # le self.primary devrait suffire (config est un singleton),
             # mais on vérifie quand même
             if self.primary == Configuration.get_solo():
@@ -255,7 +290,7 @@ class Wallet(models.Model):
         return False
 
     def is_place(self):
-        if getattr(self, 'place', None):
+        if getattr(self, 'place', False):
             return True
         return False
 
@@ -551,18 +586,25 @@ class Transaction(models.Model):
 
         if self.action == Transaction.REFUND:
             assert self.amount == token_sender.value, "Amount must be equal to token sender value, we clear the ephemeral wallet"
-            assert self.receiver.is_place(), "Receiver must be a place wallet"
+
+            # Pour les assets locaux et cadeaux :
             if self.asset.category != Asset.STRIPE_FED_FIAT:
+                assert self.receiver.is_place(), "Receiver must be a place wallet"
                 assert self.asset.wallet_origin == self.receiver, "Asset wallet_origin must be the place"
 
-            # Decrement token sender
+            # Decrement token user qui se fait rembourser
             token_sender.value -= self.amount
             # Ne pas incrémenter le wallet place si c'est un remboursement d'asset locale,
             # le lieu a remboursé en espèce, il ne stocke plus l'asset
 
-            # Si c'est un asset fédéré, on incrémente ici car c'est le virement stripe des vrai € qui décrémentera
-            if self.asset.category == Asset.STRIPE_FED_FIAT:
+            # Si c'est un asset fédéré et un lieu qui rembourse, on incrémente le wallet du lieu
+            # pour pouvoir le rembourser dans un deuxième temps : il a remboursé en espèce l'user
+            # Si c'est STRIPE FED mais pas lieu : c'est un remboursement d'user en ligne
+            if (self.asset.category == Asset.STRIPE_FED_FIAT
+                    and self.receiver.is_place())\
+                    and not self.receiver.is_primary() :
                 token_receiver.value += self.amount
+
 
         # ALL VALIDATOR PASSED : HASH CREATION
         if not self.hash:
