@@ -1009,9 +1009,9 @@ def asset_creator(name: str = None,
         created_at=created_at,
     )
 
-    print(f"First block created for {asset.name}")
-    cache.clear()
-    print(f"cache cleared")
+    # print(f"First block created for {asset.name}")
+    # cache.clear()
+    # print(f"cache cleared")
     return asset
 
 
