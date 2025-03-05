@@ -926,25 +926,28 @@ def create_account_link_for_onboard(place: Place):
     stripe.api_key = api_key
 
     place.refresh_from_db()
-    if not place.stripe_connect_account:
-        acc_connect = stripe.Account.create(
-            type="standard",
-            country="FR",
+    try :
+        if not place.stripe_connect_account:
+            acc_connect = stripe.Account.create(
+                type="standard",
+                country="FR",
+            )
+            id_acc_connect = acc_connect.get('id')
+            place.stripe_connect_account = id_acc_connect
+            place.save()
+
+        cashless_server_url = place.cashless_server_url
+
+        account_link = stripe.AccountLink.create(
+            account=place.stripe_connect_account,
+            refresh_url=f"{cashless_server_url}api/onboard_stripe_return/{place.stripe_connect_account}",
+            return_url=f"{cashless_server_url}api/onboard_stripe_return/{place.stripe_connect_account}",
+            type="account_onboarding",
         )
-        id_acc_connect = acc_connect.get('id')
-        place.stripe_connect_account = id_acc_connect
-        place.save()
-
-    cashless_server_url = place.cashless_server_url
-
-    account_link = stripe.AccountLink.create(
-        account=place.stripe_connect_account,
-        refresh_url=f"{cashless_server_url}api/onboard_stripe_return/{place.stripe_connect_account}",
-        return_url=f"{cashless_server_url}api/onboard_stripe_return/{place.stripe_connect_account}",
-        type="account_onboarding",
-    )
-
-    url_onboard = account_link.get('url')
+        url_onboard = account_link.get('url')
+    except Exception as e :
+        logger.error('stripe account create error')
+        url_onboard = None
     return url_onboard
 
 
