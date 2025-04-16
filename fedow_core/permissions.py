@@ -129,8 +129,6 @@ class HasPlaceKeyAndWalletSignature(BaseHasAPIKey):
 
     def get_wallet(self, request: HttpRequest) -> Wallet | None:
         wallet_uuid = request.headers.get("Wallet")
-        print("[PERM] Recherche wallet dans permissions.py:", wallet_uuid)
-        print("[PERM] Tous les wallets existants:", list(Wallet.objects.values_list('uuid', flat=True)))
         if not wallet_uuid:
             # Header Wallet manquant
             return None
