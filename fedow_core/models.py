@@ -169,6 +169,9 @@ class Asset(models.Model):
     def total_in_wallet_not_place(self):
         return self.tokens.filter(wallet__place__isnull=True).aggregate(total_value=Sum('value'))['total_value'] or 0
 
+    def total_bank_deposit(self):
+        return self.transactions.filter(action=Transaction.DEPOSIT).aggregate(total_amount=Sum('amount'))['total_amount'] or 0
+
     # def total_in_wallet_by_card_origin(self):
     #     return Token.objects.filter(
     #         wallet__place__isnull=True,
@@ -408,7 +411,7 @@ class Transaction(models.Model):
     # auto_now dans la fonction save. Si on utilise auto_now, le verify hash n'aura pas la même date car il est créé après le save, donc après le hash.
     last_check = models.DateTimeField(blank=True, null=True)
 
-    FIRST, SALE, CREATION, REFILL, TRANSFER, SUBSCRIBE, BADGE, FUSION, REFUND, VOID = 'FST', 'SAL', 'CRE', 'REF', 'TRF', 'SUB', 'BDG', 'FUS', 'RFD', 'VID'
+    FIRST, SALE, CREATION, REFILL, TRANSFER, SUBSCRIBE, BADGE, FUSION, REFUND, VOID, DEPOSIT = 'FST', 'SAL', 'CRE', 'REF', 'TRF', 'SUB', 'BDG', 'FUS', 'RFD', 'VID', 'BNK'
     TYPE_ACTION = (
         (FIRST, "Premier bloc"),
         (SALE, "Vente d'article"),
@@ -420,6 +423,7 @@ class Transaction(models.Model):
         (FUSION, 'Fusion de deux wallets'),
         (REFUND, 'Remboursement'),
         (VOID, 'Dissocciation de la carte et du wallet user'),
+        (DEPOSIT, 'Remise en banque'),
     )
     action = models.CharField(max_length=3, choices=TYPE_ACTION, default=SALE)
 
