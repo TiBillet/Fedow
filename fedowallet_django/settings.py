@@ -129,12 +129,22 @@ DATABASES = {
     }
 }
 
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.memcached.PyMemcacheCache',
-        'LOCATION': 'memcached:11211',
+# --- Cache configuration ---
+# En production/développement normal : utilise Memcached
+# En test (TEST=True dans l'env), utilise LocMemCache pour éviter les erreurs réseau
+if os.environ.get('TEST') == 'True' or os.environ.get('TEST') == '1':
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        }
     }
-}
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.memcached.PyMemcacheCache',
+            'LOCATION': 'memcached:11211',
+        }
+    }
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators

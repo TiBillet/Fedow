@@ -48,7 +48,7 @@ def first_block_for_new_asset(sender, instance: Asset, created, **kwargs):
             receiver=wallet_origin,
             asset=asset,
             amount=int(0),
-            datetime=timezone.localtime(),
+            datetime=asset.created_at if asset.created_at else timezone.localtime(),
             action=Transaction.FIRST,
             card=None,
             primary_card=None,

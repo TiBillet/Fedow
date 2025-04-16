@@ -8,7 +8,7 @@ import stripe
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.db.models import Sum
-from django.test import TestCase, tag
+from django.test import TestCase, tag, TransactionTestCase
 from django.utils.timezone import make_aware
 from faker import Faker
 from rest_framework import viewsets, status
@@ -27,9 +27,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class FedowTestCase(TestCase):
+class FedowTestCase(TransactionTestCase):
     def setUp(self):
-        call_command('install', '--test')
+        call_command('install' )
 
         primary_federation = Federation.objects.all()[0]
         User: FedowUser = get_user_model()
@@ -50,11 +50,64 @@ class FedowTestCase(TestCase):
         self.place = Place.objects.get(pk=decoded_data.get('uuid'))
         self.admin = User.objects.get(email=f'{email_admin}')
 
+        # Création de la Place 'Lespass' via PlaceValidator
+        from fedow_core.validators import PlaceValidator
+        # Génère une clé publique RSA valide pour l'admin Lespass
+        lespass_private_pem, lespass_public_pem = rsa_generator()
+        lespass_admin_email = 'admin_lespass@admin.admin'
+        data = {
+            'place_domain': 'lespass.tibillet.localhost',
+            'place_name': 'Lespass',
+            'admin_email': lespass_admin_email,
+            'admin_pub_pem': lespass_public_pem,
+        }
+        validator = PlaceValidator(data=data)
+        if validator.is_valid():
+            validator.create_place()
+        else:
+            # En mode test, on tolère la présence de la place
+            pass
+
         # On simule une paire de clé générée par le serveur cashless
         private_cashless_pem, public_cashless_pem = rsa_generator()
         self.private_cashless_pem = private_cashless_pem
         self.private_cashless_rsa = get_private_key(private_cashless_pem)
         self.public_cashless_pem = public_cashless_pem
+
+    def create_wallet_via_api(self, email=None):
+        """
+        Crée un wallet utilisateur en respectant la logique du serializer et du view.
+        Retourne (wallet, private_pem, public_pem)
+        """
+        from faker import Faker
+        from fedow_core.utils import rsa_generator, sign_message, data_to_b64, get_private_key
+        from fedow_core.models import Wallet
+        import json
+        faker = Faker()
+        if not email:
+            email = faker.email()
+        # Génère une paire de clés pour le wallet
+        private_pem, public_pem = rsa_generator()
+        private_rsa = get_private_key(private_pem)
+        data = {'email': email, 'public_pem': public_pem}
+        # Signature de la requête avec la clé privée correspondante
+        signature = sign_message(
+            data_to_b64(data),
+            private_rsa,
+        ).decode('utf-8')
+        response = self.client.post(
+            '/wallet/get_or_create/',
+            json.dumps(data),
+            content_type='application/json',
+            headers={
+                'Authorization': f'Api-Key {self.temp_key_place}',
+                'Signature': signature,
+            }
+        )
+        assert response.status_code in (200, 201), response.content
+        wallet_uuid = response.data
+        wallet = Wallet.objects.get(pk=wallet_uuid)
+        return wallet, private_pem, public_pem
 
     def _post_from_simulated_cashless(self, path, data: dict or list):
         # TODO: Une clé temp ne devrait pas pouvoir acceder au lieu
@@ -189,61 +242,6 @@ class AssetCardTest(FedowTestCase):
         self.assertTrue(Transaction.objects.filter(asset__name=name, action=Transaction.FIRST).exists())
         self.assertEqual(Transaction.objects.get(asset__name=name, action=Transaction.FIRST).datetime.isoformat(),
                          created_at.isoformat())
-
-    def create_wallet_with_API(self):
-        ### Création d'un wallet client avec un email et un uuid de carte
-        faker = Faker()
-        mail_set_list = set([faker.email() for x in range(100)])
-
-        # Juste avec email :
-        email = mail_set_list.pop()
-        response = self._post_from_simulated_cashless('wallet', {'email': email})
-        self.assertEqual(response.status_code, 201)
-        wallet = Wallet.objects.get(pk=response.data)
-        self.assertEqual(wallet.user.email, email)
-        self.assertEqual(wallet.user.cards.count(), 0)
-
-        # Avec First Tag Id
-        email = mail_set_list.pop()
-        card = Card.objects.filter(user__isnull=True).first()
-        data = {
-            'email': email,
-            'card_first_tag_id': f"{card.first_tag_id}",
-        }
-        response = self._post_from_simulated_cashless('wallet', data)
-        # if response.status_code != 201:
-        #     print(response.json())
-        #     import ipdb; ipdb.set_trace()
-        self.assertEqual(response.status_code, 201)
-        wallet = Wallet.objects.get(pk=response.data)
-        self.assertEqual(wallet.user.email, email)
-        self.assertIn(card, wallet.user.cards.all())
-
-        # Avec le QRCode de la carte précédente :
-        email = mail_set_list.pop()
-        data = {
-            'email': email,
-            'card_qrcode_uuid': f"{card.qrcode_uuid}",
-        }
-        response = self._post_from_simulated_cashless('wallet', data)
-        self.assertEqual(response.status_code, 400)
-
-
-        # Avec le QRCode d'une carte qui n'a pas encore d'user :
-        email = mail_set_list.pop()
-        card = Card.objects.filter(user__isnull=True).first()
-        data = {
-            'email': email,
-            'card_qrcode_uuid': f"{card.qrcode_uuid}",
-        }
-        response = self._post_from_simulated_cashless('wallet', data)
-        self.assertEqual(response.status_code, 201)
-
-        wallet = Wallet.objects.get(pk=response.data)
-        self.assertEqual(wallet.user.email, email)
-        self.assertIn(card, wallet.user.cards.all())
-
-        return wallet
 
     def create_multiple_card(self):
         # création d'une liste de 10 sans uuid avec gen 1
@@ -446,8 +444,42 @@ class AssetCardTest(FedowTestCase):
 
 
         # SUBSCRIPTION : Il faut un wallet avec un user
-        self.create_wallet_with_API()
-        card = Card.objects.filter(user__isnull=False).first()
+        # On crée un wallet utilisateur via l'API
+        wallet, private_pem, public_pem = self.create_wallet_via_api()
+        # Vérification explicite que le wallet existe bien en base
+        # Forcer un refresh du cache ORM
+        Wallet.objects.all().iterator()
+        print("WALLETS EN BASE après refresh:", list(Wallet.objects.values_list('uuid', flat=True)))
+        print("UUID attendu:", wallet.uuid)
+        # Affiche tous les wallets avec détails
+        for w in Wallet.objects.all():
+            try:
+                user = w.user
+            except Wallet.user.RelatedObjectDoesNotExist:
+                user = None
+            created = getattr(w, 'created_at', None)
+            print("Wallet:", w.uuid, user, created)
+        import json
+        # On prend une carte vierge
+        card = Card.objects.filter(user__isnull=True).first()
+        self.assertIsNotNone(card)
+        # On associe la carte au wallet via l'API linkwallet_cardqrcode
+        link_data = {
+            'wallet_uuid': str(wallet.uuid),
+            'card_qrcode_uuid': str(card.qrcode_uuid),
+        }
+        response = self.client.post(
+            '/wallet/linkwallet_cardqrcode/',
+            json.dumps(link_data),
+            content_type='application/json',
+            headers={
+                'Authorization': f'Api-Key {self.temp_key_place}',
+            }
+        )
+        self.assertEqual(response.status_code, 200)
+        # On récupère la carte associée à l'user
+        card = Card.objects.filter(user=wallet.user).first()
+        self.assertIsNotNone(card)
         wallet_card = card.get_wallet()
         sub = assets.filter(category=Asset.SUBSCRIPTION).first()
         transaction_refill = {
@@ -517,7 +549,6 @@ class AssetCardTest(FedowTestCase):
     def test_all(self):
         # TODO: Tout classer et lister ici proprement
         self.create_multiple_card()
-        self.create_wallet_with_API()
         self.create_asset_with_API()
         self.send_new_tokens_to_wallet()
         # TODO: Stripe

@@ -973,6 +973,7 @@ def asset_creator(name: str = None,
     """
 
     if created_at is None:
+        logger.info('created_at is None')
         created_at = timezone.localtime()
 
     if ip is None:

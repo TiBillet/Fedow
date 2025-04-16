@@ -333,6 +333,17 @@ class WalletAPI(viewsets.ViewSet):
         serializer = WalletSerializer(wallet, context={'request': request})
         return Response(serializer.data)
 
+    @action(detail=True, methods=['POST'])
+    def tibillet_bank_stripe_deposit(self, request):
+        '''
+        Arrive lorsque un virement stripe primaire vers le stripe connect du lieu
+        pour un transfert des sommes correspondantes a articles vendu avec l'asset primaire.
+        Check de la valeur des token primaire du wallet du lieu (place)
+        On ajoute une transaction de type action "DEPOSIT" su montant du virement
+        '''
+        pass
+
+
     @action(detail=False, methods=['GET'])
     def refund_fed_by_signature(self, request):
         # La méthode d'auth diffère d'un retrive standard et donne le wallet plutot que le place
