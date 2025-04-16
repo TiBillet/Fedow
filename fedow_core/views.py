@@ -494,7 +494,6 @@ class WalletAPI(viewsets.ViewSet):
 
     @action(detail=False, methods=['POST'])
     def linkwallet_cardqrcode(self, request):
-
         link_serializer = LinkWalletCardQrCode(data=request.data, context={'request': request})
         if not link_serializer.is_valid():
             logger.error(f"linkwallet_cardqrcode filter(user__isnull=True) : {link_serializer.errors}")

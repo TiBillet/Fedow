@@ -6,6 +6,7 @@ from datetime import datetime
 from django.http import HttpRequest
 from rest_framework import permissions
 from rest_framework.permissions import AllowAny
+from rest_framework.views import PermissionDenied
 from rest_framework_api_key.models import APIKey
 from rest_framework_api_key.permissions import BaseHasAPIKey
 from stripe.error import SignatureVerificationError
@@ -68,24 +69,35 @@ class HasWalletSignature(permissions.BasePermission):
         signature = request.META.get("HTTP_SIGNATURE")
         return signature
 
-    def get_wallet(self, request: HttpRequest) -> Wallet | bool:
+    def get_wallet(self, request: HttpRequest) -> Wallet | None:
         wallet_uuid = request.headers.get("Wallet")
-        print("[PERM] Recherche wallet dans permissions.py:", wallet_uuid)
-        print("[PERM] Tous les wallets existants:", list(Wallet.objects.values_list('uuid', flat=True)))
-        wallet = Wallet.objects.get(uuid=wallet_uuid)
-        return wallet
+        if not wallet_uuid:
+            # Header Wallet manquant
+            return None
+        try:
+            wallet = Wallet.objects.get(uuid=wallet_uuid)
+            return wallet
+        except Wallet.DoesNotExist:
+            # UUID non trouvé
+            return None
 
-    def get_date(self, request: HttpRequest) -> datetime | bool:
-        date = datetime.fromisoformat(request.META.get("HTTP_DATE"))
-        logger.info(f"HasWalletSignature : {datetime.now() - date}")
+    def get_date(self, request: HttpRequest) -> datetime | None:
+        date_str = request.META.get("HTTP_DATE")
+        if not date_str:
+            return None
+        date = datetime.fromisoformat(date_str)
         return date
 
     def has_permission(self, request: HttpRequest, view: typing.Any) -> bool:
         wallet = self.get_wallet(request)
         date = self.get_date(request)
+        if not date or not wallet:
+            raise PermissionDenied("Missing date or wallet")
 
         signature = self.get_signature(request)
-        wallet_public_key = wallet.public_key()
+        if not signature:
+            raise PermissionDenied("Missing signature")
+        wallet_public_key = wallet.public_key() if wallet else None
 
         # SIGNATURE ( GET / POST )
         # On signe la donnée si c'est du post.
@@ -93,15 +105,15 @@ class HasWalletSignature(permissions.BasePermission):
         if request.method == 'POST':
             message = data_to_b64(request.data)
         elif request.method == 'GET':
-            message = f"{wallet.uuid}:{date.isoformat()}".encode('utf8')
+            message = f"{wallet.uuid}:{date.isoformat()}".encode('utf8') if wallet else None
         else :
-            return False
+            raise PermissionDenied("Invalid method")
 
-        if verify_signature(wallet_public_key, message, signature):
+        if wallet and verify_signature(wallet_public_key, message, signature):
             request.wallet = wallet
             return True
 
-        return False
+        raise PermissionDenied("Invalid signature")
 
 
 class HasPlaceKeyAndWalletSignature(BaseHasAPIKey):
@@ -115,16 +127,27 @@ class HasPlaceKeyAndWalletSignature(BaseHasAPIKey):
         signature = request.META.get("HTTP_SIGNATURE")
         return signature
 
-    def get_wallet(self, request: HttpRequest) -> Wallet | bool:
+    def get_wallet(self, request: HttpRequest) -> Wallet | None:
         wallet_uuid = request.headers.get("Wallet")
         print("[PERM] Recherche wallet dans permissions.py:", wallet_uuid)
         print("[PERM] Tous les wallets existants:", list(Wallet.objects.values_list('uuid', flat=True)))
-        wallet = Wallet.objects.get(uuid=wallet_uuid)
-        return wallet
+        if not wallet_uuid:
+            # Header Wallet manquant
+            return None
+        try:
+            wallet = Wallet.objects.get(uuid=wallet_uuid)
+            return wallet
+        except Wallet.DoesNotExist:
+            # UUID non trouvé
+            return None
 
-    def get_date(self, request: HttpRequest) -> datetime | bool:
-        date = datetime.fromisoformat(request.META.get("HTTP_DATE"))
-        logger.info(f"HasWalletSignature : {datetime.now() - date}")
+    def get_date(self, request: HttpRequest) -> datetime | None:
+        date_str = request.META.get("HTTP_DATE")
+        if not date_str:
+            return None
+        date = datetime.fromisoformat(date_str)
+        from django.utils.timezone import now as dj_now
+        logger.info(f"HasWalletSignature : {dj_now() - date}")
         return date
 
     def has_permission(self, request: HttpRequest, view: typing.Any) -> bool:
@@ -147,8 +170,11 @@ class HasPlaceKeyAndWalletSignature(BaseHasAPIKey):
 
         wallet = self.get_wallet(request)
         date = self.get_date(request)
-
+        if not date:
+            return False  # Date manquante
         signature = self.get_signature(request)
+        if not signature:
+            return False  # Signature manquante
         wallet_public_key = wallet.public_key()
 
         # SIGNATURE ( GET / POST )

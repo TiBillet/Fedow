@@ -465,15 +465,25 @@ class AssetCardTest(FedowTestCase):
         self.assertIsNotNone(card)
         # On associe la carte au wallet via l'API linkwallet_cardqrcode
         link_data = {
-            'wallet_uuid': str(wallet.uuid),
+            'wallet': str(wallet.uuid),
             'card_qrcode_uuid': str(card.qrcode_uuid),
         }
+        print("Payload envoyé à l'API linkwallet_cardqrcode:", link_data)
+        from fedow_core.utils import sign_message, data_to_b64, get_private_key
+        private_rsa = get_private_key(private_pem)
+        signature = sign_message(
+            data_to_b64(link_data),
+            private_rsa,
+        ).decode('utf-8')
         response = self.client.post(
             '/wallet/linkwallet_cardqrcode/',
             json.dumps(link_data),
             content_type='application/json',
             headers={
                 'Authorization': f'Api-Key {self.temp_key_place}',
+                'Wallet': str(wallet.uuid),
+                'Date': datetime.now().isoformat(),
+                'Signature': signature,
             }
         )
         self.assertEqual(response.status_code, 200)
