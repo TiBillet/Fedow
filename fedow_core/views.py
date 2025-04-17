@@ -336,9 +336,10 @@ class WalletAPI(viewsets.ViewSet):
     @action(detail=True, methods=['POST'])
     def tibillet_bank_stripe_deposit(self, request):
         '''
+        Remise en euro des tokens.
         Arrive lorsque un virement stripe primaire vers le stripe connect du lieu
         pour un transfert des sommes correspondantes a articles vendu avec l'asset primaire.
-        Check de la valeur des token primaire du wallet du lieu (place)
+        Check de la valeur des tokens primaire du wallet du lieu (place)
         On ajoute une transaction de type action "DEPOSIT" su montant du virement
         '''
         pass
@@ -564,12 +565,15 @@ class WalletAPI(viewsets.ViewSet):
             'retrieve_by_signature',
             'linkwallet_cardqrcode',
             'refund_fed_by_signature',
+            'tibillet_bank_stripe_deposit',
         ]:
             permission_classes = [HasWalletSignature]
         elif self.action in [
             'retrieve_from_refill_checkout',
-            'get_federated_token_refill_checkout', 'badge']:
-            permission_classes = [HasPlaceKeyAndWalletSignature, ]
+            'get_federated_token_refill_checkout',
+            'badge',
+        ]:
+            permission_classes = [HasPlaceKeyAndWalletSignature, ] # Pour LaBoutik,
         else:
             permission_classes = [HasKeyAndPlaceSignature]
         return [permission() for permission in permission_classes]

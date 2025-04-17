@@ -1,20 +1,17 @@
-import json
-import os
+import logging
 import typing
 from datetime import datetime
 
+import stripe
 from django.http import HttpRequest
 from rest_framework import permissions
 from rest_framework.permissions import AllowAny
 from rest_framework.views import PermissionDenied
-from rest_framework_api_key.models import APIKey
 from rest_framework_api_key.permissions import BaseHasAPIKey
 from stripe.error import SignatureVerificationError
 
 from fedow_core.models import OrganizationAPIKey, Configuration, CreatePlaceAPIKey, Wallet
 from fedow_core.utils import verify_signature, data_to_b64
-import stripe
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -144,8 +141,6 @@ class HasPlaceKeyAndWalletSignature(BaseHasAPIKey):
         if not date_str:
             return None
         date = datetime.fromisoformat(date_str)
-        from django.utils.timezone import now as dj_now
-        logger.info(f"HasWalletSignature : {dj_now() - date}")
         return date
 
     def has_permission(self, request: HttpRequest, view: typing.Any) -> bool:
@@ -218,6 +213,11 @@ class HasOrganizationAPIKeyOnly(BaseHasAPIKey):
 
 
 class HasKeyAndPlaceSignature(BaseHasAPIKey):
+    '''
+    Méthode pour LaBoutik
+    A besoin de la clé présente dans config.fedow_place_admin_apikey de LaBoutik
+    et échangée lors du handshake de lancement du serveur LaBoutik
+    '''
     model = OrganizationAPIKey
 
     def get_signature(self, request: HttpRequest) -> str | bool:

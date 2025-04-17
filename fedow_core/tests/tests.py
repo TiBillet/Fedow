@@ -392,7 +392,34 @@ class AssetCardTest(FedowTestCase):
     def send_new_tokens_to_wallet(self):
         # Création de 3 assets différents pour simuler un asset € et deux monnaies temps/bénévoles
         place: Place = self.place
+
+        # Ensure we have primary cards
+        if not self.place.primary_cards.exists():
+            self.create_multiple_card()
         primary_card = self.place.primary_cards.all().first()
+
+        # Ensure we have enough assets of different categories
+        from faker import Faker
+        faker = Faker()
+
+        # Create assets if they don't exist
+        required_categories = [
+            Asset.TOKEN_LOCAL_FIAT,
+            Asset.TOKEN_LOCAL_NOT_FIAT,
+            Asset.SUBSCRIPTION
+        ]
+
+        for category in required_categories:
+            if not Asset.objects.filter(category=category).exists():
+                name = faker.currency_name()
+                currency_code = faker.currency_code()
+                asset_creator(
+                    name=name,
+                    currency_code=currency_code,
+                    category=category,
+                    wallet_origin=self.place.wallet
+                )
+
         assets = Asset.objects.all()
 
         total_par_assets = {f"{asset.uuid}": 0 for asset in assets}
@@ -400,10 +427,10 @@ class AssetCardTest(FedowTestCase):
         # On charge les cartes sans users (wallet temporaires)
         for card in Card.objects.filter(user__isnull=True)[:5]:
             # Création aléatoire de portefeuille
-            # De 1 à 3 assets différents
-            r_assets = random.sample(
-                [asset for asset in assets.exclude(category__in=[Asset.STRIPE_FED_FIAT, Asset.SUBSCRIPTION])],
-                k=random.randint(1, 3))
+            # De 1 à 3 assets différents (ou moins si pas assez d'assets disponibles)
+            available_assets = list(assets.exclude(category__in=[Asset.STRIPE_FED_FIAT, Asset.SUBSCRIPTION]))
+            k = min(len(available_assets), random.randint(1, 3))
+            r_assets = random.sample(available_assets, k) if k > 0 else []
 
             for asset in r_assets:
                 # entre 10 centimes et 100 euros
