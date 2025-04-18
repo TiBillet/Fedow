@@ -266,7 +266,8 @@ class Wallet(models.Model):
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=False)
     name = models.CharField(max_length=100, blank=True, null=True)
 
-    #Todo: plus utile, private stockée dans Lespass
+    #Todo: plus utile, private stockée ailleurs que dans Fedow (Lespass pour l'instant, peut être plus tard dans une app de wallet ?)
+    # Elle n'est générée que pour la création de Place via l'API. Peut être qu'il faudrait la stoquer elle aussi sur Lespass ?
     private_pem = models.CharField(max_length=2048, editable=False, null=True, blank=True)
 
     public_pem = models.CharField(max_length=512, editable=False, null=True, blank=True)
@@ -761,6 +762,8 @@ class Place(models.Model):
     dokos_id = models.CharField(max_length=100, blank=True, null=True, editable=False)
 
     stripe_connect_account = models.CharField(max_length=21, blank=True, null=True, editable=False)
+
+    #TODO: A virer, plus besoin, c'est LESPASS qui gère l'onboard Stripe
     stripe_connect_valid = models.BooleanField(default=False)
 
     cashless_server_ip = models.GenericIPAddressField(blank=True, null=True, editable=False)

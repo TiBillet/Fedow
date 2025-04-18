@@ -160,6 +160,7 @@ class HasPlaceKeyAndWalletSignature(BaseHasAPIKey):
             return False
 
         # On a la place, on va chercher le wallet
+        # logger.info(f"HasPlaceKeyAndUserSignature : {place}")
 
         wallet = self.get_wallet(request)
         date = self.get_date(request)

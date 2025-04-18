@@ -115,7 +115,7 @@ class PlaceSerializer(serializers.ModelSerializer):
             'name',
             'dokos_id',
             'wallet',
-            'stripe_connect_valid',
+            # 'stripe_connect_valid', # le stripe connect est créé coté Lespass
             'lespass_domain',
         )
 

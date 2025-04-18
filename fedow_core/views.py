@@ -1,6 +1,6 @@
 import logging
 import time
-from datetime import timedelta
+from datetime import timedelta, datetime
 from decimal import Decimal
 from io import StringIO
 from unicodedata import category
@@ -333,8 +333,8 @@ class WalletAPI(viewsets.ViewSet):
         serializer = WalletSerializer(wallet, context={'request': request})
         return Response(serializer.data)
 
-    @action(detail=True, methods=['POST'])
-    def tibillet_bank_stripe_deposit(self, request):
+    @action(detail=False, methods=['POST'])
+    def global_asset_bank_stripe_deposit(self, request):
         '''
         Remise en euro des tokens.
         Arrive lorsque un virement stripe primaire vers le stripe connect du lieu
@@ -342,7 +342,60 @@ class WalletAPI(viewsets.ViewSet):
         Check de la valeur des tokens primaire du wallet du lieu (place)
         On ajoute une transaction de type action "DEPOSIT" su montant du virement
         '''
-        pass
+        admin_wallet = request.wallet
+        place: Place = request.place
+        wallet = place.wallet
+        fed_token: Token = wallet.tokens.get(asset__category=Asset.STRIPE_FED_FIAT)
+        value_before = fed_token.value
+        # Le wallet primaire qui sera le receiver :
+        config = Configuration.get_solo()
+        primary_wallet = config.primary_wallet
+
+        payload = request.data.get('payload')
+        transfer_id = payload['data']['object']['id']
+        # Vérification de la requete chez Stripe
+        stripe.api_key = Configuration.get_solo().get_stripe_api()
+        transfer = stripe.Transfer.retrieve(transfer_id)
+        amount = int(transfer.amount)
+
+        if amount > fed_token.value:
+            logger.warning(f"global_asset_bank_stripe_deposit : {amount} > {fed_token.value} : {transfer.id}")
+            raise ValueError(f"global_asset_bank_stripe_deposit : {amount} > {fed_token.value} : {transfer.id}")
+
+        if CheckoutStripe.objects.filter(checkout_session_id_stripe=transfer.id).exists():
+            return Response("Already reported", status=status.HTTP_208_ALREADY_REPORTED)
+
+        # Création d'une trace CheckoutStripe
+        checkout_stripe = CheckoutStripe.objects.create(
+            datetime=datetime.fromtimestamp(payload["data"]["object"]["created"]),
+            checkout_session_id_stripe=transfer_id,
+            asset=fed_token.asset,
+            metadata=payload,
+            status=CheckoutStripe.PAID,
+            user=admin_wallet.user,
+        )
+
+        # lancer une transaction refund !
+        transaction_dict = {
+            "ip": get_request_ip(request),
+            "checkout_stripe": checkout_stripe,
+            "sender": wallet,
+            "receiver": primary_wallet,
+            "asset": fed_token.asset,
+            "amount": amount,
+            "action": Transaction.DEPOSIT,
+            "primary_card": None,
+            "card": None,
+            "subscription_start_datetime": None
+        }
+        transaction = Transaction.objects.create(**transaction_dict)
+        transaction_serialized = TransactionSerializer(transaction, context={'request': request})
+
+        # Vérification
+        fed_token.refresh_from_db()
+        assert fed_token.value == value_before - amount, f"global_asset_bank_stripe_deposit : {fed_token.value} != {value_before} - {amount}"
+        import ipdb; ipdb.set_trace()
+        return Response(transaction_serialized.data, status=status.HTTP_201_CREATED)
 
 
     @action(detail=False, methods=['GET'])
@@ -565,10 +618,10 @@ class WalletAPI(viewsets.ViewSet):
             'retrieve_by_signature',
             'linkwallet_cardqrcode',
             'refund_fed_by_signature',
-            'tibillet_bank_stripe_deposit',
         ]:
             permission_classes = [HasWalletSignature]
         elif self.action in [
+            'global_asset_bank_stripe_deposit',
             'retrieve_from_refill_checkout',
             'get_federated_token_refill_checkout',
             'badge',
@@ -688,13 +741,14 @@ class PlaceAPI(viewsets.ViewSet):
                 place.lespass_domain = Place.objects.get(name='Lespass').lespass_domain
                 place.save()
 
+            # TODO : A Virer Onboard stripe est fait coté Lespass
             # Creation du lien Onboard Stripe seulement en prod
-            url_onboard = ""
-            if not settings.TEST:
-                url_onboard = create_account_link_for_onboard(place)
+            # url_onboard = ""
+            # if not settings.TEST:
+            #     url_onboard = create_account_link_for_onboard(place)
 
             data = {
-                "url_onboard": url_onboard,
+                # "url_onboard": url_onboard,
                 "place_admin_apikey": key,
                 "place_wallet_uuid": str(place.wallet.uuid),
                 # "place_wallet_public_pem": place.wallet.public_pem,
@@ -930,7 +984,9 @@ class StripeAPI(viewsets.ViewSet):
         permission_classes = [HasOrganizationAPIKeyOnly, ]
         return [permission() for permission in permission_classes]
 
-
+"""
+A VIRER. Ex method lorsque laboutik avait besoin du onboard.
+Géré par LESPASS
 def create_account_link_for_onboard(place: Place):
     conf = Configuration.get_solo()
 
@@ -963,6 +1019,7 @@ def create_account_link_for_onboard(place: Place):
         logger.error('stripe account create error')
         url_onboard = None
     return url_onboard
+"""
 
 
 # TODO: passer dans le StripeAPI
@@ -1021,7 +1078,7 @@ class WebhookStripe(APIView):
             logger.error(f"WebhookStripe 500 ERROR : {e}")
             return Response("ERROR", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
+"""
 @permission_classes([HasKeyAndPlaceSignature])
 class Onboard_stripe_return(APIView):
     def post(self, request):
@@ -1060,7 +1117,7 @@ class Onboard_stripe_return(APIView):
             logger.error(f"Onboard_stripe_return error : {onboard_serializer.errors}")
         logger.error(f"Onboard_stripe_return : {request.data}")
         return Response("Compte stripe non valide", status=status.HTTP_406_NOT_ACCEPTABLE)
-
+"""
 
 class TransactionAPI(viewsets.ViewSet):
     """
