@@ -337,15 +337,21 @@ class WalletAPI(viewsets.ViewSet):
     def global_asset_bank_stripe_deposit(self, request):
         '''
         Remise en euro des tokens.
-        Arrive lorsque un virement stripe primaire vers le stripe connect du lieu
-        pour un transfert des sommes correspondantes a articles vendu avec l'asset primaire.
+        Arrive lorsqu'un virement stripe primaire vers le Stripe Connect du lieu
+        pour un transfert des sommes correspondantes a articles vendus avec l'asset primaire.
         Check de la valeur des tokens primaire du wallet du lieu (place)
         On ajoute une transaction de type action "DEPOSIT" su montant du virement
         '''
         admin_wallet = request.wallet
         place: Place = request.place
         wallet = place.wallet
-        fed_token: Token = wallet.tokens.get(asset__category=Asset.STRIPE_FED_FIAT)
+
+        try :
+            fed_token: Token = wallet.tokens.get(asset__category=Asset.STRIPE_FED_FIAT)
+        except Exception as e:
+            logger.error("Ce wallet n'a jamais reçu de PRIMARY ASSET")
+            raise e
+
         value_before = fed_token.value
         # Le wallet primaire qui sera le receiver :
         config = Configuration.get_solo()
@@ -394,7 +400,6 @@ class WalletAPI(viewsets.ViewSet):
         # Vérification
         fed_token.refresh_from_db()
         assert fed_token.value == value_before - amount, f"global_asset_bank_stripe_deposit : {fed_token.value} != {value_before} - {amount}"
-        import ipdb; ipdb.set_trace()
         return Response(transaction_serialized.data, status=status.HTTP_201_CREATED)
 
 

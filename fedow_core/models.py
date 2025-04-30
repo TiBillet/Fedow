@@ -560,7 +560,7 @@ class Transaction(models.Model):
             assert self.receiver.is_place(), "Receiver must be a place wallet"
             assert self.receiver.place, "Receiver must be a place wallet"
             assert self.asset in self.receiver.place.accepted_assets(), "Asset must be accepted by place"
-            assert not self.receiver.is_primary(), "Receiver must be a place wallet"
+            assert not self.receiver.is_primary(), "Receiver is not the primary asset"
             assert not self.sender.is_place(), "Sender must be a user wallet"
 
             assert self.card, "Card must be set for sale."
@@ -610,6 +610,24 @@ class Transaction(models.Model):
                     and not self.receiver.is_primary() :
                 token_receiver.value += self.amount
 
+        if self.action == Transaction.DEPOSIT:
+            """
+            Retour en banque d'un token.
+            Utilisé lors d'un virement du compte Stripe primaire vers le compte Stripe de l'utilisateur.
+            C'est un dépot en banque d'un token : c'est a dire un retour vers l'euro de l'asset fédéré
+            """
+
+            # Nous avons besoin que le sender ait assez de token
+            if not token_sender.value >= self.amount:
+                raise ValueError("amount too high")
+
+            assert self.sender.is_place(), "Sender must be a place wallet"
+            assert self.receiver.is_primary(), "Receiver must be a primary wallet"
+
+            # FILL TOKEN WALLET
+            # On vide le sender
+            # On ne rempli pas le receiver, ça part a la banque
+            token_sender.value -= self.amount
 
         # ALL VALIDATOR PASSED : HASH CREATION
         if not self.hash:
