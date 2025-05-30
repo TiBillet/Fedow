@@ -165,3 +165,5 @@ logs/nginxAccess.log
 logs/nginxError.log
 
 tempo/
+/resume_git_*
+/debug_format.txt
