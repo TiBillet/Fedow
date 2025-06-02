@@ -369,7 +369,10 @@ class WalletAPI(viewsets.ViewSet):
             raise ValueError(f"global_asset_bank_stripe_deposit : {amount} > {fed_token.value} : {transfer.id}")
 
         if CheckoutStripe.objects.filter(checkout_session_id_stripe=transfer.id).exists():
-            return Response("Already reported", status=status.HTTP_208_ALREADY_REPORTED)
+            logger.info(f"global_asset_bank_stripe_deposit : {transfer.id} already reported")
+            transaction = Transaction.objects.get(checkout_stripe__checkout_session_id_stripe=transfer.id)
+            transaction_serialized = TransactionSerializer(transaction, context={'request': request})
+            return Response(transaction_serialized.data, status=status.HTTP_208_ALREADY_REPORTED)
 
         # Création d'une trace CheckoutStripe
         checkout_stripe = CheckoutStripe.objects.create(
