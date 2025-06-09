@@ -172,6 +172,24 @@ class Asset(models.Model):
     def total_bank_deposit(self):
         return self.transactions.filter(action=Transaction.DEPOSIT).aggregate(total_amount=Sum('amount'))['total_amount'] or 0
 
+    def total_by_place(self):
+        """
+        Returns a dictionary with place names as keys and token values as values
+        showing how much of this asset is in each place's wallet.
+        Uses aggregate and values for efficient database querying.
+        """
+        # Get all tokens of this asset that are in place wallets
+        # Group by place name and calculate total value in a single query
+        place_totals = self.tokens.filter(wallet__place__isnull=False) \
+            .values('wallet__place__name') \
+            .annotate(total_value=Sum('value')) \
+            .order_by('wallet__place__name')
+
+        # Convert the queryset to a dictionary with place names as keys
+        result = {item['wallet__place__name']: item['total_value'] for item in place_totals}
+
+        return result
+
     # def total_in_wallet_by_card_origin(self):
     #     return Token.objects.filter(
     #         wallet__place__isnull=True,
