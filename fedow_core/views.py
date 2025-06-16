@@ -417,44 +417,61 @@ class WalletAPI(viewsets.ViewSet):
         primary_wallet = config.primary_wallet
 
         # le paiement le plus récent suppérieur à ce qu'il faut rembourser
-        checkout_db = None
+        checkouts_db = {}
+
+        # Check si le refund peut être fait par un seul remboursement :
+        rest_to_refund = to_refund
         for checkout in CheckoutStripe.objects.filter(
                 status=CheckoutStripe.PAID,
                 user=wallet.user).order_by('-datetime'):
             checkout_stripe = checkout.get_stripe_checkout()
-            amount_total = checkout_stripe.amount_total
-            if amount_total >= to_refund:
-                checkout_db = checkout
+            refill = checkout_stripe.amount_total
+
+            if refill >= to_refund: # Checkout trouvé ! On utilise celui ci pour rembourser. Si d'autre on été ajouté avant, on les écrase, celui ci suffit.
+                checkouts_db = {checkout: to_refund}
                 break
 
-        if not checkout_db:
+            else : # La recharge en ligne est inférieure a ce qu'il faut rembourser, on l'ajoute dans la liste des transactions a rembourser.
+                logger.info(f"checkout refill {refill}, rest : {rest_to_refund}")
+                checkouts_db[checkout] = refill if refill < rest_to_refund else rest_to_refund
+                rest_to_refund -= refill if refill < rest_to_refund else rest_to_refund
+                if rest_to_refund == 0: # On a suffisament pour rembourser
+                    logger.info(f"rest : {rest_to_refund}")
+                    break
+                elif rest_to_refund < 0:
+                    logger.error(f"refuse en tant : {rest_to_refund}")
+                    raise ValueError(f"refuse en tant : {rest_to_refund}")
+
+        if not checkouts_db:
             logger.error("Pas de paiement stripe pour ce wallet")
             return Response("Pas de paiement stripe pour ce wallet", status=status.HTTP_402_PAYMENT_REQUIRED)
 
         try:
-            refund = checkout_db.refund_payment_intent(to_refund)
+            for checkout, value in checkouts_db.items():
+                refund = checkout.refund_payment_intent(value)
+                if not refund.status == 'succeeded':
+                    logger.error(f"refund not succeeded : {refund}")
+                    return Response(f"refund not succeeded : {refund}", status=status.HTTP_406_NOT_ACCEPTABLE)
+
+                # lancer une transaction refund !
+                transaction_dict = {
+                    "ip": get_request_ip(request),
+                    "checkout_stripe": checkout,
+                    "sender": wallet,
+                    "receiver": primary_wallet,
+                    "asset": fed_token.asset,
+                    "amount": value,
+                    "action": Transaction.REFUND,
+                    "primary_card": None,
+                    "card": None,
+                    "subscription_start_datetime": None
+                }
+                transaction = Transaction.objects.create(**transaction_dict)
+
         except Exception as e:
             logger.error(f"refund not ok : {e}")
             return Response(f"refund not ok : {e}", status=status.HTTP_409_CONFLICT)
 
-        if not refund.status == 'succeeded':
-            logger.error(f"refund not succeeded : {refund}")
-            return Response(f"refund not succeeded : {refund}", status=status.HTTP_406_NOT_ACCEPTABLE)
-
-        # lancer une transaction refund !
-        transaction_dict = {
-            "ip": get_request_ip(request),
-            "checkout_stripe": checkout_db,
-            "sender": wallet,
-            "receiver": primary_wallet,
-            "asset": fed_token.asset,
-            "amount": to_refund,
-            "action": Transaction.REFUND,
-            "primary_card": None,
-            "card": None,
-            "subscription_start_datetime": None
-        }
-        transaction = Transaction.objects.create(**transaction_dict)
 
         wallet.refresh_from_db()
         serializer = WalletSerializer(wallet, context={'request': request})

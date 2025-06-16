@@ -37,8 +37,8 @@ class CheckoutStripe(models.Model):
     checkout_session_id_stripe = models.CharField(max_length=80, editable=False, blank=True, null=True)
     asset = models.ForeignKey('Asset', on_delete=models.PROTECT,
                               related_name='checkout_stripe')
-    CREATED, OPEN, PROGRESS, EXPIRE, PAID, WALLET_PRIMARY_OK, WALLET_USER_OK, CANCELED, ERROR = (
-        'N', 'O', 'G', 'E', 'P', 'W', 'V', 'C', 'R')
+    CREATED, OPEN, PROGRESS, EXPIRE, PAID, WALLET_PRIMARY_OK, WALLET_USER_OK, CANCELED, ERROR, REFUND = (
+        'N', 'O', 'G', 'E', 'P', 'W', 'V', 'C', 'R', 'F')
     STATUT_CHOICES = (
         (CREATED, 'Créée'),
         (OPEN, 'En attente de paiement'),
@@ -49,6 +49,7 @@ class CheckoutStripe(models.Model):
         (WALLET_USER_OK, 'Wallet user chargé'),  # wallet chargé
         (CANCELED, 'Annulée'),
         (ERROR, 'en erreur'),
+        (REFUND, 'Remboursé')
     )
     status = models.CharField(max_length=1, choices=STATUT_CHOICES, default=CREATED,
                               verbose_name="Statut de la commande")
@@ -78,6 +79,8 @@ class CheckoutStripe(models.Model):
                 reason='requested_by_customer',
                 amount=amount,
             )
+            self.status = self.REFUND
+            self.save()
         except InvalidRequestError as e:
             logger.error(f"CheckoutStripe Refund InvalidRequestError {e}")
             raise Exception(f"CheckoutStripe Refund InvalidRequestError {e}")
@@ -608,7 +611,7 @@ class Transaction(models.Model):
             # import ipdb; ipdb.set_trace()
 
         if self.action == Transaction.REFUND:
-            assert self.amount == token_sender.value, "Amount must be equal to token sender value, we clear the ephemeral wallet"
+            assert self.amount <= token_sender.value, f"REFUND ASSERT ERROR : Amount {self.amount} must be <= to token sender value {token_sender.value}"
 
             # Pour les assets locaux et cadeaux :
             if self.asset.category != Asset.STRIPE_FED_FIAT:
