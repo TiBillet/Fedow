@@ -408,74 +408,124 @@ class WalletAPI(viewsets.ViewSet):
 
     @action(detail=False, methods=['GET'])
     def refund_fed_by_signature(self, request):
-        # La méthode d'auth diffère d'un retrive standard et donne le wallet plutot que le place
-        wallet: Wallet = request.wallet
-        fed_token = wallet.tokens.get(asset__category=Asset.STRIPE_FED_FIAT)
-        to_refund = fed_token.value
-        # Le wallet primaire qui sera le receiver :
-        config = Configuration.get_solo()
-        primary_wallet = config.primary_wallet
+        """
+        Rembourse le wallet si de l'argent reste sur le token STRIPE_FED_FIAT.
 
-        # le paiement le plus récent suppérieur à ce qu'il faut rembourser
-        checkouts_db = {}
-
-        # Check si le refund peut être fait par un seul remboursement :
-        rest_to_refund = to_refund
-        for checkout in CheckoutStripe.objects.filter(
-                status=CheckoutStripe.PAID,
-                user=wallet.user).order_by('-datetime'):
-            checkout_stripe = checkout.get_stripe_checkout()
-            refill = checkout_stripe.amount_total
-
-            if refill >= to_refund: # Checkout trouvé ! On utilise celui ci pour rembourser. Si d'autre on été ajouté avant, on les écrase, celui ci suffit.
-                checkouts_db = {checkout: to_refund}
-                break
-
-            else : # La recharge en ligne est inférieure a ce qu'il faut rembourser, on l'ajoute dans la liste des transactions a rembourser.
-                logger.info(f"checkout refill {refill}, rest : {rest_to_refund}")
-                checkouts_db[checkout] = refill if refill < rest_to_refund else rest_to_refund
-                rest_to_refund -= refill if refill < rest_to_refund else rest_to_refund
-                if rest_to_refund == 0: # On a suffisament pour rembourser
-                    logger.info(f"rest : {rest_to_refund}")
-                    break
-                elif rest_to_refund < 0:
-                    logger.error(f"refuse en tant : {rest_to_refund}")
-                    raise ValueError(f"refuse en tant : {rest_to_refund}")
-
-        if not checkouts_db:
-            logger.error("Pas de paiement stripe pour ce wallet")
-            return Response("Pas de paiement stripe pour ce wallet", status=status.HTTP_402_PAYMENT_REQUIRED)
-
+        Cette méthode:
+        1. Récupère le wallet depuis la requête
+        2. Vérifie s'il y a de l'argent à rembourser
+        3. Trouve les paiements Stripe qui peuvent être remboursés
+        4. Effectue le remboursement via Stripe
+        5. Crée une transaction de remboursement
+        6. Retourne le wallet mis à jour
+        """
         try:
-            for checkout, value in checkouts_db.items():
-                refund = checkout.refund_payment_intent(value)
-                if not refund.status == 'succeeded':
-                    logger.error(f"refund not succeeded : {refund}")
-                    return Response(f"refund not succeeded : {refund}", status=status.HTTP_406_NOT_ACCEPTABLE)
+            # La méthode d'auth diffère d'un retrive standard et donne le wallet plutot que le place
+            wallet: Wallet = request.wallet
 
-                # lancer une transaction refund !
-                transaction_dict = {
-                    "ip": get_request_ip(request),
-                    "checkout_stripe": checkout,
-                    "sender": wallet,
-                    "receiver": primary_wallet,
-                    "asset": fed_token.asset,
-                    "amount": value,
-                    "action": Transaction.REFUND,
-                    "primary_card": None,
-                    "card": None,
-                    "subscription_start_datetime": None
-                }
-                transaction = Transaction.objects.create(**transaction_dict)
+            # Récupération du token STRIPE_FED_FIAT
+            try:
+                fed_token = wallet.tokens.get(asset__category=Asset.STRIPE_FED_FIAT)
+            except Token.DoesNotExist:
+                logger.error(f"Token STRIPE_FED_FIAT non trouvé pour le wallet {wallet.uuid}")
+                return Response("Token STRIPE_FED_FIAT non trouvé", status=status.HTTP_404_NOT_FOUND)
+
+            # Vérification du montant à rembourser
+            to_refund = fed_token.value
+            if to_refund <= 0:
+                logger.info(f"Rien à rembourser pour le wallet {wallet.uuid}, montant: {to_refund}")
+                return Response("Rien à rembourser", status=status.HTTP_200_OK)
+
+            # Le wallet primaire qui sera le receiver :
+            config = Configuration.get_solo()
+            primary_wallet = config.primary_wallet
+
+            # Dictionnaire des paiements à rembourser {checkout: montant}
+            checkouts_db = {}
+
+            # Check si le refund peut être fait par un seul remboursement :
+            rest_to_refund = to_refund
+
+            # Recherche des paiements Stripe du plus récent au plus ancien
+            for checkout in CheckoutStripe.objects.filter(
+                    status=CheckoutStripe.PAID,
+                    user=wallet.user).order_by('-datetime'):
+                try:
+                    checkout_stripe = checkout.get_stripe_checkout()
+                    refill = checkout_stripe.amount_total
+
+                    if refill >= to_refund: 
+                        # Checkout trouvé ! On utilise celui-ci pour rembourser. 
+                        # Si d'autres ont été ajoutés avant, on les écrase, celui-ci suffit.
+                        checkouts_db = {checkout: to_refund}
+                        break
+                    else: 
+                        # La recharge en ligne est inférieure à ce qu'il faut rembourser, 
+                        # on l'ajoute dans la liste des transactions à rembourser.
+                        logger.info(f"Checkout refill {refill}, rest : {rest_to_refund}")
+                        checkouts_db[checkout] = refill if refill < rest_to_refund else rest_to_refund
+                        rest_to_refund -= refill if refill < rest_to_refund else rest_to_refund
+                        if rest_to_refund == 0: 
+                            # On a suffisamment pour rembourser
+                            logger.info(f"Montant restant à rembourser : {rest_to_refund}")
+                            break
+                        elif rest_to_refund < 0:
+                            logger.error(f"Erreur de calcul, montant négatif : {rest_to_refund}")
+                            raise ValueError(f"Erreur de calcul, montant négatif : {rest_to_refund}")
+                except Exception as e:
+                    logger.error(f"Erreur lors de la récupération du checkout Stripe {checkout.uuid}: {e}")
+                    continue
+
+            if not checkouts_db:
+                logger.error(f"Pas de paiement Stripe trouvé pour le wallet {wallet.uuid}")
+                return Response("Pas de paiement Stripe pour ce wallet", status=status.HTTP_402_PAYMENT_REQUIRED)
+
+            # Sauvegarde de la valeur initiale du token pour vérification
+            initial_token_value = fed_token.value
+
+            # Traitement des remboursements
+            for checkout, value in checkouts_db.items():
+                try:
+                    # Effectue le remboursement via Stripe
+                    refund = checkout.refund_payment_intent(value)
+                    if not refund.status == 'succeeded':
+                        logger.error(f"Remboursement échoué : {refund}")
+                        return Response(f"Remboursement échoué : {refund}", status=status.HTTP_406_NOT_ACCEPTABLE)
+
+                    # Création d'une transaction de remboursement
+                    transaction_dict = {
+                        "ip": get_request_ip(request),
+                        "checkout_stripe": checkout,
+                        "sender": wallet,
+                        "receiver": primary_wallet,
+                        "asset": fed_token.asset,
+                        "amount": value,
+                        "action": Transaction.REFUND,
+                        "primary_card": None,
+                        "card": None,
+                        "subscription_start_datetime": None
+                    }
+                    transaction = Transaction.objects.create(**transaction_dict)
+                    logger.info(f"Transaction de remboursement créée: {transaction.uuid}")
+
+                except Exception as e:
+                    logger.error(f"Erreur lors du remboursement pour le checkout {checkout.uuid}: {e}")
+                    return Response(f"Erreur lors du remboursement: {e}", status=status.HTTP_409_CONFLICT)
+
+            # Vérification que le token a bien été mis à jour
+            wallet.refresh_from_db()
+            fed_token.refresh_from_db()
+
+            # Vérification que le remboursement a bien été effectué
+            if fed_token.value == initial_token_value:
+                logger.warning(f"Le token n'a pas été mis à jour après remboursement: {fed_token.value} == {initial_token_value}")
+
+            serializer = WalletSerializer(wallet, context={'request': request})
+            return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
 
         except Exception as e:
-            logger.error(f"refund not ok : {e}")
-            return Response(f"refund not ok : {e}", status=status.HTTP_409_CONFLICT)
-
-
-        wallet.refresh_from_db()
-        serializer = WalletSerializer(wallet, context={'request': request})
-        return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
+            logger.error(f"Erreur générale lors du remboursement: {e}")
+            return Response(f"Erreur lors du remboursement: {e}", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['POST'])
     def get_federated_token_refill_checkout(self, request):
