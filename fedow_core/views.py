@@ -203,33 +203,6 @@ class CardAPI(viewsets.ViewSet):
             card.save()
             return Response("OK", status=status.HTTP_200_OK)
 
-    """
-    @action(detail=False, methods=['post'])
-    def get_checkout(self, request):
-        #TODO: A virer, utilisé uniquement dans les tests laboutik
-        # Les tests devrait demander via lespass
-        if not request.data.get('email'):
-            return Response("Email missing", status=status.HTTP_406_NOT_ACCEPTABLE)
-
-        serializer = WalletCheckoutSerializer(data=request.data, context={'request': request})
-        if serializer.is_valid():
-            checkout_session = StripeAPI.create_stripe_checkout_for_federated_refill(
-                user=serializer.user,
-                add_metadata={
-                    "card_uuid": f"{serializer.card.uuid}",
-                },
-            )
-
-            if checkout_session:
-                return Response(checkout_session.url, status=status.HTTP_202_ACCEPTED)
-            else:
-                # Probablement pas de clé API Stripe, on envoie un
-                logger.warning(f"get_checkout : No stripe key provided on .env -> 417")
-                return Response('Ni stripe key provided', status=status.HTTP_417_EXPECTATION_FAILED)
-
-        logger.error(f"get_checkout error : {serializer.errors}")
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    """
 
     @action(detail=True, methods=['get'])
     def qr_retrieve(self, request, pk=None):
@@ -278,8 +251,6 @@ class CardAPI(viewsets.ViewSet):
             logger.info(f"\nCHECK CARTE N° {card.number_printed} - TagId {card.first_tag_id}")
             for token in serializer.data['wallet']['tokens']:
                 logger.info(f"Asset {token['asset']['name']} : {dround(token['value'])}\n")
-
-            # import ipdb; ipdb.set_trace()
 
             return Response(serializer.data, status=status.HTTP_200_OK)
         except Card.DoesNotExist:

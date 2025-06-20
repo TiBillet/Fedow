@@ -406,6 +406,16 @@ class CardSerializer(serializers.ModelSerializer):
     # Faut lancer la fonction get_wallet() pour avoir le bon wallet...
     wallet = serializers.SerializerMethodField()
     origin = OriginSerializer()
+    is_primary = serializers.SerializerMethodField()
+
+    def get_is_primary(self, obj: Card):
+        try :
+            request = self.context.get('request')
+            place = request.place
+            return obj.primary_places.filter(pk=place.pk).exists()
+        except Exception as e:
+            logger.exception(e)
+            return False
 
     def get_place_origin(self, obj: Card):
         return f"{obj.origin.place.name} V{obj.origin.generation}"
@@ -424,6 +434,7 @@ class CardSerializer(serializers.ModelSerializer):
             'qrcode_uuid',
             'number_printed',
             'is_wallet_ephemere',
+            'is_primary',
         )
 
 
@@ -801,9 +812,9 @@ class TransactionW2W(serializers.Serializer):
     checkout_stripe = serializers.PrimaryKeyRelatedField(queryset=CheckoutStripe.objects.all(),
                                                          required=False, allow_null=True)
 
-    primary_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
+    primary_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.filter(primary_places__isnull=False), required=False)
     primary_card_fisrtTagId = serializers.SlugRelatedField(
-        queryset=Card.objects.all(),
+        queryset=Card.objects.filter(primary_places__isnull=False),
         required=False, slug_field='first_tag_id')
 
     user_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
@@ -818,7 +829,18 @@ class TransactionW2W(serializers.Serializer):
         return value
 
     def validate_primary_card(self, value):
-        # TODO; Check carte primaire et lieux
+        request = self.context.get('request')
+        self.place: Place = getattr(request, 'place', None)
+        if self.place not in value.primary_places.all():
+            raise serializers.ValidationError("Carte primaire non valide")
+        return value
+
+
+    def validate_primary_card_fisrtTagId(self, value: Card):
+        request = self.context.get('request')
+        self.place: Place = getattr(request, 'place', None)
+        if self.place not in value.primary_places.all():
+            raise serializers.ValidationError("Carte primaire non valide")
         return value
 
     def get_action(self, attrs):
