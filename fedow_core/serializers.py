@@ -815,7 +815,7 @@ class TransactionW2W(serializers.Serializer):
 
     primary_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
     primary_card_fisrtTagId = serializers.SlugRelatedField(
-        queryset=Card.objects.filter(primary_places__isnull=False),
+        queryset=Card.objects.all(),
         required=False, slug_field='first_tag_id')
 
     user_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all(), required=False)
