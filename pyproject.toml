@@ -30,6 +30,7 @@ faker = "^22"
 ipdb = "^0.13.13"
 sentry-sdk = {extras = ["django"], version = "^1.39.1"}
 pymemcache = "^4.0.0"
+transaction = "^5.0"
 
 [build-system]
 requires = ["poetry-core"]

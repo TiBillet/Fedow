@@ -1,6 +1,7 @@
 import logging
 from collections import OrderedDict
 from time import sleep
+from django.db import transaction
 
 import stripe
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -829,19 +830,26 @@ class TransactionW2W(serializers.Serializer):
         return value
 
     def validate_primary_card(self, value):
-        request = self.context.get('request')
-        self.place: Place = getattr(request, 'place', None)
-        if self.place not in value.primary_places.all():
+        try :
+            request = self.context.get('request')
+            self.place: Place = getattr(request, 'place', None)
+            if self.place not in value.primary_places.all():
+                raise serializers.ValidationError("Carte primaire non valide")
+            return value
+        except Exception as e:
+            logger.error(f"TransactionW2W validate_primary_card {e}")
             raise serializers.ValidationError("Carte primaire non valide")
-        return value
-
 
     def validate_primary_card_fisrtTagId(self, value: Card):
-        request = self.context.get('request')
-        self.place: Place = getattr(request, 'place', None)
-        if self.place not in value.primary_places.all():
+        try:
+            request = self.context.get('request')
+            self.place: Place = getattr(request, 'place', None)
+            if self.place not in value.primary_places.all():
+                raise serializers.ValidationError("Carte primaire non valide")
+            return value
+        except Exception as e:
+            logger.error(f"TransactionW2W validate_primary_card_fisrtTagId {e}")
             raise serializers.ValidationError("Carte primaire non valide")
-        return value
 
     def get_action(self, attrs):
         # Quel type de transaction ?
@@ -912,6 +920,7 @@ class TransactionW2W(serializers.Serializer):
 
         raise serializers.ValidationError("No action authorized")
 
+    @transaction.atomic
     def validate(self, attrs):
         # Récupération de la place grâce à la permission HasKeyAndPlaceSignature
         request = self.context.get('request')
