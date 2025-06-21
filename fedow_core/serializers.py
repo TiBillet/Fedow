@@ -414,7 +414,7 @@ class CardSerializer(serializers.ModelSerializer):
             place = request.place
             return obj.primary_places.filter(pk=place.pk).exists()
         except Exception as e:
-            logger.exception(e)
+            logger.warning(f"CardSerializer get_is_primary {e}. Probablement une requete en dehors du cashless.")
             return False
 
     def get_place_origin(self, obj: Card):
