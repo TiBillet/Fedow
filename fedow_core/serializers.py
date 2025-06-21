@@ -941,6 +941,8 @@ class TransactionW2W(serializers.Serializer):
 
         self.place: Place = getattr(request, 'place', None)
 
+        import ipdb; ipdb.set_trace()
+
         if not self.place:
             # C'est probablement une recharge stripe.
             # Le serializer est appellé par le webhook post paiement, il n'y a pas de place.
