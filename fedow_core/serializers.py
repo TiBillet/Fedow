@@ -813,7 +813,7 @@ class TransactionW2W(serializers.Serializer):
     checkout_stripe = serializers.PrimaryKeyRelatedField(queryset=CheckoutStripe.objects.all(),
                                                          required=False, allow_null=True)
 
-    primary_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.filter(primary_places__isnull=False), required=False)
+    primary_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.filter(primary_places__isnull=False).distinct(), required=False)
     primary_card_fisrtTagId = serializers.SlugRelatedField(
         queryset=Card.objects.filter(primary_places__isnull=False),
         required=False, slug_field='first_tag_id')
@@ -940,8 +940,6 @@ class TransactionW2W(serializers.Serializer):
         self.user_card: Card = attrs.get('user_card_uuid') or attrs.get('user_card_firstTagId')
 
         self.place: Place = getattr(request, 'place', None)
-
-        import ipdb; ipdb.set_trace()
 
         if not self.place:
             # C'est probablement une recharge stripe.
