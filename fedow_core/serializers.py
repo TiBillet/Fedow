@@ -813,7 +813,7 @@ class TransactionW2W(serializers.Serializer):
     checkout_stripe = serializers.PrimaryKeyRelatedField(queryset=CheckoutStripe.objects.all(),
                                                          required=False, allow_null=True)
 
-    primary_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.filter(primary_places__isnull=False).distinct(), required=False)
+    primary_card_uuid = serializers.PrimaryKeyRelatedField(queryset=Card.objects.filter(primary_places__isnull=False), required=False)
     primary_card_fisrtTagId = serializers.SlugRelatedField(
         queryset=Card.objects.filter(primary_places__isnull=False),
         required=False, slug_field='first_tag_id')
@@ -922,6 +922,8 @@ class TransactionW2W(serializers.Serializer):
 
     @transaction.atomic
     def validate(self, attrs):
+        import ipdb; ipdb.set_trace()
+
         # Récupération de la place grâce à la permission HasKeyAndPlaceSignature
         request = self.context.get('request')
         # get variable
