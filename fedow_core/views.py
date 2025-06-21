@@ -1233,7 +1233,7 @@ class TransactionAPI(viewsets.ViewSet):
 
     def create(self, request):
         transaction_validator = TransactionW2W(data=request.data, context={'request': request})
-        # import ipdb; ipdb.set_trace()
+        import ipdb; ipdb.set_trace()
         if transaction_validator.is_valid():
             transaction: Transaction = transaction_validator.transaction
             transaction_serialized = TransactionSerializer(transaction, context={'request': request})
