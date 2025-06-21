@@ -922,8 +922,6 @@ class TransactionW2W(serializers.Serializer):
 
     @transaction.atomic
     def validate(self, attrs):
-        import ipdb; ipdb.set_trace()
-
         # Récupération de la place grâce à la permission HasKeyAndPlaceSignature
         request = self.context.get('request')
         # get variable
