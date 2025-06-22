@@ -27,4 +27,4 @@ echo $DATE_NOW" on cree l'archive borg "
   $BORG_REPO::$PREFIX-$DATE_NOW \
   $DUMPS_DIRECTORY
 
-/usr/bin/borg prune -v --list --keep-within=3d --keep-daily=7 --keep-weekly=4 --keep-monthly=-1 --keep-yearly=-1 $BORG_REPO
+/usr/bin/borg prune -v --list --keep-within=1d --keep-daily=7 --keep-weekly=4 --keep-monthly=-1 --keep-yearly=-1 $BORG_REPO
