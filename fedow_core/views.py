@@ -787,12 +787,6 @@ class PlaceAPI(viewsets.ViewSet):
                 place.lespass_domain = Place.objects.get(name='Lespass').lespass_domain
                 place.save()
 
-            # TODO : A Virer Onboard stripe est fait coté Lespass
-            # Creation du lien Onboard Stripe seulement en prod
-            # url_onboard = ""
-            # if not settings.TEST:
-            #     url_onboard = create_account_link_for_onboard(place)
-
             data = {
                 # "url_onboard": url_onboard,
                 "place_admin_apikey": key,
@@ -815,23 +809,28 @@ class PlaceAPI(viewsets.ViewSet):
             assets_created_by_the_place = place.wallet.assets_created.all()
             fed_test, created = Federation.objects.get_or_create(name='TEST FED')
 
+
+            # On ajoute l'asset principal, créé par un flush normal.
+            # Il sera testé dans LaBoutik
+            assets_adh = assets_created_by_the_place.filter(category=Asset.SUBSCRIPTION)
+            for asset_adh in assets_adh:
+                fed_test.assets.add(asset_adh)
+
+            # On fabrique les tokens du wallet du nouveau lieu pour qu'il puisse réaliser des adhésions depuis LaBoutik
+            # sinon erreur : Sender token does not exist'
+            for asset in fed_test.assets.all():
+                Token.objects.get_or_create(wallet=place.wallet, asset=asset)
+
+
             # t'es le flush ou t'es le test ?
             # Si t'as un asset badge, tu es le flush TiBilletistan
-            try:
-                # On ajoute l'asset principal, créé par un flush normal.
-                # Il sera testé dans LaBoutik
+            try :
                 asset_badge = assets_created_by_the_place.get(category=Asset.BADGE)
-                asset_adh, asset_abo = assets_created_by_the_place.filter(category=Asset.SUBSCRIPTION)
                 fed_test.assets.add(asset_badge)
-                fed_test.assets.add(asset_adh)
-                fed_test.assets.add(asset_abo)
-
             except Exception as e:
-                logger.info(e)
                 # T'as pas de badge, t'es un test, on t'ajoute juste dans la fédé
-                # TODO: Ajouter l'asset du premier lieu créé par flush et tester
-                # asset_euro = assets_created_by_the_place.get(category=Asset.TOKEN_LOCAL_FIAT)
-                # fed_test.assets.add(asset_euro)
+                logger.info(e)
+
 
             # Que tu sois test ou flush, on t'ajoute
             fed_test.places.add(place)

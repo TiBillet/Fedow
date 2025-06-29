@@ -540,10 +540,12 @@ class Transaction(models.Model):
             # Pas besoin de création monétaire, on charge directement le wallet client
             assert self.asset.category == Asset.SUBSCRIPTION, "Asset must be a subscription asset"
             assert self.sender.is_place(), "Sender must be a place wallet"
-            assert self.sender.place.wallet == self.asset.wallet_origin, "Subscription wallet_origin must be the place"
-
-            # L'abonnement peut se faire sur une carte avec wallet epehemere
-            # assert self.receiver.user, "Receiver must be a user wallet"
+            if self.sender.place.wallet != self.asset.wallet_origin:
+                # Uniquement pour les adhésions. Les autres assets ne peuvent être chargé ailleurs que chez la place d'origine
+                if not self.asset.federations.exists():
+                    raise ValueError("Subscription wallet_origin must be the sender place. No federation for this asset")
+                if not self.asset.federations.filter(places=self.sender.place).exists():
+                    raise ValueError("Subscription wallet_origin must be the sender place, the place is not in the federation")
 
             # On ajoute le montant de l'abonnement au wallet du client
             token_receiver.value += self.amount
