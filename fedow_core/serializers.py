@@ -980,7 +980,7 @@ class TransactionW2W(serializers.Serializer):
             self.token_receiver = Token.objects.get(wallet=self.receiver, asset=self.asset)
         except Token.DoesNotExist:
             logger.info(
-                f"{timezone.localtime()} INFO NewTransactionWallet2WalletValidator : receiver token does not exist")
+                f"{timezone.localtime()} INFO NewTransactionWallet2WalletValidator : receiver token does not exist -> create")
             self.token_receiver = Token.objects.create(wallet=self.receiver, asset=self.asset, value=0)
 
         # On vérifie qu'une transaction CREATION pour refill avec le même checkout id stripe n'existe déja ?

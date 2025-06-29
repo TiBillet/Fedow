@@ -39,13 +39,14 @@ TEST = os.environ.get('TEST') == 'True' or os.environ.get('TEST') == '1'
 ALLOWED_HOSTS = [os.environ['DOMAIN'], ]
 CSRF_TRUSTED_ORIGINS = [f"https://{os.environ['DOMAIN']}", ]
 if DEBUG:
-    ALLOWED_HOSTS.append('127.0.0.1') # pour webhook stripe test
+    ALLOWED_HOSTS.append('127.0.0.1')  # pour webhook stripe test
 #     ALLOWED_HOSTS.append('*')
 #     CSRF_TRUSTED_ORIGINS.append('https://fedow.tibillet.localhost')
 
 # Sentry
 if not DEBUG:
     import sentry_sdk
+
     sentry_sdk.init(
         dsn=os.environ.get('SENTRY_DNS'),
         # Set traces_sample_rate to 1.0 to capture 100%
@@ -122,12 +123,24 @@ ASGI_APPLICATION = "fedowallet_django.asgi.application"
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'database/db.sqlite3',
-    }
+    },
 }
+
+# DATABASES = {
+#     'default': {
+#         "ENGINE": "django.db.backends.postgresql",
+#         'NAME': os.environ.get('POSTGRES_DB'),
+#         'USER': os.environ.get('POSTGRES_USER'),
+#         'PASSWORD': os.environ.get('POSTGRES_PASSWORD'),
+#         'HOST': os.environ.get('POSTGRES_HOST', 'postgres'),
+#         'PORT': os.environ.get('POSTGRES_PORT', '5432'),
+#     }
+# }
 
 # --- Cache configuration ---
 # En production/développement normal : utilise Memcached
