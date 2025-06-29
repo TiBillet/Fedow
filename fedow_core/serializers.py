@@ -920,7 +920,7 @@ class TransactionW2W(serializers.Serializer):
 
         raise serializers.ValidationError("No action authorized")
 
-    @transaction.atomic
+    # @transaction.atomic
     def validate(self, attrs):
         # Récupération de la place grâce à la permission HasKeyAndPlaceSignature
         request = self.context.get('request')
