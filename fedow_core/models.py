@@ -72,6 +72,8 @@ class CheckoutStripe(models.Model):
         config = Configuration.get_solo()
         stripe.api_key = config.get_stripe_api()
         checkout = stripe.checkout.Session.retrieve(self.checkout_session_id_stripe)
+
+        # TODO: le paiement intent peut être récupéré direct en cas de paiement par reader wise pos
         payment_intent = checkout.payment_intent
         try :
             refund = stripe.Refund.create(

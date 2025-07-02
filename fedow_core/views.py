@@ -1,3 +1,4 @@
+import json
 import logging
 import time
 from datetime import timedelta, datetime
@@ -34,7 +35,7 @@ from fedow_core.serializers import TransactionSerializer, WalletCheckoutSerializ
     FederationSerializer, BadgeCardValidator, WalletGetOrCreate, LinkWalletCardQrCode, BadgeByWalletSignatureValidator, \
     OriginSerializer, CachedTransactionSerializer
 from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict, b64_to_data, get_request_ip, \
-    get_public_key, rsa_encrypt_string
+    get_public_key, rsa_encrypt_string, verify_signature, data_to_b64
 from fedow_core.validators import PlaceValidator
 
 logger = logging.getLogger(__name__)
@@ -193,16 +194,15 @@ class CardAPI(viewsets.ViewSet):
         place: Place = request.place
         card = Card.objects.get(first_tag_id=request.data.get('first_tag_id'))
         delete = request.data.get('delete')
-        if delete :
+        if delete:
             card.primary_places.remove(place)
             return Response("remove ok", status=status.HTTP_205_RESET_CONTENT)
-        else :
+        else:
             if place in card.primary_places.all():
                 return Response("Déja OK", status=status.HTTP_208_ALREADY_REPORTED)
             card.primary_places.add(place)
             card.save()
             return Response("OK", status=status.HTTP_200_OK)
-
 
     @action(detail=True, methods=['get'])
     def qr_retrieve(self, request, pk=None):
@@ -317,7 +317,7 @@ class WalletAPI(viewsets.ViewSet):
         place: Place = request.place
         wallet = place.wallet
 
-        try :
+        try:
             fed_token: Token = wallet.tokens.get(asset__category=Asset.STRIPE_FED_FIAT)
         except Exception as e:
             logger.error("Ce wallet n'a jamais reçu de PRIMARY ASSET")
@@ -376,7 +376,6 @@ class WalletAPI(viewsets.ViewSet):
         assert fed_token.value == value_before - amount, f"global_asset_bank_stripe_deposit : {fed_token.value} != {value_before} - {amount}"
         return Response(transaction_serialized.data, status=status.HTTP_201_CREATED)
 
-
     @action(detail=False, methods=['GET'])
     def refund_fed_by_signature(self, request):
         """
@@ -425,18 +424,18 @@ class WalletAPI(viewsets.ViewSet):
                     checkout_stripe = checkout.get_stripe_checkout()
                     refill = checkout_stripe.amount_total
 
-                    if refill >= to_refund: 
+                    if refill >= to_refund:
                         # Checkout trouvé ! On utilise celui-ci pour rembourser. 
                         # Si d'autres ont été ajoutés avant, on les écrase, celui-ci suffit.
                         checkouts_db = {checkout: to_refund}
                         break
-                    else: 
+                    else:
                         # La recharge en ligne est inférieure à ce qu'il faut rembourser, 
                         # on l'ajoute dans la liste des transactions à rembourser.
                         logger.info(f"Checkout refill {refill}, rest : {rest_to_refund}")
                         checkouts_db[checkout] = refill if refill < rest_to_refund else rest_to_refund
                         rest_to_refund -= refill if refill < rest_to_refund else rest_to_refund
-                        if rest_to_refund == 0: 
+                        if rest_to_refund == 0:
                             # On a suffisamment pour rembourser
                             logger.info(f"Montant restant à rembourser : {rest_to_refund}")
                             break
@@ -489,7 +488,8 @@ class WalletAPI(viewsets.ViewSet):
 
             # Vérification que le remboursement a bien été effectué
             if fed_token.value == initial_token_value:
-                logger.warning(f"Le token n'a pas été mis à jour après remboursement: {fed_token.value} == {initial_token_value}")
+                logger.warning(
+                    f"Le token n'a pas été mis à jour après remboursement: {fed_token.value} == {initial_token_value}")
 
             serializer = WalletSerializer(wallet, context={'request': request})
             return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
@@ -619,8 +619,6 @@ class WalletAPI(viewsets.ViewSet):
         serializer = CardSerializer(fusionned_card, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-
-
     ### END ROUTE LESPAS
 
     def retrieve(self, request, pk=None):
@@ -672,7 +670,7 @@ class WalletAPI(viewsets.ViewSet):
             'get_federated_token_refill_checkout',
             'badge',
         ]:
-            permission_classes = [HasPlaceKeyAndWalletSignature, ] # Pour LaBoutik,
+            permission_classes = [HasPlaceKeyAndWalletSignature, ]  # Pour LaBoutik,
         else:
             permission_classes = [HasKeyAndPlaceSignature]
         return [permission() for permission in permission_classes]
@@ -809,7 +807,6 @@ class PlaceAPI(viewsets.ViewSet):
             assets_created_by_the_place = place.wallet.assets_created.all()
             fed_test, created = Federation.objects.get_or_create(name='TEST FED')
 
-
             # On ajoute l'asset principal, créé par un flush normal.
             # Il sera testé dans LaBoutik
             assets_adh = assets_created_by_the_place.filter(category=Asset.SUBSCRIPTION)
@@ -821,16 +818,14 @@ class PlaceAPI(viewsets.ViewSet):
             for asset in fed_test.assets.all():
                 Token.objects.get_or_create(wallet=place.wallet, asset=asset)
 
-
             # t'es le flush ou t'es le test ?
             # Si t'as un asset badge, tu es le flush TiBilletistan
-            try :
+            try:
                 asset_badge = assets_created_by_the_place.get(category=Asset.BADGE)
                 fed_test.assets.add(asset_badge)
             except Exception as e:
                 # T'as pas de badge, t'es un test, on t'ajoute juste dans la fédé
                 logger.info(e)
-
 
             # Que tu sois test ou flush, on t'ajoute
             fed_test.places.add(place)
@@ -858,6 +853,76 @@ class PlaceAPI(viewsets.ViewSet):
 
 # TODO : mettre tout les appel et retour vers stripe dans un view set pour faire une vrai API Stripe X TiBillet
 class StripeAPI(viewsets.ViewSet):
+
+    @staticmethod
+    def validate_stripe_reader_wise_pose_and_make_transaction(payment_intent_stripe_id, request):
+        config = Configuration.get_solo()
+        stripe.api_key = config.get_stripe_api()
+
+        stripe_payment = stripe.PaymentIntent.retrieve(payment_intent_stripe_id)
+        metadata = stripe_payment.metadata
+        data = json.loads(metadata['data'])
+        place = Place.objects.get(uuid=data['fedow_place_uuid'])
+
+        # La demande a bien été initiée par un serveur cashless recenu : la signature est OK
+        signature = stripe_payment.metadata['signature']
+        if not verify_signature(place.cashless_public_key(),
+                                data_to_b64(data),
+                                signature):
+            raise Exception(
+                f"validate_stripe_reader_wise_pose_and_make_transaction : Signature verification failed {metadata}")
+
+        card = Card.objects.get(first_tag_id=data['tag_id'])
+        wallet = card.get_wallet()
+
+        # On va chercher le token stripe
+        primary_wallet = config.primary_wallet
+        stripe_asset = Asset.objects.get(wallet_origin=primary_wallet, category=Asset.STRIPE_FED_FIAT)
+
+        primary_token, created = Token.objects.get_or_create(
+            wallet=primary_wallet,
+            asset=stripe_asset,
+        )
+
+        user_token, created = Token.objects.get_or_create(
+            wallet=wallet,
+            asset=stripe_asset,
+        )
+
+        # Fabrication du CheckoutStripe avec l'id paiement intent
+        # Création d'une trace CheckoutStripe
+        checkout_stripe = CheckoutStripe.objects.create(
+            datetime=datetime.fromtimestamp(stripe_payment.get('created')),
+            checkout_session_id_stripe=payment_intent_stripe_id,
+            asset=stripe_asset,
+            metadata=metadata,
+            status=CheckoutStripe.PAID,
+            user=wallet.user if hasattr(wallet, 'user') else place.admins.first(),
+            # si le wallet a un user, sinon on prend l'admin du lieu
+        )
+
+        tr_data = {
+            'amount': int(stripe_payment['amount_received']),
+            'sender': f'{primary_token.wallet.uuid}',
+            'receiver': f'{user_token.wallet.uuid}',
+            'asset': f'{primary_token.asset.uuid}',
+            'action': f'{Transaction.REFILL}',
+            'metadata': f'{metadata}',
+            'checkout_stripe': f'{checkout_stripe.uuid}',
+            'user_card_uuid': f'{card.uuid}',
+        }
+
+        transaction_validator = TransactionW2W(data=tr_data, context={'request': request})
+        if not transaction_validator.is_valid():
+            logger.error(f"TransactionW2W serializer ERROR : {transaction_validator.errors}")
+            # Update checkout status
+            checkout_stripe.status = CheckoutStripe.ERROR
+            checkout_stripe.save()
+            raise ValidationError(f"TransactionW2W serializer ERROR : {transaction_validator.errors}")
+
+        checkout_stripe.status = CheckoutStripe.WALLET_USER_OK
+        checkout_stripe.save()
+        return checkout_stripe
 
     @staticmethod
     def validate_stripe_checkout_and_make_transaction(checkout_db: CheckoutStripe, request):
@@ -1029,6 +1094,7 @@ class StripeAPI(viewsets.ViewSet):
         permission_classes = [HasOrganizationAPIKeyOnly, ]
         return [permission() for permission in permission_classes]
 
+
 """
 A VIRER. Ex method lorsque laboutik avait besoin du onboard.
 Géré par LESPASS
@@ -1074,6 +1140,29 @@ class WebhookStripe(APIView):
         # Help STRIPE : https://stripe.com/docs/webhooks/quickstart
         try:
             payload = request.data
+            if payload.get('type') == 'terminal.reader.action_succeeded':
+                logger.info(f"Un TPE stripe a envoyé une action succeeded")
+                payload = request.data
+                payment_intent_stripe_id = payload['data']['object']['action']['process_payment_intent'][
+                    'payment_intent']
+
+                # On vérifie qu'une transaction avec ce checkout n'a pas déja été enregistrée
+                if CheckoutStripe.objects.filter(checkout_session_id_stripe=payment_intent_stripe_id).exists():
+                    return Response("payment_intent Already reported", status=status.HTTP_208_ALREADY_REPORTED)
+
+                try:
+                    checkout_db = StripeAPI.validate_stripe_reader_wise_pose_and_make_transaction(
+                        payment_intent_stripe_id, request)
+                    if checkout_db.status == CheckoutStripe.WALLET_USER_OK:
+                        logger.info(
+                            f"WebhookStripe 200 OK validate_stripe_reader_wise_pose_and_make_transaction checkout_db.status {checkout_db.status}")
+                        return Response("OK", status=status.HTTP_200_OK)
+                except ValueError as e:
+                    return Response(f"Error validate_stripe_checkout_and_make_transaction : {e}",
+                                    status=status.HTTP_400_BAD_REQUEST)
+                except Exception as e:
+                    raise e
+
             if not payload.get('type') == "checkout.session.completed":
                 return Response("Not for me", status=status.HTTP_204_NO_CONTENT)
 
@@ -1108,8 +1197,6 @@ class WebhookStripe(APIView):
                     raise e
 
                 if checkout_db.status == CheckoutStripe.PAID:
-                    logger.warning(f"WEBHOOK POST END: {checkout_db.status}")
-
                     logger.info(
                         f"WebhookStripe 200 OK checkout_db.status {checkout_db.status}")
                     return Response("OK", status=status.HTTP_200_OK)
@@ -1122,6 +1209,7 @@ class WebhookStripe(APIView):
         except Exception as e:
             logger.error(f"WebhookStripe 500 ERROR : {e}")
             return Response("ERROR", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 """
 @permission_classes([HasKeyAndPlaceSignature])
@@ -1164,6 +1252,7 @@ class Onboard_stripe_return(APIView):
         return Response("Compte stripe non valide", status=status.HTTP_406_NOT_ACCEPTABLE)
 """
 
+
 class TransactionAPI(viewsets.ViewSet):
     """
     GET /transaction/ : liste des transactions
@@ -1200,8 +1289,6 @@ class TransactionAPI(viewsets.ViewSet):
         return paginator.get_paginated_response(serializer.data)
         # return Response(serializer.data)
 
-
-
     @action(detail=True, methods=['GET'])
     def badge_with_signature(self, request, pk=None):
         asset = get_object_or_404(Asset, uuid=pk)
@@ -1213,7 +1300,6 @@ class TransactionAPI(viewsets.ViewSet):
 
         logger.error(f"{timezone.now()} Card update error : {validator.errors}")
         return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
     def list(self, request):
         serializer = TransactionSerializer(Transaction.objects.all(), many=True, context={'request': request})
@@ -1257,7 +1343,7 @@ class TransactionAPI(viewsets.ViewSet):
             permission_classes = [HasPlaceKeyAndWalletSignature]
         elif self.action in [
             'paginated_list_by_wallet_signature',
-            'retrieve_badge_with_signature',]:
+            'retrieve_badge_with_signature', ]:
             permission_classes = [HasWalletSignature]
         elif self.action in ['retrieve', ]:
             permission_classes = [AllowAny]
