@@ -103,7 +103,7 @@ class CheckoutStripe(models.Model):
 class Asset(models.Model):
     # One asset per currency
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=False)
-    name = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=100)
     currency_code = models.CharField(max_length=3)
     archive = models.BooleanField(default=False)
 
@@ -1041,7 +1041,7 @@ def asset_creator(name: str = None,
 
     # Vérification que l'asset et/ou le code n'existe pas
     try:
-        Asset.objects.get(name=name)
+        Asset.objects.get(name=name, wallet_origin=wallet_origin)
         raise ValueError('Asset name already exist')
     except Asset.DoesNotExist:
         pass

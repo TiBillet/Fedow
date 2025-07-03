@@ -352,7 +352,9 @@ class AssetCreateValidator(serializers.Serializer):
     created_at = serializers.DateTimeField(required=False)
 
     def validate_name(self, value):
-        if Asset.objects.filter(name=value, archive=False).exists():
+        request = self.context.get('request')
+        place = request.place
+        if Asset.objects.filter(name=value, archive=False, wallet_origin=place.wallet).exists():
             raise serializers.ValidationError("Asset already exists")
         return value
 
