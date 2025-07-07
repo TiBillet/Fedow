@@ -7,19 +7,19 @@ services:
     networks:
       - fedow_backend
 
-  fedow_postgres:
-    image: postgres:17
-    restart: always
-    container_name: fedow_postgres
-    hostname: fedow_postgres
-#    ports:
-#      - 5432:5432
-    volumes:
-#      - ./database:/var/lib/postgresql/data
-      - fedow_dev_db:/var/lib/postgresql/data
-    env_file: .env
-    networks:
-      - fedow_backend
+#  fedow_postgres:
+#    image: postgres:17
+#    restart: always
+#    container_name: fedow_postgres
+#    hostname: fedow_postgres
+##    ports:
+##      - 5432:5432
+#    volumes:
+##      - ./database:/var/lib/postgresql/data
+#      - fedow_dev_db:/var/lib/postgresql/data
+#    env_file: .env
+#    networks:
+#      - fedow_backend
 
 
   fedow_django:
