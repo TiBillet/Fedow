@@ -32,7 +32,7 @@ services:
     user: fedow
     links:
       - fedow_memcached:memcached
-      - fedow_postgres:postgres
+#      - fedow_postgres:postgres
     volumes:
       - ./ssh:/home/fedow/.ssh
       - ./:/home/fedow/Fedow
