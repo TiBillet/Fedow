@@ -4,6 +4,7 @@ from uuid import UUID
 from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand
 from django.core.validators import URLValidator
+from django.db.transaction import atomic
 
 from fedow_core.models import Place, Card, Origin
 
@@ -25,6 +26,7 @@ class Command(BaseCommand):
             return False
         return True
 
+    @atomic
     def handle(self, *args, **options):
         print(
             "CSV format: \n<url for qrcode: https://xxx.yyy.zzz/qr/uuid4>,<printed number : 8 char>,<RFID first_tag_id:8 char>\n")
@@ -32,8 +34,14 @@ class Command(BaseCommand):
         input_fichier_csv = input('path fichier csv ? \n')
         file = open(input_fichier_csv)
 
+        # check doublon :
+        tag_id_list = []
+        url_qrcode_list = []
+        number_list = []
+
         csv_parser = csv.reader(file)
         list_cards = []
+        count = 1
         for line in csv_parser:
             url_qrcode = line[0]
             if not self.is_string_an_url(url_qrcode):
@@ -47,8 +55,27 @@ class Command(BaseCommand):
             if not type(tag_id) == str or not len(tag_id) == 8:
                 raise Exception('Tag id must be 8 len string')
 
-            print(f"url_qrcode: {url_qrcode}, number: {number}, tag_id: {tag_id}")
+            print(f"{count} url_qrcode: {url_qrcode}, number: {number}, tag_id: {tag_id}")
+            if tag_id in tag_id_list :
+                raise Exception('tag_id already exist in tag_id_list')
+            if url_qrcode in url_qrcode_list :
+                raise Exception('url_qrcode already exist in url_qrcode_list')
+            if number in number_list :
+                raise Exception('number already exist in number_list')
+
+            if Card.objects.filter(first_tag_id=tag_id).exists():
+                raise Exception('tag_id already exist in Card Database')
+            if Card.objects.filter(number_printed=number).exists():
+                raise Exception('number already exist in Card Database')
+            if Card.objects.filter(qrcode_uuid=qr_code).exists():
+                raise Exception('qr_code already exist in Card Database')
+
+            tag_id_list.append(tag_id)
+            url_qrcode_list.append(url_qrcode)
+            number_list.append(number)
+
             list_cards.append((qr_code, number, tag_id))
+            count += 1
         file.close()
 
         print(f'{len(list_cards)} card to import')
