@@ -44,18 +44,20 @@ class Command(BaseCommand):
         count = 1
         for line in csv_parser:
             url_qrcode = line[0]
+            qr_code = UUID(url_qrcode.partition('/qr/')[2])
+            tag_id = line[2].upper()
+            number = line[1].upper()
+
+            print(f"{count} url_qrcode: {url_qrcode}, number: {number}, tag_id: {tag_id}")
+
             if not self.is_string_an_url(url_qrcode):
                 raise Exception('Url qrcode must be a valid url')
-            qr_code = UUID(url_qrcode.partition('/qr/')[2])
 
-            number = line[1].upper()
             if not type(number) == str or not len(number) == 8:
                 raise Exception('Printed number must be 8 len string')
-            tag_id = line[2].upper()
             if not type(tag_id) == str or not len(tag_id) == 8:
                 raise Exception('Tag id must be 8 len string')
 
-            print(f"{count} url_qrcode: {url_qrcode}, number: {number}, tag_id: {tag_id}")
             if tag_id in tag_id_list :
                 raise Exception('tag_id already exist in tag_id_list')
             if url_qrcode in url_qrcode_list :
