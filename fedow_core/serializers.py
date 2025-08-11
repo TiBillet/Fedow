@@ -1,5 +1,6 @@
 import logging
 from collections import OrderedDict
+from random import choices
 from time import sleep
 from django.db import transaction
 
@@ -7,6 +8,8 @@ import stripe
 from cryptography.hazmat.primitives.asymmetric import rsa
 from django.conf import settings
 from django.core.cache import cache
+from django.db.models import Sum
+from django.db.transaction import atomic
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.generics import get_object_or_404
@@ -412,7 +415,7 @@ class CardSerializer(serializers.ModelSerializer):
     is_primary = serializers.SerializerMethodField()
 
     def get_is_primary(self, obj: Card):
-        try :
+        try:
             request = self.context.get('request')
             place = request.place
             return obj.primary_places.filter(pk=place.pk).exists()
@@ -497,6 +500,7 @@ class TransactionSimpleSerializer(serializers.ModelSerializer):
             "comment",
             "verify_hash",
         )
+
 
 class TokenSerializer(serializers.ModelSerializer):
     asset = AssetSerializer(many=False)
@@ -800,6 +804,130 @@ class BadgeByWalletSignatureValidator(serializers.Serializer):
         return attrs
 
 
+class TransactionQrCodeSerializer(serializers.Serializer):
+    sender = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
+    receiver = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
+    asset_type = serializers.ChoiceField(choices=['EURO', 'GIFT'])
+    amount = serializers.IntegerField()
+
+    comment = serializers.CharField(required=False, allow_null=True)
+    metadata = serializers.JSONField(required=False, allow_null=True)
+
+    def validate_receiver(self, receiver: Wallet):
+        request = self.context.get('request')
+        self.place: Place = getattr(request, 'place', None)
+        if receiver != self.place.wallet:
+            raise serializers.ValidationError("Receiver must be the same as the place")
+        logger.info(f"receiver checked OK. Is {receiver}")
+        return receiver
+
+    def validate_sender(self, sender: Wallet):
+        request = self.context.get('request')
+        self.wallet: Place = getattr(request, 'wallet', None)
+        if sender != self.wallet:
+            raise serializers.ValidationError("Sender must be the signed wallet")
+        logger.info(f"sender checked OK. Is {sender}")
+        return sender
+
+    def validate_asset_type(self, asset_type: str):
+        if asset_type not in ['EURO', 'GIFT']:
+            raise serializers.ValidationError("Asset type must be either 'EURO' or 'GIFT'")
+        # On récupère les asset_type pour savoir avec quels assets on paye
+        request = self.context.get('request')
+        assets = request.place.accepted_assets_fiat() if request.data.get('asset_type') == 'EURO' else []
+        self.assets = assets or []
+        logger.info(f"assets checked OK : {self.assets}")
+        return asset_type
+
+    def validate_amount(self, value):
+        # Positive amount only
+        if value <= 0:
+            raise serializers.ValidationError("Amount cannot be negative nor zero")
+        self.total_tokens_sender = \
+        Token.objects.filter(wallet=self.wallet, asset__in=(self.assets or [])).aggregate(total_value=Sum('value'))[
+            'total_value'] or 0
+        if value > self.total_tokens_sender:
+            raise serializers.ValidationError("Amount cannot exceed the total amount")
+
+        logger.info(f"amount checked OK. Total token sender capable {self.total_tokens_sender} > {value}")
+        return value
+
+    # Petit itérateur pour indiquer quel asset paie quelle somme
+    def _iter_asset_payments(self, total_to_pay: int):
+        """
+        Itérateur simple et lisible.
+        - On parcourt les assets acceptés (self.assets)
+        - Pour chacun, on regarde le solde disponible sur le wallet de l'utilisateur
+        - On prélève le minimum entre le reste à payer et ce solde
+        - On ajoute (asset, montant_utilisé) dans la liste
+        """
+        # Répartition simple de la somme sur les différents assets acceptés
+        allocations = []  # liste de tuples (asset, montant)
+        allocated = 0
+
+        remaining = total_to_pay
+        for asset in (getattr(self, 'assets', []) or []):
+            if remaining <= 0:
+                break
+            # Solde disponible pour cet asset dans le wallet de l'utilisateur
+            token = Token.objects.filter(wallet=self.wallet, asset=asset).first()
+            available = token.value if token else 0
+            if available <= 0:
+                continue
+            used = min(available, remaining)
+            remaining -= used
+            # On indique quel asset paie quelle somme
+            allocations.append((asset, used))
+            allocated += used
+
+        # Par sécurité, on vérifie qu'on couvre bien le total demandé
+        if allocated != total_to_pay:
+            logger.error(f"Allocation des assets incomplète: {allocated} != {total_to_pay}")
+            raise serializers.ValidationError("Impossible de répartir le montant sur les assets disponibles")
+
+        return allocations
+
+    @atomic
+    def validate(self, attrs):
+        request = self.context.get('request')
+        total_to_pay = attrs['amount']
+        total_tokens_sender = self.total_tokens_sender
+
+        # On stocke la répartition pour usage ultérieur (ex: création des transactions par asset)
+        self.asset_payments = self._iter_asset_payments(total_to_pay)
+        self.transactions = []
+
+        for asset, amount in self.asset_payments:
+            # On s'assure que les token existe dans les deux cas
+            Token.objects.get_or_create(wallet=attrs.get('sender'), asset=asset)
+            Token.objects.get_or_create(wallet=attrs.get('receiver'), asset=asset)
+
+            transaction_dict = {
+                "ip": get_request_ip(request),
+                "sender": attrs.get('sender'),
+                "receiver": attrs.get('receiver'),
+                "asset": asset,
+                "comment": attrs.get('comment'),
+                "metadata": attrs.get('metadata'),
+                "checkout_stripe": None,
+                "amount": amount,
+                "action": Transaction.QRCODE_SALE,
+                "primary_card": None,
+                "card": None,
+                "subscription_start_datetime": None,
+            }
+            transaction = Transaction.objects.create(**transaction_dict)
+    
+            if not transaction.verify_hash():
+                logger.error(
+                    f"{timezone.localtime()} ERROR NewTransactionWallet2WalletValidator : transaction hash is not valid")
+                raise serializers.ValidationError("Transaction hash is not valid")
+    
+            self.transactions.append(transaction)
+
+        return attrs
+
+
 class TransactionW2W(serializers.Serializer):
     amount = serializers.IntegerField()
     sender = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
@@ -832,7 +960,7 @@ class TransactionW2W(serializers.Serializer):
         return value
 
     def validate_primary_card(self, value):
-        try :
+        try:
             request = self.context.get('request')
             self.place: Place = getattr(request, 'place', None)
             if self.place not in value.primary_places.all():

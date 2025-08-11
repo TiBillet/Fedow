@@ -33,7 +33,7 @@ from fedow_core.serializers import TransactionSerializer, WalletCheckoutSerializ
     TransactionW2W, CardSerializer, CardCreateValidator, \
     AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator, \
     FederationSerializer, BadgeCardValidator, WalletGetOrCreate, LinkWalletCardQrCode, BadgeByWalletSignatureValidator, \
-    OriginSerializer, CachedTransactionSerializer
+    OriginSerializer, CachedTransactionSerializer, TransactionQrCodeSerializer
 from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict, b64_to_data, get_request_ip, \
     get_public_key, rsa_encrypt_string, verify_signature, data_to_b64
 from fedow_core.validators import PlaceValidator
@@ -1328,6 +1328,23 @@ class TransactionAPI(viewsets.ViewSet):
         return Response(transaction_validator.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['POST'])
+    def qrcodescanpay(self, request):
+        # Méthode réclamée lors d'un paiement via QrCode de Lespass
+        # Le wallet receiver est celui de la place signée
+        # Le wallet sender est celui du wallet de l'user signé
+        # Les deux vérifiés par HasPlaceKeyAndWalletSignature
+
+        transaction_validator = TransactionQrCodeSerializer(data=request.data, context={'request': request})
+        if not transaction_validator.is_valid():
+            logger.error(f"{timezone.localtime()} ERROR - Transaction create error : {transaction_validator.errors}")
+            return Response(transaction_validator.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        transactions: Transaction = transaction_validator.transactions
+        transactions_serialized = TransactionSerializer(transactions, many=True, context={'request': request})
+        return Response(transactions_serialized.data, status=status.HTTP_201_CREATED)
+
+
+    @action(detail=False, methods=['POST'])
     def create_membership(self, request):
         # Cela vient de la billetterie. Il nous faut l'api du lieu et la signature du wallet de l'user
         # On vérifie que l'asset soit bien un membership
@@ -1339,8 +1356,8 @@ class TransactionAPI(viewsets.ViewSet):
         return self.create(request)
 
     def get_permissions(self):
-        if self.action in ['create_membership', ]:
-            permission_classes = [HasPlaceKeyAndWalletSignature]
+        if self.action in ['create_membership', 'qrcodescanpay', ]:
+            permission_classes = [HasPlaceKeyAndWalletSignature] # methode pour LesPass
         elif self.action in [
             'paginated_list_by_wallet_signature',
             'retrieve_badge_with_signature', ]:

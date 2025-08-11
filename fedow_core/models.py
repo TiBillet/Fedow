@@ -436,9 +436,12 @@ class Transaction(models.Model):
     last_check = models.DateTimeField(blank=True, null=True)
 
     FIRST, SALE, CREATION, REFILL, TRANSFER, SUBSCRIBE, BADGE, FUSION, REFUND, VOID, DEPOSIT = 'FST', 'SAL', 'CRE', 'REF', 'TRF', 'SUB', 'BDG', 'FUS', 'RFD', 'VID', 'BNK'
+    QRCODE_SALE = 'QRS'
+
     TYPE_ACTION = (
         (FIRST, "Premier bloc"),
         (SALE, "Vente d'article"),
+        (QRCODE_SALE, "Vente via QrCode"),
         (CREATION, 'Creation monétaire'),
         (REFILL, 'Recharge'),
         (TRANSFER, 'Transfert'),
@@ -602,6 +605,24 @@ class Transaction(models.Model):
             # FILL TOKEN WALLET
             token_sender.value -= self.amount
             token_receiver.value += self.amount
+
+        if self.action == Transaction.QRCODE_SALE:
+            # Nous avons besoin que le sender ait assez de token
+            if not token_sender.value >= self.amount:
+                raise ValueError("amount too high")
+
+            assert self.receiver.is_place(), "Receiver must be a place wallet"
+            assert self.receiver.place, "Receiver must be a place wallet"
+            assert self.asset in self.receiver.place.accepted_assets(), "Asset must be accepted by place"
+            assert not self.receiver.is_primary(), "Receiver is not the primary asset"
+            assert not self.sender.is_place(), "Sender must be a user wallet"
+
+            assert not self.sender.is_primary(), "Sender must be a user wallet"
+
+            # FILL TOKEN WALLET
+            token_sender.value -= self.amount
+            token_receiver.value += self.amount
+
 
         if self.action == Transaction.FUSION:
             assert self.amount == token_sender.value, "Amount must be equal to token sender value, we clear the ephemeral wallet"
@@ -875,6 +896,14 @@ class Place(models.Model):
         place, assets, wallets = self.cached_federated_with()
         # import ipdb; ipdb.set_trace()
         return assets
+
+    def accepted_assets_fiat(self):
+        assets = []
+        for asset in self.accepted_assets():
+            asset: Asset
+            if asset.category in [Asset.TOKEN_LOCAL_FIAT, Asset.STRIPE_FED_FIAT]: # seulement les token fiduciaires
+                assets.append(asset)
+        return assets if assets else None
 
     def wallet_federated_with(self):
         place, assets, wallets = self.cached_federated_with()
