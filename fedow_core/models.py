@@ -39,6 +39,8 @@ class CheckoutStripe(models.Model):
                               related_name='checkout_stripe')
     CREATED, OPEN, PROGRESS, EXPIRE, PAID, WALLET_PRIMARY_OK, WALLET_USER_OK, CANCELED, ERROR, REFUND = (
         'N', 'O', 'G', 'E', 'P', 'W', 'V', 'C', 'R', 'F')
+    FROM_LESPASS = 'L'
+
     STATUT_CHOICES = (
         (CREATED, 'Créée'),
         (OPEN, 'En attente de paiement'),
@@ -49,7 +51,8 @@ class CheckoutStripe(models.Model):
         (WALLET_USER_OK, 'Wallet user chargé'),  # wallet chargé
         (CANCELED, 'Annulée'),
         (ERROR, 'en erreur'),
-        (REFUND, 'Remboursé')
+        (REFUND, 'Remboursé'),
+        (FROM_LESPASS, 'Managed by Lespass (reward)')
     )
     status = models.CharField(max_length=1, choices=STATUT_CHOICES, default=CREATED,
                               verbose_name="Statut de la commande")
@@ -534,9 +537,11 @@ class Transaction(models.Model):
             else:
                 # besoin d'une carte primaire pour création monétaire
                 assert self.asset.wallet_origin == self.sender, "Asset wallet_origin must be the place"
-                assert self.primary_card, "Primary card must be set for creation money."
-                assert self.primary_card in self.receiver.place.primary_cards.all(), \
-                    "Primary card must be set for place"
+                # Sauf si ça vient d'un reward product/price Lespass
+                if getattr(self, "primary_card", False):
+                    assert self.primary_card, "Primary card must be set for creation money."
+                    assert self.primary_card in self.receiver.place.primary_cards.all(), \
+                        "Primary card must be set for place"
             # FILL TOKEN WALLET
             token_receiver.value += self.amount
 

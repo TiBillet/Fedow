@@ -2,6 +2,8 @@ import logging
 from collections import OrderedDict
 from random import choices
 from time import sleep
+from uuid import UUID
+
 from django.db import transaction
 
 import stripe
@@ -320,6 +322,7 @@ class AssetSerializer(serializers.ModelSerializer):
             'category',
             'get_category_display',
             'place_origin',
+            'wallet_origin',
             'created_at',
             'last_update',
             'is_stripe_primary',
@@ -804,6 +807,146 @@ class BadgeByWalletSignatureValidator(serializers.Serializer):
         return attrs
 
 
+class TransactionRefilFromLespassSerializer(serializers.Serializer):
+    sender = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
+    receiver = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
+    asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.filter(archive=False))
+    amount = serializers.IntegerField()
+    metadata = serializers.JSONField(required=False, allow_null=True)
+
+
+    def validate_sender(self, sender: Wallet):
+        request = self.context.get('request')
+        self.place: Place = getattr(request, 'place', None)
+        if sender != self.place.wallet:
+            raise serializers.ValidationError("Sender must be the place")
+        logger.info(f"sender checked OK. Is {sender}")
+        self.sender = sender
+        return sender
+
+    def validate_receiver(self, receiver: Wallet):
+        request = self.context.get('request')
+        self.wallet: Wallet = getattr(request, 'wallet', None)
+        if receiver != self.wallet:
+            raise serializers.ValidationError("receiver must be the signed wallet")
+        logger.info(f"sender checked OK. Is {receiver}")
+        self.receiver = receiver
+        return receiver
+
+    def validate_asset(self, asset: Asset):
+        request = self.context.get('request')
+        self.place: Place = getattr(request, 'place', None)
+
+        if asset.category not in [
+            Asset.TOKEN_LOCAL_FIAT,
+            Asset.TOKEN_LOCAL_NOT_FIAT,
+            Asset.TIME,
+            Asset.FIDELITY,
+        ]:
+            raise serializers.ValidationError("Asset type must be LOCAL")
+
+
+        if asset.wallet_origin != self.place.wallet:
+            raise serializers.ValidationError("Asset must be from the place")
+
+        if asset.archive:
+            raise serializers.ValidationError("Asset must not be archived")
+
+        logger.info(f"asset checked OK : {asset}")
+        self.asset = asset
+        return asset
+
+    def validate_amount(self, value):
+        # Positive amount only
+        if value < 0:
+            raise serializers.ValidationError("Amount cannot be negative")
+        return value
+
+    def validate_metadata(self, metadata):
+        # Dans ce type de transaction, il doit y avoir l'uuid du produit qui fait le trigg
+        # et l'id du checkout stripe pour vérification et traçabilité.
+        keys = [
+            'ligne_article_uuid',
+            'membership_uuid',
+            'product_uuid',
+        ]
+        for key in keys:
+            if not metadata.get(key):
+                raise serializers.ValidationError("No data in metadata for " + key)
+            try :
+                UUID(metadata[key])
+            except ValueError:
+                raise serializers.ValidationError("No UUID in metadata for " + key)
+
+        # Check checkout_session_id_stripe
+        checkout_session_id_stripe = metadata.get('checkout_session_id_stripe')
+
+        if not checkout_session_id_stripe:
+            raise serializers.ValidationError("No checkout_session_id_stripe in metadata")
+
+        if CheckoutStripe.objects.filter(checkout_session_id_stripe=checkout_session_id_stripe).exists():
+            raise serializers.ValidationError("Already reported")
+
+        self.checkout_stripe = CheckoutStripe.objects.create(
+            checkout_session_id_stripe=checkout_session_id_stripe,
+            metadata=metadata,
+            status=CheckoutStripe.FROM_LESPASS,
+            asset=self.asset,
+            user=self.receiver.user,
+        )
+        return metadata
+
+
+    @atomic
+    def validate(self, attrs):
+        # Création de la transaction.
+        request = self.context.get('request')
+
+        crea_transac_dict = {
+            "ip": get_request_ip(request),
+            "sender": attrs.get('sender'),
+            "receiver": attrs.get('sender'),
+            "asset": attrs.get('asset'),
+            "comment": None,
+            "metadata": attrs.get('metadata'),
+            "checkout_stripe": self.checkout_stripe,
+            "amount": attrs.get('amount'),
+            "action": Transaction.CREATION,
+            "primary_card": None,
+            "card": None,
+        }
+        crea_transaction = Transaction.objects.create(**crea_transac_dict)
+
+        if not crea_transaction.verify_hash():
+            logger.error(
+                f"{timezone.localtime()} ERROR NewTransactionWallet2WalletValidator : transaction hash is not valid on CREATION")
+            raise serializers.ValidationError("Transaction hash is not valid")
+
+        transaction_dict = {
+            "ip": get_request_ip(request),
+            "sender": attrs.get('sender'),
+            "receiver": attrs.get('receiver'),
+            "asset": attrs.get('asset'),
+            "comment": None,
+            "metadata": attrs.get('metadata'),
+            "checkout_stripe": self.checkout_stripe,
+            "amount": attrs.get('amount'),
+            "action": Transaction.REFILL,
+            "primary_card": None,
+            "card": None,
+            "subscription_start_datetime": None
+        }
+        transaction = Transaction.objects.create(**transaction_dict)
+
+        if not transaction.verify_hash():
+            logger.error(
+                f"{timezone.localtime()} ERROR NewTransactionWallet2WalletValidator : transaction hash is not valid")
+            raise serializers.ValidationError("Transaction hash is not valid")
+
+        self.transaction = transaction
+        return attrs
+
+
 class TransactionQrCodeSerializer(serializers.Serializer):
     sender = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
     receiver = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
@@ -823,7 +966,7 @@ class TransactionQrCodeSerializer(serializers.Serializer):
 
     def validate_sender(self, sender: Wallet):
         request = self.context.get('request')
-        self.wallet: Place = getattr(request, 'wallet', None)
+        self.wallet: Wallet = getattr(request, 'wallet', None)
         if sender != self.wallet:
             raise serializers.ValidationError("Sender must be the signed wallet")
         logger.info(f"sender checked OK. Is {sender}")
@@ -844,8 +987,8 @@ class TransactionQrCodeSerializer(serializers.Serializer):
         if value <= 0:
             raise serializers.ValidationError("Amount cannot be negative nor zero")
         self.total_tokens_sender = \
-        Token.objects.filter(wallet=self.wallet, asset__in=(self.assets or [])).aggregate(total_value=Sum('value'))[
-            'total_value'] or 0
+            Token.objects.filter(wallet=self.wallet, asset__in=(self.assets or [])).aggregate(total_value=Sum('value'))[
+                'total_value'] or 0
         if value > self.total_tokens_sender:
             raise serializers.ValidationError("Amount cannot exceed the total amount")
 
@@ -917,12 +1060,12 @@ class TransactionQrCodeSerializer(serializers.Serializer):
                 "subscription_start_datetime": None,
             }
             transaction = Transaction.objects.create(**transaction_dict)
-    
+
             if not transaction.verify_hash():
                 logger.error(
                     f"{timezone.localtime()} ERROR NewTransactionWallet2WalletValidator : transaction hash is not valid")
                 raise serializers.ValidationError("Transaction hash is not valid")
-    
+
             self.transactions.append(transaction)
 
         return attrs

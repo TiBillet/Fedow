@@ -33,7 +33,7 @@ from fedow_core.serializers import TransactionSerializer, WalletCheckoutSerializ
     TransactionW2W, CardSerializer, CardCreateValidator, \
     AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator, \
     FederationSerializer, BadgeCardValidator, WalletGetOrCreate, LinkWalletCardQrCode, BadgeByWalletSignatureValidator, \
-    OriginSerializer, CachedTransactionSerializer, TransactionQrCodeSerializer
+    OriginSerializer, CachedTransactionSerializer, TransactionQrCodeSerializer, TransactionRefilFromLespassSerializer
 from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict, b64_to_data, get_request_ip, \
     get_public_key, rsa_encrypt_string, verify_signature, data_to_b64
 from fedow_core.validators import PlaceValidator
@@ -1328,6 +1328,25 @@ class TransactionAPI(viewsets.ViewSet):
         return Response(transaction_validator.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['POST'])
+    def refill_from_lespass_to_user_wallet(self, request):
+        # Méthode réclamée lorsqu'un produit permet de recharger un wallet
+        # Exemple : Une adhésion à une caisse sociale alimentaire,
+        # un produit qui recharge une future carte lors de l'achat d'un billet,
+        # une récompense après qu'une action bénévole soit terminée
+        logger.info(f"Refill from lespass to user wallet : {request.data}")
+        transaction_validator = TransactionRefilFromLespassSerializer(data=request.data, context={'request': request})
+        if not transaction_validator.is_valid():
+            logger.error(f"{timezone.localtime()} ERROR - Transaction create error : {transaction_validator.errors}")
+            return Response(transaction_validator.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        transaction: Transaction = transaction_validator.transaction
+        transactions_serialized = TransactionSerializer(transaction, context={'request': request})
+        return Response(transactions_serialized.data, status=status.HTTP_201_CREATED)
+
+
+
+
+    @action(detail=False, methods=['POST'])
     def qrcodescanpay(self, request):
         # Méthode réclamée lors d'un paiement via QrCode de Lespass
         # Le wallet receiver est celui de la place signée
@@ -1356,7 +1375,10 @@ class TransactionAPI(viewsets.ViewSet):
         return self.create(request)
 
     def get_permissions(self):
-        if self.action in ['create_membership', 'qrcodescanpay', ]:
+        if self.action in [
+            'create_membership',
+            'qrcodescanpay',
+            'refill_from_lespass_to_user_wallet', ]:
             permission_classes = [HasPlaceKeyAndWalletSignature] # methode pour LesPass
         elif self.action in [
             'paginated_list_by_wallet_signature',
