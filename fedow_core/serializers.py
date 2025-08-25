@@ -869,6 +869,7 @@ class TransactionRefilFromLespassSerializer(serializers.Serializer):
             'ligne_article_uuid',
             'membership_uuid',
             'product_uuid',
+            'price_uuid',
         ]
         for key in keys:
             if not metadata.get(key):
