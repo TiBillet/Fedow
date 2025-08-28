@@ -852,6 +852,10 @@ class TransactionRefilFromLespassSerializer(serializers.Serializer):
         if asset.archive:
             raise serializers.ValidationError("Asset must not be archived")
 
+        # Create tokens for the wallet and place if not exist
+        Token.objects.get_or_create(wallet=self.sender, asset=self.asset)
+        Token.objects.get_or_create(wallet=self.receiver, asset=self.asset)
+
         logger.info(f"asset checked OK : {asset}")
         self.asset = asset
         return asset
