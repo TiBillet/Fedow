@@ -384,7 +384,7 @@ class WalletAPI(viewsets.ViewSet):
         Cette méthode:
         1. Récupère le wallet depuis la requête
         2. Vérifie s'il y a de l'argent à rembourser
-        3. Trouve les paiements Stripe qui peuvent être remboursés
+        3. Trouve les paiements Stripe qui peuvent être remboursés via les transaction de type REFILL
         4. Effectue le remboursement via Stripe
         5. Crée une transaction de remboursement
         6. Retourne le wallet mis à jour
@@ -392,7 +392,6 @@ class WalletAPI(viewsets.ViewSet):
         try:
             # La méthode d'auth diffère d'un retrive standard et donne le wallet plutot que le place
             wallet: Wallet = request.wallet
-
             # Récupération du token STRIPE_FED_FIAT
             try:
                 fed_token = wallet.tokens.get(asset__category=Asset.STRIPE_FED_FIAT)
@@ -406,6 +405,24 @@ class WalletAPI(viewsets.ViewSet):
                 logger.info(f"Rien à rembourser pour le wallet {wallet.uuid}, montant: {to_refund}")
                 return Response("Rien à rembourser", status=status.HTTP_200_OK)
 
+
+            # Récupération des transactions du wallet
+            transactions = Transaction.objects.filter(Q(sender=wallet) | Q(receiver=wallet))
+            # On va récupérer aussi les transactions pour afficher ceux avant une éventuelle fusion
+            if transactions.filter(action=Transaction.FUSION).exists():
+                ex_wallet = transactions.filter(action=Transaction.FUSION).last().sender
+                transactions = Transaction.objects.filter(Q(sender=wallet) | Q(receiver=wallet) |
+                                                          Q(sender=ex_wallet) | Q(receiver=ex_wallet))
+
+            refill_transaction = transactions.filter(
+                action=Transaction.REFILL,
+                asset__category=Asset.STRIPE_FED_FIAT
+            )
+            checkouts = CheckoutStripe.objects.filter(
+                status__in=[CheckoutStripe.PAID, CheckoutStripe.WALLET_USER_OK],
+                transactions__in=[refill_transaction],
+            ).order_by('-datetime')
+
             # Le wallet primaire qui sera le receiver :
             config = Configuration.get_solo()
             primary_wallet = config.primary_wallet
@@ -417,10 +434,16 @@ class WalletAPI(viewsets.ViewSet):
             rest_to_refund = to_refund
 
             # Recherche des paiements Stripe du plus récent au plus ancien
-            for checkout in CheckoutStripe.objects.filter(
-                    # PAID est pour les recharge en ligne, WALLET_USER_OK est pour les recharge sur le TPE stripe
-                    status__in=[CheckoutStripe.PAID, CheckoutStripe.WALLET_USER_OK],
-                    user=wallet.user).order_by('-datetime'):
+            checkouts = CheckoutStripe.objects.filter(
+                # PAID est pour les recharge en ligne, WALLET_USER_OK est pour les recharge sur le TPE stripe
+                status__in=[CheckoutStripe.PAID, CheckoutStripe.WALLET_USER_OK],
+                user=wallet.user).order_by('-datetime')
+            if ex_wallet:
+                checkouts = CheckoutStripe.objects.filter(
+                status__in=[CheckoutStripe.PAID, CheckoutStripe.WALLET_USER_OK],
+                user__in=[wallet.user, ex_wallet]).order_by('-datetime')
+
+            for checkout in checkouts:
                 try:
                     payment_intent = checkout.get_intent_payment()
                     refill = payment_intent.amount
@@ -898,8 +921,8 @@ class StripeAPI(viewsets.ViewSet):
             asset=stripe_asset,
             metadata=metadata,
             status=CheckoutStripe.PAID,
-            user=wallet.user if hasattr(wallet, 'user') else place.admins.first(),
-            # si le wallet a un user, sinon on prend l'admin du lieu
+            user=wallet.user if hasattr(wallet, 'user') else None,
+            # si le wallet a un user
         )
 
         tr_data = {

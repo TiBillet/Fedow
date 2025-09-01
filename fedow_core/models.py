@@ -59,7 +59,7 @@ class CheckoutStripe(models.Model):
     )
     status = models.CharField(max_length=1, choices=STATUT_CHOICES, default=CREATED,
                               verbose_name="Statut de la commande")
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='checkout_stripe')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='checkout_stripe', blank=True, null=True)
     metadata = models.CharField(editable=False, db_index=False, max_length=500)
 
     def unsign_metadata(self):
@@ -422,7 +422,7 @@ class Transaction(models.Model):
     hash = models.CharField(max_length=64, unique=True, editable=False)
 
     ip = models.GenericIPAddressField(verbose_name="Ip source")
-    checkout_stripe = models.ForeignKey(CheckoutStripe, on_delete=models.PROTECT, related_name='checkout_stripe',
+    checkout_stripe = models.ForeignKey(CheckoutStripe, on_delete=models.PROTECT, related_name='transactions',
                                         blank=True, null=True)
 
     sender = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name='transactions_sent')
