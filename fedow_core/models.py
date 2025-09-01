@@ -69,15 +69,31 @@ class CheckoutStripe(models.Model):
         checkout = stripe.checkout.Session.retrieve(self.checkout_session_id_stripe)
         return checkout
 
+    def get_intent_payment(self):
+        # On utilise le même champs pour le id cheklout stripe que pour le payement intent
+        # TODO: fabriquer un champs supplémentaire !
+        config = Configuration.get_solo()
+        stripe.api_key = config.get_stripe_api()
+        stripe_payment = stripe.PaymentIntent.retrieve(self.checkout_session_id_stripe)
+        return stripe_payment
+
+
     def refund_payment_intent(self, amount):
         if not amount :
             raise Exception(f"CheckoutStripe Refund : {self.uuid} without amount")
         config = Configuration.get_solo()
         stripe.api_key = config.get_stripe_api()
-        checkout = stripe.checkout.Session.retrieve(self.checkout_session_id_stripe)
+
+        payment_intent = None
+        if self.status == self.WALLET_USER_OK:
+            payment_intent_stripe = self.get_intent_payment()
+            payment_intent = payment_intent_stripe.id
 
         # TODO: le paiement intent peut être récupéré direct en cas de paiement par reader wise pos
-        payment_intent = checkout.payment_intent
+        if self.status == self.PAID:
+            checkout = self.get_stripe_checkout()
+            payment_intent = checkout.payment_intent
+
         try :
             refund = stripe.Refund.create(
                 payment_intent=payment_intent,

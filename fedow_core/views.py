@@ -418,11 +418,18 @@ class WalletAPI(viewsets.ViewSet):
 
             # Recherche des paiements Stripe du plus récent au plus ancien
             for checkout in CheckoutStripe.objects.filter(
-                    status=CheckoutStripe.PAID,
+                    status__in=[CheckoutStripe.PAID, CheckoutStripe.WALLET_USER_OK],
                     user=wallet.user).order_by('-datetime'):
                 try:
-                    checkout_stripe = checkout.get_stripe_checkout()
-                    refill = checkout_stripe.amount_total
+                    refill = 0
+                    if checkout.status == CheckoutStripe.WALLET_USER_OK:
+                        # C'est une recharge sur un TPE stripe
+                        payment_intent = checkout.get_intent_payment()
+                        refill = payment_intent.amount
+                    elif checkout.status == CheckoutStripe.PAID:
+                        # C'est une recharge en ligne via le qrcode de la carte
+                        checkout_stripe = checkout.get_stripe_checkout()
+                        refill = checkout_stripe.amount_total
 
                     if refill >= to_refund:
                         # Checkout trouvé ! On utilise celui-ci pour rembourser. 
