@@ -418,18 +418,12 @@ class WalletAPI(viewsets.ViewSet):
 
             # Recherche des paiements Stripe du plus récent au plus ancien
             for checkout in CheckoutStripe.objects.filter(
+                    # PAID est pour les recharge en ligne, WALLET_USER_OK est pour les recharge sur le TPE stripe
                     status__in=[CheckoutStripe.PAID, CheckoutStripe.WALLET_USER_OK],
                     user=wallet.user).order_by('-datetime'):
                 try:
-                    refill = 0
-                    if checkout.status == CheckoutStripe.WALLET_USER_OK:
-                        # C'est une recharge sur un TPE stripe
-                        payment_intent = checkout.get_intent_payment()
-                        refill = payment_intent.amount
-                    elif checkout.status == CheckoutStripe.PAID:
-                        # C'est une recharge en ligne via le qrcode de la carte
-                        checkout_stripe = checkout.get_stripe_checkout()
-                        refill = checkout_stripe.amount_total
+                    payment_intent = checkout.get_intent_payment()
+                    refill = payment_intent.amount
 
                     if refill >= to_refund:
                         # Checkout trouvé ! On utilise celui-ci pour rembourser. 
@@ -1350,9 +1344,6 @@ class TransactionAPI(viewsets.ViewSet):
         transactions_serialized = TransactionSerializer(transaction, context={'request': request})
         return Response(transactions_serialized.data, status=status.HTTP_201_CREATED)
 
-
-
-
     @action(detail=False, methods=['POST'])
     def qrcodescanpay(self, request):
         # Méthode réclamée lors d'un paiement via QrCode de Lespass
@@ -1368,7 +1359,6 @@ class TransactionAPI(viewsets.ViewSet):
         transactions: Transaction = transaction_validator.transactions
         transactions_serialized = TransactionSerializer(transactions, many=True, context={'request': request})
         return Response(transactions_serialized.data, status=status.HTTP_201_CREATED)
-
 
     @action(detail=False, methods=['POST'])
     def create_membership(self, request):
@@ -1386,7 +1376,7 @@ class TransactionAPI(viewsets.ViewSet):
             'create_membership',
             'qrcodescanpay',
             'refill_from_lespass_to_user_wallet', ]:
-            permission_classes = [HasPlaceKeyAndWalletSignature] # methode pour LesPass
+            permission_classes = [HasPlaceKeyAndWalletSignature]  # methode pour LesPass
         elif self.action in [
             'paginated_list_by_wallet_signature',
             'retrieve_badge_with_signature', ]:

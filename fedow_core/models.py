@@ -34,7 +34,10 @@ class CheckoutStripe(models.Model):
     # Si recharge, un paiement stripe doit être lié
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
     datetime = models.DateTimeField(auto_now_add=True)
+
     checkout_session_id_stripe = models.CharField(max_length=80, editable=False, blank=True, null=True)
+    intent_payment_id_stripe = models.CharField(max_length=80, editable=False, blank=True, null=True)
+
     asset = models.ForeignKey('Asset', on_delete=models.PROTECT,
                               related_name='checkout_stripe')
     CREATED, OPEN, PROGRESS, EXPIRE, PAID, WALLET_PRIMARY_OK, WALLET_USER_OK, CANCELED, ERROR, REFUND = (
@@ -66,16 +69,26 @@ class CheckoutStripe(models.Model):
     def get_stripe_checkout(self):
         config = Configuration.get_solo()
         stripe.api_key = config.get_stripe_api()
-        checkout = stripe.checkout.Session.retrieve(self.checkout_session_id_stripe)
-        return checkout
+        if not self.checkout_session_id_stripe:
+            return None
+        return stripe.checkout.Session.retrieve(self.checkout_session_id_stripe)
 
     def get_intent_payment(self):
-        # On utilise le même champs pour le id cheklout stripe que pour le payement intent
-        # TODO: fabriquer un champs supplémentaire !
+        # On a utilisé le même champs pour le id checkout stripe que pour le payement intent a une époque
+        intent_payment_id_stripe = self.intent_payment_id_stripe
+        if not intent_payment_id_stripe and "pi_" in self.checkout_session_id_stripe:
+            intent_payment_id_stripe = self.checkout_session_id_stripe
+        elif "cs_" in self.checkout_session_id_stripe:
+            checkout = self.get_stripe_checkout()
+            if not checkout:
+                return None
+            intent_payment_id_stripe = checkout.payment_intent
+        if not intent_payment_id_stripe:
+            return None
+
         config = Configuration.get_solo()
         stripe.api_key = config.get_stripe_api()
-        stripe_payment = stripe.PaymentIntent.retrieve(self.checkout_session_id_stripe)
-        return stripe_payment
+        return stripe.PaymentIntent.retrieve(intent_payment_id_stripe)
 
 
     def refund_payment_intent(self, amount):
@@ -84,19 +97,11 @@ class CheckoutStripe(models.Model):
         config = Configuration.get_solo()
         stripe.api_key = config.get_stripe_api()
 
-        payment_intent = None
-        if self.status == self.WALLET_USER_OK:
-            payment_intent_stripe = self.get_intent_payment()
-            payment_intent = payment_intent_stripe.id
-
-        # TODO: le paiement intent peut être récupéré direct en cas de paiement par reader wise pos
-        if self.status == self.PAID:
-            checkout = self.get_stripe_checkout()
-            payment_intent = checkout.payment_intent
+        payment_intent_stripe_id = self.get_intent_payment()
 
         try :
             refund = stripe.Refund.create(
-                payment_intent=payment_intent,
+                payment_intent=payment_intent_stripe_id,
                 reason='requested_by_customer',
                 amount=amount,
             )
