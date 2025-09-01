@@ -100,11 +100,13 @@ class CheckoutStripe(models.Model):
         payment_intent_stripe_id = self.get_intent_payment()
 
         try :
+            logger.info(f"launch stripe refund for {payment_intent_stripe_id} amount {amount}")
             refund = stripe.Refund.create(
                 payment_intent=payment_intent_stripe_id,
                 reason='requested_by_customer',
                 amount=amount,
             )
+            logger.info(f"Refund response : \n{refund}")
             self.status = self.REFUND
             self.save()
         except InvalidRequestError as e:

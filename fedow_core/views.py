@@ -500,9 +500,10 @@ class WalletAPI(viewsets.ViewSet):
 
             # Vérification que le remboursement a bien été effectué
             if fed_token.value == initial_token_value:
-                logger.warning(
+                logger.error(
                     f"Le token n'a pas été mis à jour après remboursement: {fed_token.value} == {initial_token_value}")
 
+            # créer un email de confirmation de remboursment avec comme texte :
             serializer = WalletSerializer(wallet, context={'request': request})
             return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
 
