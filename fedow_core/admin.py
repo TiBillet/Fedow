@@ -185,7 +185,20 @@ class TransactionAdmin(admin.ModelAdmin):
     ]
     readonly_fields = fields
     list_display = ["display_datetime", "display_sender", "display_receiver", "display_asset_name", "display_amount", "display_card_info", "action"]
-    search_fields = ["sender__name", "receiver__name", "asset__name", "card__uuid", "sender__place__name", "receiver__place__name", "card__user__email"]
+    search_fields = [
+        "asset__name",
+        "sender__place__name",
+        "receiver__place__name",
+        "sender__name",
+        "sender__uuid",
+        "receiver__name",
+        "receiver__uuid",
+        "card__user__email",
+        "card__uuid",
+        "card__first_tag_id",
+        "card__qrcode_uuid",
+        "card__number_printed",
+    ]
     list_filter = ["asset", "action", "sender__place", "receiver__place"]
 
     def display_sender(self, obj):
