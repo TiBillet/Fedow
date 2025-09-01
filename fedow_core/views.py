@@ -405,7 +405,6 @@ class WalletAPI(viewsets.ViewSet):
                 logger.info(f"Rien à rembourser pour le wallet {wallet.uuid}, montant: {to_refund}")
                 return Response("Rien à rembourser", status=status.HTTP_200_OK)
 
-
             # Récupération des transactions du wallet
             transactions = Transaction.objects.filter(Q(sender=wallet) | Q(receiver=wallet))
             # On va récupérer aussi les transactions pour afficher ceux avant une éventuelle fusion
@@ -417,11 +416,10 @@ class WalletAPI(viewsets.ViewSet):
             refill_transaction = transactions.filter(
                 action=Transaction.REFILL,
                 asset__category=Asset.STRIPE_FED_FIAT
-            )
-            checkouts = CheckoutStripe.objects.filter(
-                status__in=[CheckoutStripe.PAID, CheckoutStripe.WALLET_USER_OK],
-                transactions__in=[refill_transaction],
             ).order_by('-datetime')
+            # Recherche des paiements Stripe du plus récent au plus ancien
+            checkouts = [transaction.checkout_stripe for transaction in refill_transaction if
+                         transaction.checkout_stripe.status in [CheckoutStripe.PAID, CheckoutStripe.WALLET_USER_OK]]
 
             # Le wallet primaire qui sera le receiver :
             config = Configuration.get_solo()
@@ -432,16 +430,6 @@ class WalletAPI(viewsets.ViewSet):
 
             # Check si le refund peut être fait par un seul remboursement :
             rest_to_refund = to_refund
-
-            # Recherche des paiements Stripe du plus récent au plus ancien
-            checkouts = CheckoutStripe.objects.filter(
-                # PAID est pour les recharge en ligne, WALLET_USER_OK est pour les recharge sur le TPE stripe
-                status__in=[CheckoutStripe.PAID, CheckoutStripe.WALLET_USER_OK],
-                user=wallet.user).order_by('-datetime')
-            if ex_wallet:
-                checkouts = CheckoutStripe.objects.filter(
-                status__in=[CheckoutStripe.PAID, CheckoutStripe.WALLET_USER_OK],
-                user__in=[wallet.user, ex_wallet]).order_by('-datetime')
 
             for checkout in checkouts:
                 try:
