@@ -153,9 +153,21 @@ class AssetAPI(viewsets.ViewSet):
             return Response('not a sub asset', status=status.HTTP_400_BAD_REQUEST)
         return self.create(request)
 
+    @action(detail=False, methods=['POST'])
+    def create_token_asset(self, request):
+        # Meme api que CREATE, mais depuis l'admin billetterie : C'est une fabrication d'asset depuis l'admin
+        if not request.data.get('category') in [
+            Asset.TOKEN_LOCAL_FIAT,
+            Asset.TOKEN_LOCAL_NOT_FIAT,
+            Asset.TIME,
+            Asset.FIDELITY,
+        ]:
+            return Response('not a good category asset', status=status.HTTP_400_BAD_REQUEST)
+        return self.create(request)
+
     def get_permissions(self):
         # Pour les routes depuis la billetterie : L'api Key de l'organisation au minimum
-        if self.action in ['retrieve_membership_asset', 'create_membership_asset', 'archive_asset']:
+        if self.action in ['retrieve_membership_asset', 'create_membership_asset', 'archive_asset', 'create_token_asset']:
             permission_classes = [HasOrganizationAPIKeyOnly]
         else:
             permission_classes = [HasKeyAndPlaceSignature]
