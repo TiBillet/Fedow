@@ -218,10 +218,10 @@ class TransactionAdmin(admin.ModelAdmin):
 
     list_display = [
         "display_datetime",
-        "display_sender",
-        "display_receiver",
-        "display_asset_name",
-        "display_amount",
+        "wallet_sender",
+        "wallet_receiver",
+        "asset_name",
+        "value",
         "card_number",
         "card_tagId",
         "card_place",
@@ -248,17 +248,17 @@ class TransactionAdmin(admin.ModelAdmin):
         TimezoneFilter,
     ]
 
-    def display_sender(self, obj):
+    def wallet_sender(self, obj):
         display_text = obj.sender.place.name if hasattr(obj.sender, 'place') else str(obj.sender.uuid)[:8]
         url = f"?q={obj.sender.uuid}"
         return mark_safe(f'<a href="{url}">{display_text}</a>')
 
-    def display_receiver(self, obj):
+    def wallet_receiver(self, obj):
         display_text = obj.receiver.place.name if hasattr(obj.receiver, 'place') else str(obj.receiver.uuid)[:8]
         url = f"?q={obj.receiver.uuid}"
         return mark_safe(f'<a href="{url}">{display_text}</a>')
 
-    def display_asset_name(self, obj):
+    def asset_name(self, obj):
         display_text = obj.asset.name
         url = f"?q={obj.asset.uuid}"
         return mark_safe(f'<a href="{url}">{display_text}</a>')
@@ -292,7 +292,7 @@ class TransactionAdmin(admin.ModelAdmin):
                 return mark_safe(f'<a href="{url}">{display_text}</a>')
         return "-"
 
-    def display_amount(self, obj):
+    def value(self, obj):
         return f"{obj.amount / 100:.2f}"
 
     def changelist_view(self, request, extra_context=None):
