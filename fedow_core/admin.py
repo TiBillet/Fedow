@@ -1,14 +1,21 @@
 from django.contrib import admin
 from django.core.cache import cache
+from django.utils import timezone
 from django.utils.html import mark_safe
+from django.contrib.admin import SimpleListFilter
+from zoneinfo import ZoneInfo
 
 from fedow_core.models import Federation, Asset, Place, Wallet, Transaction
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # Register your models here.
 @admin.register(Federation)
 class FederationAdmin(admin.ModelAdmin):
     pass
+
 
 @admin.register(Place)
 class PlaceAdmin(admin.ModelAdmin):
@@ -18,6 +25,7 @@ class PlaceAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
 
 @admin.register(Asset)
 class AssetAdmin(admin.ModelAdmin):
@@ -34,8 +42,12 @@ class AssetAdmin(admin.ModelAdmin):
         'total_bank_deposit_display',
         'total_by_place_display',
     ]
-    readonly_fields = ['last_update', 'wallet_origin', 'category', 'total_token_value_display', 'total_in_place_display', 'total_in_wallet_not_place_display', 'total_bank_deposit_display', 'total_by_place_display']
-    list_display = ['display_last_update', 'display_name', 'display_place_origin', 'display_type', 'display_total_market', 'display_total_in_place', 'display_total_in_wallet_not_place', 'display_total_bank_deposit']
+    readonly_fields = ['last_update', 'wallet_origin', 'category', 'total_token_value_display',
+                       'total_in_place_display', 'total_in_wallet_not_place_display', 'total_bank_deposit_display',
+                       'total_by_place_display']
+    list_display = ['display_last_update', 'display_name', 'display_place_origin', 'display_type',
+                    'display_total_market', 'display_total_in_place', 'display_total_in_wallet_not_place',
+                    'display_total_bank_deposit']
     ordering = ['-last_update']
 
     def display_place_origin(self, obj):
@@ -53,7 +65,7 @@ class AssetAdmin(admin.ModelAdmin):
 
         if total is None:
             total = obj.total_token_value()
-            cache.set(cache_key, total, 5*60)  # Cache for 5 minutes
+            cache.set(cache_key, total, 5 * 60)  # Cache for 5 minutes
 
         return f"{total / 100:.2f}" if total else "0"
 
@@ -63,7 +75,7 @@ class AssetAdmin(admin.ModelAdmin):
 
         if total is None:
             total = obj.total_in_place()
-            cache.set(cache_key, total, 5*60)  # Cache for 5 minutes
+            cache.set(cache_key, total, 5 * 60)  # Cache for 5 minutes
 
         return f"{total / 100:.2f}" if total else "0"
 
@@ -73,7 +85,7 @@ class AssetAdmin(admin.ModelAdmin):
 
         if total is None:
             total = obj.total_in_wallet_not_place()
-            cache.set(cache_key, total, 5*60)  # Cache for 5 minutes
+            cache.set(cache_key, total, 5 * 60)  # Cache for 5 minutes
 
         return f"{total / 100:.2f}" if total else "0"
 
@@ -83,7 +95,7 @@ class AssetAdmin(admin.ModelAdmin):
 
         if total is None:
             total = obj.total_bank_deposit()
-            cache.set(cache_key, total, 5*60)  # Cache for 5 minutes
+            cache.set(cache_key, total, 5 * 60)  # Cache for 5 minutes
 
         return f"{total / 100:.2f}" if total else "0"
 
@@ -147,6 +159,7 @@ class AssetAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
+
 # Register your models here.
 @admin.register(Wallet)
 class WalletAdmin(admin.ModelAdmin):
@@ -159,6 +172,23 @@ class WalletAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+class TimezoneFilter(SimpleListFilter):
+    title = 'Timezone'
+    parameter_name = 'timezone'
+
+    def lookups(self, request, model_admin):
+        return [
+            ('UTC', 'UTC'),
+            ('Europe/Paris', 'Europe/Paris'),
+            ('Indian/Reunion', 'Indian/Reunion'),
+        ]
+
+    def queryset(self, request, queryset):
+        # This filter does not alter the queryset; it just provides UI to choose display tz
+        return queryset
+
 
 @admin.register(Transaction)
 class TransactionAdmin(admin.ModelAdmin):
@@ -183,8 +213,22 @@ class TransactionAdmin(admin.ModelAdmin):
         "last_check",
         "action",
     ]
+
     readonly_fields = fields
-    list_display = ["display_datetime", "display_sender", "display_receiver", "display_asset_name", "display_amount", "display_card_info", "action"]
+
+    list_display = [
+        "display_datetime",
+        "display_sender",
+        "display_receiver",
+        "display_asset_name",
+        "display_amount",
+        "card_number",
+        "card_tagId",
+        "card_place",
+        "card_email",
+        "action",
+    ]
+
     search_fields = [
         "asset__name",
         "sender__place__name",
@@ -199,35 +243,81 @@ class TransactionAdmin(admin.ModelAdmin):
         "card__qrcode_uuid",
         "card__number_printed",
     ]
-    list_filter = ["asset", "action", "sender__place", "receiver__place"]
+    list_filter = [
+        "action",
+        TimezoneFilter,
+    ]
 
     def display_sender(self, obj):
         display_text = obj.sender.place.name if hasattr(obj.sender, 'place') else str(obj.sender.uuid)[:8]
-        url = f"?sender__uuid__exact={obj.sender.uuid}"
+        url = f"?q={obj.sender.uuid}"
         return mark_safe(f'<a href="{url}">{display_text}</a>')
 
     def display_receiver(self, obj):
         display_text = obj.receiver.place.name if hasattr(obj.receiver, 'place') else str(obj.receiver.uuid)[:8]
-        url = f"?receiver__uuid__exact={obj.receiver.uuid}"
+        url = f"?q={obj.receiver.uuid}"
         return mark_safe(f'<a href="{url}">{display_text}</a>')
 
     def display_asset_name(self, obj):
         display_text = obj.asset.name
-        url = f"?asset__uuid__exact={obj.asset.uuid}"
+        url = f"?q={obj.asset.uuid}"
         return mark_safe(f'<a href="{url}">{display_text}</a>')
 
-    def display_card_info(self, obj):
+    def card_number(self, obj):
         if obj.card:
-            display_text = f"{obj.card.number_printed} {obj.card.origin.place.name}"
-            url = f"?card__uuid__exact={obj.card.uuid}"
+            display_text = f"{obj.card.number_printed}"
+            url = f"?q={obj.card.uuid}"
             return mark_safe(f'<a href="{url}">{display_text}</a>')
+        return "-"
+
+    def card_tagId(self, obj):
+        if obj.card:
+            display_text = f"{obj.card.first_tag_id}"
+            url = f"?q={obj.card.uuid}"
+            return mark_safe(f'<a href="{url}">{display_text}</a>')
+        return "-"
+
+    def card_place(self, obj):
+        if obj.card:
+            display_text = f"{obj.card.origin.place.name}"
+            url = f"?q={obj.card.uuid}"
+            return mark_safe(f'<a href="{url}">{display_text}</a>')
+        return "-"
+
+    def card_email(self, obj):
+        if obj.card:
+            if obj.card.user:
+                display_text = f"{obj.card.user.email}"
+                url = f"?q={obj.card.user.email}"
+                return mark_safe(f'<a href="{url}">{display_text}</a>')
         return "-"
 
     def display_amount(self, obj):
         return f"{obj.amount / 100:.2f}"
 
+    def changelist_view(self, request, extra_context=None):
+        # Store selected timezone for use in list_display rendering
+        self._selected_tz = request.GET.get('timezone') or 'UTC'
+        return super().changelist_view(request, extra_context=extra_context)
+
     def display_datetime(self, obj):
-        return obj.datetime.strftime("%Y-%m-%d %H:%M:%S")
+        tzname = getattr(self, '_selected_tz', 'UTC')
+        try:
+            tz = ZoneInfo(tzname)
+        except Exception:
+            tz = ZoneInfo('UTC')
+        dt = obj.datetime
+        # Ensure aware datetime
+        if timezone.is_naive(dt):
+            try:
+                dt = timezone.make_aware(dt, timezone.utc)
+            except Exception:
+                dt = timezone.make_aware(dt)
+        try:
+            dt = dt.astimezone(tz)
+        except Exception:
+            pass
+        return dt.strftime("%Y-%m-%d %H:%M:%S %Z")
 
     def has_add_permission(self, request):
         return False

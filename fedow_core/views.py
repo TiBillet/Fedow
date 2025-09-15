@@ -126,6 +126,18 @@ class AssetAPI(viewsets.ViewSet):
         return Response(serializer.data)
 
     @action(detail=True, methods=['GET'])
+    def retrieve_total_by_place(self,request, pk=None):
+        place = request.place
+        asset = get_object_or_404(Asset, pk=pk)
+        if asset.wallet_origin.place == place :
+            total_by_place = cache.get_or_set(f"{asset.uuid}-total_by_place",
+                             asset.total_by_place, 30)
+            return Response(json.dumps(total_by_place), content_type="application/json")
+        else:
+            return Response("you are not the place origin", status=status.HTTP_400_BAD_REQUEST)
+
+
+    @action(detail=True, methods=['GET'])
     def retrieve_membership_asset(self, request, pk=None):
         # Meme api que RETRIEVE, mais depuis billetterie : c'est une adhésion ou une badgeuse
         asset = get_object_or_404(Asset, pk=pk)
@@ -167,7 +179,7 @@ class AssetAPI(viewsets.ViewSet):
 
     def get_permissions(self):
         # Pour les routes depuis la billetterie : L'api Key de l'organisation au minimum
-        if self.action in ['retrieve_membership_asset', 'create_membership_asset', 'archive_asset', 'create_token_asset']:
+        if self.action in ['retrieve_membership_asset', 'create_membership_asset', 'archive_asset', 'create_token_asset', 'retrieve_total_on_place']:
             permission_classes = [HasOrganizationAPIKeyOnly]
         else:
             permission_classes = [HasKeyAndPlaceSignature]
