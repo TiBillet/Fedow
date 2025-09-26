@@ -37,6 +37,7 @@ class CheckoutStripe(models.Model):
 
     checkout_session_id_stripe = models.CharField(max_length=80, editable=False, blank=True, null=True)
     intent_payment_id_stripe = models.CharField(max_length=80, editable=False, blank=True, null=True)
+    invoice_stripe_id = models.CharField(max_length=27, editable=False, blank=True, null=True) # dans le cas de renouvellement d'adhésion
 
     asset = models.ForeignKey('Asset', on_delete=models.PROTECT,
                               related_name='checkout_stripe')

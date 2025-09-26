@@ -3,7 +3,7 @@ import logging
 from django.conf import settings
 from rest_framework import serializers
 
-from fedow_core.models import Place, OrganizationAPIKey, get_or_create_user, wallet_creator
+from fedow_core.models import Place, OrganizationAPIKey, get_or_create_user, wallet_creator, Asset, Federation
 from fedow_core.serializers import PlaceSerializer
 from fedow_core.utils import get_public_key
 
@@ -83,3 +83,39 @@ class PlaceValidator(serializers.Serializer):
         return attrs
 
 
+
+class FederationAddValidator(serializers.Serializer):
+    place_origin = serializers.PrimaryKeyRelatedField(queryset=Place.objects.all())
+    place_added = serializers.PrimaryKeyRelatedField(queryset=Place.objects.all())
+    asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all())
+    name = serializers.CharField(max_length=100)
+
+    def validate(self, attrs):
+        self.asset: Asset = attrs['asset']
+        self.place_origin: Place = attrs['place_origin']
+        self.place_added: Place = attrs['place_added']
+        self.name = attrs['name']
+
+        if self.asset.place_origin() != self.place_origin:
+            raise serializers.ValidationError(f"Not the place origin")
+
+        return attrs
+
+    def create_federation(self):
+        try :
+            federation = Federation.objects.get(
+                name=self.name,
+                places=self.place_origin,
+                assets=self.asset,
+            )
+        except Federation.DoesNotExist:
+            federation = Federation.objects.create(
+                name=self.name
+            )
+            federation.assets.add(self.asset)
+            federation.places.add(self.place_origin)
+
+        logger.info(f"Ajout de la nouvelle place {self.place_added} dans la fédération {federation.name}")
+        federation.places.add(self.place_added)
+
+        return federation

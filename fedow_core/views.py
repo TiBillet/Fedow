@@ -11,6 +11,7 @@ import stripe
 from django.conf import settings
 from django.core.cache import cache
 from django.core.management import call_command
+from django.core.serializers.json import DjangoJSONEncoder
 from django.core.signing import Signer
 from django.db.models import Q
 from django.http import JsonResponse, Http404, HttpResponse
@@ -33,10 +34,11 @@ from fedow_core.serializers import TransactionSerializer, WalletCheckoutSerializ
     TransactionW2W, CardSerializer, CardCreateValidator, \
     AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator, \
     FederationSerializer, BadgeCardValidator, WalletGetOrCreate, LinkWalletCardQrCode, BadgeByWalletSignatureValidator, \
-    OriginSerializer, CachedTransactionSerializer, TransactionQrCodeSerializer, TransactionRefilFromLespassSerializer
+    OriginSerializer, CachedTransactionSerializer, TransactionQrCodeSerializer, TransactionRefilFromLespassSerializer, \
+    LinkWalletCard_card_number
 from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict, b64_to_data, get_request_ip, \
     get_public_key, rsa_encrypt_string, verify_signature, data_to_b64
-from fedow_core.validators import PlaceValidator
+from fedow_core.validators import PlaceValidator, FederationAddValidator
 
 logger = logging.getLogger(__name__)
 
@@ -128,13 +130,20 @@ class AssetAPI(viewsets.ViewSet):
     @action(detail=True, methods=['GET'])
     def retrieve_total_by_place(self,request, pk=None):
         place = request.place
-        asset = get_object_or_404(Asset, pk=pk)
-        if asset.wallet_origin.place == place :
-            total_by_place = cache.get_or_set(f"{asset.uuid}-total_by_place",
-                             asset.total_by_place, 30)
-            return Response(json.dumps(total_by_place), content_type="application/json")
-        else:
+        asset = get_object_or_404(Asset, pk=UUID(pk))
+        if not asset.wallet_origin.place :
             return Response("you are not the place origin", status=status.HTTP_400_BAD_REQUEST)
+
+        if asset.wallet_origin.place != place :
+            return Response("you are not the place origin", status=status.HTTP_400_BAD_REQUEST)
+
+        data = {}
+        data['total_by_place'] = cache.get_or_set(f"{asset.uuid}-total_by_place",
+                         asset.total_by_place, 30)
+
+        data['serialized_asset'] = AssetSerializer(asset, context={'request': request}).data
+
+        return Response(json.dumps(data, cls=DjangoJSONEncoder), content_type="application/json")
 
 
     @action(detail=True, methods=['GET'])
@@ -179,7 +188,7 @@ class AssetAPI(viewsets.ViewSet):
 
     def get_permissions(self):
         # Pour les routes depuis la billetterie : L'api Key de l'organisation au minimum
-        if self.action in ['retrieve_membership_asset', 'create_membership_asset', 'archive_asset', 'create_token_asset', 'retrieve_total_on_place']:
+        if self.action in ['retrieve_membership_asset', 'create_membership_asset', 'archive_asset', 'create_token_asset', 'retrieve_total_by_place']:
             permission_classes = [HasOrganizationAPIKeyOnly]
         else:
             permission_classes = [HasKeyAndPlaceSignature]
@@ -630,6 +639,34 @@ class WalletAPI(viewsets.ViewSet):
         return Response(f"Checkout Stripe non paid : {checkout_db.status}", status=status.HTTP_402_PAYMENT_REQUIRED)
 
     @action(detail=False, methods=['POST'])
+    def linkwallet_card_number(self, request):
+        link_serializer = LinkWalletCard_card_number(data=request.data, context={'request': request})
+        if not link_serializer.is_valid():
+            logger.error(f"linkwallet_cardqrcode filter(user__isnull=True) : {link_serializer.errors}")
+            return Response(link_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        logger.info("FUUUUuuUUSION !")
+        card: Card = link_serializer.validated_data['card_from_number']
+
+        wallet_source: Wallet = card.get_wallet()
+        wallet_target: Wallet = link_serializer.validated_data['wallet']
+        if wallet_target.tokens.all().count() > 0 and wallet_target.has_user_card():
+            # Pour éviter le vol de compte :
+            # si je possède l'email d'une personne, je peux linker son wallet avec une nouvelle carte vierge de ma possession.
+            return Response('Wallet conflict : target wallet got a card with tokens.', status=status.HTTP_409_CONFLICT)
+
+        fusionned_card = LinkWalletCardQrCode.fusion(
+            card=card,
+            wallet_source=wallet_source,
+            wallet_target=wallet_target,
+            request_obj=request,
+        )
+
+        serializer = CardSerializer(fusionned_card, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+    @action(detail=False, methods=['POST'])
     def linkwallet_cardqrcode(self, request):
         link_serializer = LinkWalletCardQrCode(data=request.data, context={'request': request})
         if not link_serializer.is_valid():
@@ -715,6 +752,17 @@ class WalletAPI(viewsets.ViewSet):
 
 class FederationAPI(viewsets.ViewSet):
 
+    def create(self, request):
+        new_federation = FederationAddValidator(data=request.data, context={'request': request})
+        if new_federation.is_valid():
+            federation = new_federation.create_federation()
+            serializer = FederationSerializer(federation, context={'request': request})
+            return Response(serializer.data)
+
+        logger.warning(f"Federation create error : {new_federation.errors}")
+        return Response(new_federation.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
     def list(self, request):
         place: Place = request.place
         federations = place.federations.all()
@@ -722,7 +770,12 @@ class FederationAPI(viewsets.ViewSet):
         return Response(serializer.data)
 
     def get_permissions(self):
-        permission_classes = [HasKeyAndPlaceSignature]
+        if self.action in ['list',]:
+            permission_classes = [HasKeyAndPlaceSignature]
+        elif self.action in ['create',]:
+            permission_classes = [HasPlaceKeyAndWalletSignature,]
+        else:
+            permission_classes = [HasKeyAndPlaceSignature]
         return [permission() for permission in permission_classes]
 
 
@@ -1288,6 +1341,7 @@ class Onboard_stripe_return(APIView):
         logger.error(f"Onboard_stripe_return : {request.data}")
         return Response("Compte stripe non valide", status=status.HTTP_406_NOT_ACCEPTABLE)
 """
+
 
 
 class TransactionAPI(viewsets.ViewSet):

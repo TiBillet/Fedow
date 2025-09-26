@@ -583,6 +583,52 @@ class WalletGetOrCreate(serializers.Serializer):
         return attrs
 
 
+class LinkWalletCard_card_number(serializers.Serializer):
+    wallet = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.filter(user__isnull=False))
+    card_from_number = serializers.SlugRelatedField(slug_field='number_printed',
+                                                    queryset=Card.objects.filter(user__isnull=True))
+
+    @staticmethod
+    def fusion(wallet_source: Wallet, wallet_target: Wallet, card: Card, request_obj) -> Card:
+        # Fusion de deux wallets : On réalise une transaction de la totalité de chaque token de la source vers le wallet target
+        # Exemple : On vide le wallet ephemere d'une carte en faveur du wallet de l'user
+
+        # On ajoute le place dans la requete pour les vérif transaction.
+        if not hasattr(request_obj, 'place'):
+            request_obj.place = card.origin.place
+
+        for token in wallet_source.tokens.filter(value__gt=0):
+            data = {
+                "amount": token.value,
+                "asset": f"{token.asset.pk}",
+                "sender": f"{wallet_source.pk}",
+                "receiver": f"{wallet_target.pk}",
+                "action": Transaction.FUSION,
+                "user_card_uuid": f"{card.pk}",
+            }
+
+            transaction_validator = TransactionW2W(data=data, context={'request': request_obj})
+            if not transaction_validator.is_valid():
+                logger.error(
+                    f"{timezone.localtime()} ERROR FUSION WalletCreateSerializer : {transaction_validator.errors}")
+                raise serializers.ValidationError(transaction_validator.errors)
+
+        # Verification que la transaciton a bien vidé le wallet wallet_source
+        wallet_source.refresh_from_db()
+        if wallet_source.tokens.filter(value__gt=0).exists():
+            raise serializers.ValidationError("wallet_source Wallet not empty after fusion")
+
+        # On retire le wallet ephemere de la carte après avoir vérifié qu'il est bien vide
+        # On ajoute l'user dans la carte
+        card.refresh_from_db()
+        card.user = wallet_target.user
+        if wallet_source == card.wallet_ephemere:
+            card.wallet_ephemere = None
+        card.save()
+
+        return card
+
+
 class LinkWalletCardQrCode(serializers.Serializer):
     wallet = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.filter(user__isnull=False))
     card_qrcode_uuid = serializers.SlugRelatedField(slug_field='qrcode_uuid',
@@ -884,16 +930,22 @@ class TransactionRefilFromLespassSerializer(serializers.Serializer):
                 raise serializers.ValidationError("No UUID in metadata for " + key)
 
         # Check checkout_session_id_stripe
-        checkout_session_id_stripe = metadata.get('checkout_session_id_stripe')
+        checkout_session_id_stripe = metadata.get('checkout_session_id_stripe') # dans le cas d'un paiement direct
+        invoice_stripe_id = metadata.get('invoice_stripe_id') # dans le cas d'un renouvellement
 
-        if not checkout_session_id_stripe:
-            raise serializers.ValidationError("No checkout_session_id_stripe in metadata")
+        if not checkout_session_id_stripe and not invoice_stripe_id:
+            raise serializers.ValidationError("No checkout_session_id_stripe nor invoice_stripe_id in metadata")
 
-        if CheckoutStripe.objects.filter(checkout_session_id_stripe=checkout_session_id_stripe).exists():
-            raise serializers.ValidationError("Already reported")
+        if checkout_session_id_stripe:
+           if CheckoutStripe.objects.filter(checkout_session_id_stripe=checkout_session_id_stripe).exists():
+                raise serializers.ValidationError("checkout_session_id_stripe Already reported")
+        if invoice_stripe_id:
+            if CheckoutStripe.objects.filter(invoice_stripe_id=invoice_stripe_id).exists():
+                raise serializers.ValidationError("invoice_stripe_id Already reported")
 
         self.checkout_stripe = CheckoutStripe.objects.create(
             checkout_session_id_stripe=checkout_session_id_stripe,
+            invoice_stripe_id=invoice_stripe_id,
             metadata=metadata,
             status=CheckoutStripe.FROM_LESPASS,
             asset=self.asset,
