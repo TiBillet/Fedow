@@ -132,16 +132,17 @@ class AssetAPI(viewsets.ViewSet):
         place = request.place
         asset = get_object_or_404(Asset, pk=UUID(pk))
         if not asset.wallet_origin.place :
-            return Response("you are not the place origin", status=status.HTTP_400_BAD_REQUEST)
-
-        if asset.wallet_origin.place != place :
-            return Response("you are not the place origin", status=status.HTTP_400_BAD_REQUEST)
+            logger.error(f"wallet_origin error : {asset.wallet_origin}")
+            return Response("wallet_origin error", status=status.HTTP_400_BAD_REQUEST)
 
         data = {}
         data['total_by_place'] = cache.get_or_set(f"{asset.uuid}-total_by_place",
                          asset.total_by_place, 30)
-
         data['serialized_asset'] = AssetSerializer(asset, context={'request': request}).data
+
+        if asset.wallet_origin.place != place :
+            # Total by place réclamée par un lieu autre que l'origin, on ne lui envoie que ce qui le correspond
+            data['total_by_place'] = {f'{place.name}' : data['total_by_place'].get(f"{place.name}")}
 
         return Response(json.dumps(data, cls=DjangoJSONEncoder), content_type="application/json")
 
