@@ -870,10 +870,11 @@ class PlaceAPI(viewsets.ViewSet):
             if settings.TEST:
                 # Mode test, on ajoute ce nouveau lieu dans la federation de test
                 # request.place = place
-                self.add_me_to_test_fed(place)
+                # self.add_me_to_test_fed(place)
                 # C'est un test place : le handshake lespass a pas été réalisé, on rentre l'adresse
-                place.lespass_domain = Place.objects.get(name='Lespass').lespass_domain
-                place.save()
+                if not place.lespass_domain:
+                    place.lespass_domain = Place.objects.get(name='Lespass').lespass_domain
+                    place.save()
 
             data = {
                 # "url_onboard": url_onboard,
