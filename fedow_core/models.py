@@ -222,6 +222,30 @@ class Asset(models.Model):
 
         return result
 
+    def total_by_place_with_uuid(self):
+        """
+        Returns a dictionary with place names as keys and token values as values
+        showing how much of this asset is in each place's wallet.
+        Uses aggregate and values for efficient database querying.
+        """
+        # Get all tokens of this asset that are in place wallets
+        # Group by place name and calculate total value in a single query
+        place_totals = self.tokens.filter(wallet__place__isnull=False) \
+            .values('wallet__place__name','wallet__uuid') \
+            .annotate(total_value=Sum('value')) \
+            .order_by('wallet__place__name')
+
+        # Convert the queryset to a dictionary with place names as keys
+        result = [
+            {
+                'place_name' : item['wallet__place__name'],
+                'wallet_uuid' : item['wallet__uuid'],
+                'total_value' : item['total_value']
+            } for item in place_totals
+        ]
+
+        return result
+
     # def total_in_wallet_by_card_origin(self):
     #     return Token.objects.filter(
     #         wallet__place__isnull=True,
@@ -324,15 +348,6 @@ class Wallet(models.Model):
 
     ip = models.GenericIPAddressField(verbose_name="Ip source", default='0.0.0.0')
 
-    def get_name(self):
-        if self.name:
-            return self.name
-        elif getattr(self, 'place', None):
-            return self.place.name
-        elif getattr(self, 'primary', None):
-            return "Primary"
-        return f"{str(self.uuid)[:8]}"
-
     def is_primary(self):
         # primary is the related name of the Wallet Configuration foreign key
         # On peux récupérer cet object dans les controleurs de cette façon : Wallet.objects.get(primary__isnull=False)
@@ -342,6 +357,15 @@ class Wallet(models.Model):
             if self.primary == Configuration.get_solo():
                 return True
         return False
+
+    def get_name(self):
+        if self.name:
+            return self.name
+        elif getattr(self, 'place', None):
+            return self.place.name
+        elif getattr(self, 'primary', None):
+            return "Primary"
+        return f"{str(self.uuid)[:8]}"
 
     def is_place(self):
         if getattr(self, 'place', False):
@@ -536,9 +560,15 @@ class Transaction(models.Model):
         # Si on utilise auto_now, le verify hash n'aura pas la même date car il est créé après le save, donc après le hash.
         self.last_check = timezone.localtime()
 
-        token_sender = Token.objects.get(wallet=self.sender, asset=self.asset)
+        try :
+            token_sender = Token.objects.get(wallet=self.sender, asset=self.asset)
+        except Token.DoesNotExist:
+            token_sender = Token.objects.create(wallet=self.sender, asset=self.asset)
 
-        token_receiver = Token.objects.get(wallet=self.receiver, asset=self.asset)
+        try :
+            token_receiver = Token.objects.get(wallet=self.receiver, asset=self.asset)
+        except Token.DoesNotExist:
+            token_receiver = Token.objects.create(wallet=self.receiver, asset=self.asset)
 
         ## Check previous transaction
         # Le hash ne peut se faire que si la transaction précédente est validée

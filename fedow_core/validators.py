@@ -3,7 +3,8 @@ import logging
 from django.conf import settings
 from rest_framework import serializers
 
-from fedow_core.models import Place, OrganizationAPIKey, get_or_create_user, wallet_creator, Asset, Federation
+from fedow_core.models import Place, OrganizationAPIKey, get_or_create_user, wallet_creator, Asset, Federation, Wallet, \
+    Token
 from fedow_core.serializers import PlaceSerializer
 from fedow_core.utils import get_public_key
 
@@ -119,3 +120,40 @@ class FederationAddValidator(serializers.Serializer):
         federation.places.add(self.place_added)
 
         return federation
+
+
+class LocalAssetBankDepositValidator(serializers.Serializer):
+    wallet_to_deposit = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.all())
+    asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.all())
+    # amount = serializers.IntegerField()
+
+    def validate(self, attrs):
+
+        request = self.context.get('request')
+        wallet_request_origin : Wallet = request.place.wallet
+
+        wallet_to_deposit : Wallet = attrs['wallet_to_deposit']
+        asset: Asset = attrs['asset']
+        # amount:int = attrs['amount']
+
+        if asset.category == Asset.STRIPE_FED_FIAT:
+            raise serializers.ValidationError(f"Asset not authorized")
+
+        if wallet_request_origin not in [wallet_to_deposit, asset.wallet_origin]:
+            # Si la demande ne vient pas du créateur de l'asset ou du wallet à vider
+            raise serializers.ValidationError(f"Wallet not authorized")
+
+        if not wallet_to_deposit.is_place():
+            raise serializers.ValidationError(f"Not a place wallet destination")
+
+        self.amount = wallet_to_deposit.tokens.get(asset=asset).value
+        if not self.amount > 0:
+            raise serializers.ValidationError(f"Not enough token")
+
+        # token_wallet:Token = wallet_to_deposit.tokens.get(asset=asset)
+        # if amount > token_wallet.value :
+
+        self.wallet_to_deposit = wallet_to_deposit
+        self.asset = asset
+
+        return attrs

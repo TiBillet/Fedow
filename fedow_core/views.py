@@ -35,10 +35,10 @@ from fedow_core.serializers import TransactionSerializer, WalletCheckoutSerializ
     AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator, \
     FederationSerializer, BadgeCardValidator, WalletGetOrCreate, LinkWalletCardQrCode, BadgeByWalletSignatureValidator, \
     OriginSerializer, CachedTransactionSerializer, TransactionQrCodeSerializer, TransactionRefilFromLespassSerializer, \
-    LinkWalletCard_card_number
+    LinkWalletCard_card_number, TransactionSimpleSerializer
 from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict, b64_to_data, get_request_ip, \
     get_public_key, rsa_encrypt_string, verify_signature, data_to_b64
-from fedow_core.validators import PlaceValidator, FederationAddValidator
+from fedow_core.validators import PlaceValidator, FederationAddValidator, LocalAssetBankDepositValidator
 
 logger = logging.getLogger(__name__)
 
@@ -128,24 +128,56 @@ class AssetAPI(viewsets.ViewSet):
         return Response(serializer.data)
 
     @action(detail=True, methods=['GET'])
-    def retrieve_total_by_place(self,request, pk=None):
+    def retrieve_bank_deposits(self, request, pk=None):
+        asset = get_object_or_404(Asset, pk=UUID(pk))
+        transactions = Transaction.objects.filter(action=Transaction.DEPOSIT)
+        place: Place = request.place
+        if asset.wallet_origin.place != place:
+            transactions = transactions.filter(Q(sender=place.wallet) | Q(receiver=place.wallet))
+
+        serializer = TransactionSimpleSerializer(transactions, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['GET'])
+    def retrieve_total_by_place(self, request, pk=None):
         place = request.place
         asset = get_object_or_404(Asset, pk=UUID(pk))
-        if not asset.wallet_origin.place :
+        if not asset.wallet_origin.place:
             logger.error(f"wallet_origin error : {asset.wallet_origin}")
             return Response("wallet_origin error", status=status.HTTP_400_BAD_REQUEST)
 
         data = {}
-        data['total_by_place'] = cache.get_or_set(f"{asset.uuid}-total_by_place",
-                         asset.total_by_place, 30)
+        data['total_by_place'] = cache.get_or_set(f"{asset.uuid}-total_by_place_with_uuid",
+                                                  asset.total_by_place, 30)
         data['serialized_asset'] = AssetSerializer(asset, context={'request': request}).data
 
-        if asset.wallet_origin.place != place :
+        if asset.wallet_origin.place != place:
             # Total by place réclamée par un lieu autre que l'origin, on ne lui envoie que ce qui le correspond
-            data['total_by_place'] = {f'{place.name}' : data['total_by_place'].get(f"{place.name}")}
+            data['total_by_place'] = {f'{place.name}': data['total_by_place'].get(f"{place.name}")}
 
         return Response(json.dumps(data, cls=DjangoJSONEncoder), content_type="application/json")
 
+    @action(detail=True, methods=['GET'])
+    def total_by_place_with_uuid(self, request, pk=None):
+        place = request.place
+        asset = get_object_or_404(Asset, pk=UUID(pk))
+        if not asset.wallet_origin.place:
+            logger.error(f"wallet_origin error : {asset.wallet_origin}")
+            return Response("wallet_origin error", status=status.HTTP_400_BAD_REQUEST)
+
+        data = {}
+        data['total_by_place'] = cache.get_or_set(f"{asset.uuid}-total_by_place_with_uuid",
+                                                  asset.total_by_place_with_uuid, 30)
+        data['serialized_asset'] = AssetSerializer(asset, context={'request': request}).data
+
+        if asset.wallet_origin.place != place:
+            # Total by place réclamée par un lieu autre que l'origin, on ne lui envoie que ce qui le correspond
+            for place_info in data['total_by_place']:
+                if place_info['place_name'] == place.name:
+                    data['total_by_place'] = [place_info,]
+
+
+        return Response(json.dumps(data, cls=DjangoJSONEncoder), content_type="application/json")
 
     @action(detail=True, methods=['GET'])
     def retrieve_membership_asset(self, request, pk=None):
@@ -189,7 +221,15 @@ class AssetAPI(viewsets.ViewSet):
 
     def get_permissions(self):
         # Pour les routes depuis la billetterie : L'api Key de l'organisation au minimum
-        if self.action in ['retrieve_membership_asset', 'create_membership_asset', 'archive_asset', 'create_token_asset', 'retrieve_total_by_place']:
+        if self.action in [
+            'retrieve_membership_asset',
+            'create_membership_asset',
+            'archive_asset',
+            'create_token_asset',
+            'retrieve_total_by_place',
+            'total_by_place_with_uuid',
+            'retrieve_bank_deposits',
+        ]:
             permission_classes = [HasOrganizationAPIKeyOnly]
         else:
             permission_classes = [HasKeyAndPlaceSignature]
@@ -339,6 +379,44 @@ class WalletAPI(viewsets.ViewSet):
         return Response(serializer.data)
 
     @action(detail=False, methods=['POST'])
+    def local_asset_bank_deposit(self, request):
+        '''
+        Remise en euro des tokens locaux en cas de remboursement par l'origin de l'asset ou par déclaration du wallet de destination.
+        ex : une SSA qui fait des virements à tout ses producteurs
+        ex : un festival qui déclare avoir bien reçu le virement de l'asset d'une association
+        '''
+
+        validator = LocalAssetBankDepositValidator(data=request.data, context={'request': request})
+        if not validator.is_valid():
+            logger.error(f"{timezone.now()} Wallet bank deposit error : {validator.errors}")
+            return Response(validator.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # Le wallet primaire qui sera le receiver :
+        config = Configuration.get_solo()
+        primary_wallet = config.primary_wallet
+
+        # lancer une transaction DEPOSIT !
+        transaction_dict = {
+            "ip": get_request_ip(request),
+            "checkout_stripe": None,
+            "sender": validator.wallet_to_deposit,
+            "receiver": primary_wallet,
+            "asset": validator.asset,
+            "amount": validator.amount,
+            "action": Transaction.DEPOSIT,
+            "primary_card": None,
+            "card": None,
+            "subscription_start_datetime": None
+        }
+        transaction = Transaction.objects.create(**transaction_dict)
+        transaction_serialized = TransactionSerializer(transaction, context={'request': request})
+
+        # On vide le cache des tokens par lieux
+        cache.delete(f"{validator.asset.uuid}-total_by_place_with_uuid")
+
+        return Response(transaction_serialized.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['POST'])
     def global_asset_bank_stripe_deposit(self, request):
         '''
         Remise en euro des tokens.
@@ -389,7 +467,7 @@ class WalletAPI(viewsets.ViewSet):
             user=admin_wallet.user,
         )
 
-        # lancer une transaction refund !
+        # lancer une transaction DEPOSIT !
         transaction_dict = {
             "ip": get_request_ip(request),
             "checkout_stripe": checkout_stripe,
@@ -666,7 +744,6 @@ class WalletAPI(viewsets.ViewSet):
         serializer = CardSerializer(fusionned_card, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-
     @action(detail=False, methods=['POST'])
     def linkwallet_cardqrcode(self, request):
         link_serializer = LinkWalletCardQrCode(data=request.data, context={'request': request})
@@ -740,12 +817,13 @@ class WalletAPI(viewsets.ViewSet):
         ]:
             permission_classes = [HasWalletSignature]
         elif self.action in [
+            'local_asset_bank_deposit',
             'global_asset_bank_stripe_deposit',
             'retrieve_from_refill_checkout',
             'get_federated_token_refill_checkout',
             'badge',
         ]:
-            permission_classes = [HasPlaceKeyAndWalletSignature, ]  # Pour LaBoutik,
+            permission_classes = [HasPlaceKeyAndWalletSignature, ]  # Pour Lespass,
         else:
             permission_classes = [HasKeyAndPlaceSignature]
         return [permission() for permission in permission_classes]
@@ -763,7 +841,6 @@ class FederationAPI(viewsets.ViewSet):
         logger.warning(f"Federation create error : {new_federation.errors}")
         return Response(new_federation.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
     def list(self, request):
         place: Place = request.place
         federations = place.federations.all()
@@ -771,10 +848,10 @@ class FederationAPI(viewsets.ViewSet):
         return Response(serializer.data)
 
     def get_permissions(self):
-        if self.action in ['list',]:
+        if self.action in ['list', ]:
             permission_classes = [HasKeyAndPlaceSignature]
-        elif self.action in ['create',]:
-            permission_classes = [HasPlaceKeyAndWalletSignature,]
+        elif self.action in ['create', ]:
+            permission_classes = [HasPlaceKeyAndWalletSignature, ]
         else:
             permission_classes = [HasKeyAndPlaceSignature]
         return [permission() for permission in permission_classes]
@@ -1343,7 +1420,6 @@ class Onboard_stripe_return(APIView):
         logger.error(f"Onboard_stripe_return : {request.data}")
         return Response("Compte stripe non valide", status=status.HTTP_406_NOT_ACCEPTABLE)
 """
-
 
 
 class TransactionAPI(viewsets.ViewSet):

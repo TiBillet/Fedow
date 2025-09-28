@@ -480,6 +480,13 @@ class TransactionSerializer(serializers.ModelSerializer):
 
 
 class TransactionSimpleSerializer(serializers.ModelSerializer):
+    """
+    Sans le serializer de la carte.
+    Ajoute les nom des wallets
+    """
+    sender_name = serializers.SerializerMethodField()
+    receiver_name = serializers.SerializerMethodField()
+
     class Meta:
         model = Transaction
         fields = (
@@ -494,6 +501,8 @@ class TransactionSimpleSerializer(serializers.ModelSerializer):
             "last_check",
             "sender",
             "receiver",
+            "sender_name",
+            "receiver_name",
             "asset",
             "amount",
             "comment",
@@ -503,6 +512,12 @@ class TransactionSimpleSerializer(serializers.ModelSerializer):
             "comment",
             "verify_hash",
         )
+
+    def get_sender_name(self, obj: Transaction):
+        return obj.sender.get_name()
+
+    def get_receiver_name(self, obj: Transaction):
+        return obj.receiver.get_name()
 
 
 class TokenSerializer(serializers.ModelSerializer):
