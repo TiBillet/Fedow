@@ -130,7 +130,7 @@ class AssetAPI(viewsets.ViewSet):
     @action(detail=True, methods=['GET'])
     def retrieve_bank_deposits(self, request, pk=None):
         asset = get_object_or_404(Asset, pk=UUID(pk))
-        transactions = Transaction.objects.filter(action=Transaction.DEPOSIT)
+        transactions = Transaction.objects.filter(action=Transaction.DEPOSIT, asset=asset)
         place: Place = request.place
         if asset.wallet_origin.place != place:
             transactions = transactions.filter(Q(sender=place.wallet) | Q(receiver=place.wallet))
@@ -948,7 +948,7 @@ class PlaceAPI(viewsets.ViewSet):
             if settings.TEST:
                 # Mode test, on ajoute ce nouveau lieu dans la federation de test
                 # request.place = place
-                # self.add_me_to_test_fed(place)
+                self.add_me_to_test_fed(place)
                 # C'est un test place : le handshake lespass a pas été réalisé, on rentre l'adresse
                 if not place.lespass_domain:
                     place.lespass_domain = Place.objects.get(name='Lespass').lespass_domain
