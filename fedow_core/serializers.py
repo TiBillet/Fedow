@@ -600,48 +600,9 @@ class WalletGetOrCreate(serializers.Serializer):
 
 class LinkWalletCard_card_number(serializers.Serializer):
     wallet = serializers.PrimaryKeyRelatedField(queryset=Wallet.objects.filter(user__isnull=False))
-    card_from_number = serializers.SlugRelatedField(slug_field='number_printed',
+    card_number = serializers.SlugRelatedField(slug_field='number_printed',
                                                     queryset=Card.objects.filter(user__isnull=True))
 
-    @staticmethod
-    def fusion(wallet_source: Wallet, wallet_target: Wallet, card: Card, request_obj) -> Card:
-        # Fusion de deux wallets : On réalise une transaction de la totalité de chaque token de la source vers le wallet target
-        # Exemple : On vide le wallet ephemere d'une carte en faveur du wallet de l'user
-
-        # On ajoute le place dans la requete pour les vérif transaction.
-        if not hasattr(request_obj, 'place'):
-            request_obj.place = card.origin.place
-
-        for token in wallet_source.tokens.filter(value__gt=0):
-            data = {
-                "amount": token.value,
-                "asset": f"{token.asset.pk}",
-                "sender": f"{wallet_source.pk}",
-                "receiver": f"{wallet_target.pk}",
-                "action": Transaction.FUSION,
-                "user_card_uuid": f"{card.pk}",
-            }
-
-            transaction_validator = TransactionW2W(data=data, context={'request': request_obj})
-            if not transaction_validator.is_valid():
-                logger.error(
-                    f"{timezone.localtime()} ERROR FUSION WalletCreateSerializer : {transaction_validator.errors}")
-                raise serializers.ValidationError(transaction_validator.errors)
-
-        # Verification que la transaciton a bien vidé le wallet wallet_source
-        wallet_source.refresh_from_db()
-        if wallet_source.tokens.filter(value__gt=0).exists():
-            raise serializers.ValidationError("wallet_source Wallet not empty after fusion")
-
-        # On retire le wallet ephemere de la carte après avoir vérifié qu'il est bien vide
-        # On ajoute l'user dans la carte
-        card.refresh_from_db()
-        card.user = wallet_target.user
-        if wallet_source == card.wallet_ephemere:
-            card.wallet_ephemere = None
-        card.save()
-
-        return card
 
 
 class LinkWalletCardQrCode(serializers.Serializer):

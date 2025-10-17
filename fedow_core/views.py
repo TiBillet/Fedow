@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import time
 from datetime import timedelta, datetime
 from decimal import Decimal
@@ -279,6 +280,29 @@ class CardAPI(viewsets.ViewSet):
             return Response("OK", status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'])
+    def card_number_retrieve(self, request, pk=None):
+        # Validator pk est bien un str de 8 hexa ? :
+        if not re.match(r'^[0-9A-Fa-f]{8}$', pk):
+            return Response("Invalid card number format. Must be 8 hexadecimal characters.",
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        card_number = pk.upper()
+        card = get_object_or_404(Card, number_printed=card_number)
+
+        # From qr code scan, we just send wallet uuid and is_wallet_ephemere
+        # If usr is not created, we ask for the email
+        # If the email is not active, we show only the refill button and the recent history
+        wallet = card.get_wallet()
+
+        origin_serialized = OriginSerializer(card.origin).data
+        data = {
+            'wallet_uuid': wallet.uuid,
+            'is_wallet_ephemere': card.is_wallet_ephemere(),
+            'origin': origin_serialized,
+        }
+        return Response(data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'])
     def qr_retrieve(self, request, pk=None):
         # Validator pk est bien un uudi ? :
         qrcode_uuid = UUID(pk)
@@ -354,7 +378,7 @@ class CardAPI(viewsets.ViewSet):
         return Response(card_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get_permissions(self):
-        if self.action in ['qr_retrieve', ]:
+        if self.action in ['qr_retrieve', 'card_number_retrieve' ]:
             # L'api Key de l'organisation au minimum
             permission_classes = [HasOrganizationAPIKeyOnly]
         elif self.action in ['retrieve_card_by_signature', 'lost_my_card_by_signature']:
@@ -725,7 +749,7 @@ class WalletAPI(viewsets.ViewSet):
             return Response(link_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         logger.info("FUUUUuuUUSION !")
-        card: Card = link_serializer.validated_data['card_from_number']
+        card: Card = link_serializer.validated_data['card_number']
 
         wallet_source: Wallet = card.get_wallet()
         wallet_target: Wallet = link_serializer.validated_data['wallet']
@@ -813,6 +837,7 @@ class WalletAPI(viewsets.ViewSet):
         elif self.action in [
             'retrieve_by_signature',
             'linkwallet_cardqrcode',
+            'linkwallet_card_number',
             'refund_fed_by_signature',
         ]:
             permission_classes = [HasWalletSignature]
