@@ -279,6 +279,30 @@ class CardAPI(viewsets.ViewSet):
             card.save()
             return Response("OK", status=status.HTTP_200_OK)
 
+
+    @action(detail=True, methods=['get'])
+    def card_tag_id_retrieve(self, request, pk=None):
+        # Validator pk est bien un str de 8 hexa ? :
+        if not re.match(r'^[0-9A-Fa-f]{8}$', pk):
+            return Response("Invalid tag id format. Must be 8 hexadecimal characters.",
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        first_tag_id = pk.upper()
+        card = get_object_or_404(Card, first_tag_id=first_tag_id)
+
+        # From qr code scan, we just send wallet uuid and is_wallet_ephemere
+        # If usr is not created, we ask for the email
+        # If the email is not active, we show only the refill button and the recent history
+        wallet = card.get_wallet()
+
+        origin_serialized = OriginSerializer(card.origin).data
+        data = {
+            'wallet_uuid': wallet.uuid,
+            'is_wallet_ephemere': card.is_wallet_ephemere(),
+            'origin': origin_serialized,
+        }
+        return Response(data, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['get'])
     def card_number_retrieve(self, request, pk=None):
         # Validator pk est bien un str de 8 hexa ? :
@@ -378,7 +402,7 @@ class CardAPI(viewsets.ViewSet):
         return Response(card_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get_permissions(self):
-        if self.action in ['qr_retrieve', 'card_number_retrieve' ]:
+        if self.action in ['qr_retrieve', 'card_number_retrieve', 'card_tag_id_retrieve', ]:
             # L'api Key de l'organisation au minimum
             permission_classes = [HasOrganizationAPIKeyOnly]
         elif self.action in ['retrieve_card_by_signature', 'lost_my_card_by_signature']:
