@@ -19,7 +19,7 @@ from django.http import JsonResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from faker import Faker
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, serializers
 from rest_framework.decorators import permission_classes, action
 from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import PageNumberPagination
@@ -118,6 +118,12 @@ class AssetAPI(viewsets.ViewSet):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def list(self, request):
+        accepted_assets = request.place.accepted_assets()
+        serializers = AssetSerializer(accepted_assets, many=True, context={'request': request})
+        return Response(serializers.data)
+
+    @action(detail=False, methods=['GET'])
+    def get_accepted_assets(self, request): # même action que list /, mais pour lespass
         accepted_assets = request.place.accepted_assets()
         serializers = AssetSerializer(accepted_assets, many=True, context={'request': request})
         return Response(serializers.data)
@@ -230,6 +236,7 @@ class AssetAPI(viewsets.ViewSet):
             'retrieve_total_by_place',
             'total_by_place_with_uuid',
             'retrieve_bank_deposits',
+            'get_accepted_assets',
         ]:
             permission_classes = [HasOrganizationAPIKeyOnly]
         else:
@@ -1478,6 +1485,44 @@ class TransactionAPI(viewsets.ViewSet):
     """
     pagination_class = StandardResultsSetPagination
 
+    @action(detail=False, methods=['POST'])
+    def list_by_asset(self, request):
+        place: Place = request.place
+
+        class Validator(serializers.Serializer):
+            asset_uuid = serializers.UUIDField()
+            start_date = serializers.DateTimeField()
+            end_date = serializers.DateTimeField()
+
+        validator = Validator(data=request.data)
+        if not validator.is_valid():
+            return Response(f"Error : {validator.errors}", status=status.HTTP_400_BAD_REQUEST)
+
+        asset: Asset = get_object_or_404(Asset, uuid=validator.validated_data.get('asset_uuid'))
+        # Si place est à l'origine de l'asset, on peut afficher TOUTE les transactions
+
+        if asset.wallet_origin == place.wallet:
+            transactions = Transaction.objects.filter(
+                asset=asset,
+                datetime__gte=validator.validated_data.get('start_date'),
+                datetime__lte=validator.validated_data.get('end_date')
+            ).order_by('-datetime')
+            
+        # Si place est juste fédéré à l'asset, on envoie que ce les transactions qu'il a encaissé
+            wallet = place.wallet
+            transactions = Transaction.objects.filter(
+                Q(asset=asset, sender=wallet) | Q(asset=asset, receiver=wallet),
+                datetime__gte=validator.validated_data.get('start_date'),
+                datetime__lte=validator.validated_data.get('end_date')
+            )
+        serializer = CachedTransactionSerializer(transactions, many=True, context={
+            'request': request,
+            'detailed_asset': True,
+            'serialized_sender': True,
+            'serialized_receiver': True,
+        })
+        return Response(serializer.data)
+
     @action(detail=False, methods=['GET'])
     def paginated_list_by_wallet_signature(self, request):
         wallet = request.wallet
@@ -1592,7 +1637,9 @@ class TransactionAPI(viewsets.ViewSet):
         if self.action in [
             'create_membership',
             'qrcodescanpay',
-            'refill_from_lespass_to_user_wallet', ]:
+            'refill_from_lespass_to_user_wallet',
+            'list_by_asset',
+        ]:
             permission_classes = [HasPlaceKeyAndWalletSignature]  # methode pour LesPass
         elif self.action in [
             'paginated_list_by_wallet_signature',
