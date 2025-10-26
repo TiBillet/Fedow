@@ -492,7 +492,7 @@ class Transaction(models.Model):
     TYPE_ACTION = (
         (FIRST, "Premier bloc"),
         (SALE, "Vente d'article"),
-        (QRCODE_SALE, "Vente via QrCode"),
+        (QRCODE_SALE, "Vente via QrCode ou NFC"),
         (CREATION, 'Creation monétaire'),
         (REFILL, 'Recharge'),
         (TRANSFER, 'Transfert'),

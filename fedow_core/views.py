@@ -145,6 +145,7 @@ class AssetAPI(viewsets.ViewSet):
         serializer = TransactionSimpleSerializer(transactions, many=True, context={'request': request})
         return Response(serializer.data)
 
+
     @action(detail=True, methods=['GET'])
     def retrieve_total_by_place(self, request, pk=None):
         place = request.place
@@ -1499,27 +1500,24 @@ class TransactionAPI(viewsets.ViewSet):
             return Response(f"Error : {validator.errors}", status=status.HTTP_400_BAD_REQUEST)
 
         asset: Asset = get_object_or_404(Asset, uuid=validator.validated_data.get('asset_uuid'))
-        # Si place est à l'origine de l'asset, on peut afficher TOUTE les transactions
 
-        if asset.wallet_origin == place.wallet:
-            transactions = Transaction.objects.filter(
-                asset=asset,
-                datetime__gte=validator.validated_data.get('start_date'),
-                datetime__lte=validator.validated_data.get('end_date')
-            ).order_by('-datetime')
-            
-        # Si place est juste fédéré à l'asset, on envoie que ce les transactions qu'il a encaissé
+        # Si place est à l'origine de l'asset, on peut afficher TOUTES les transactions
+        transactions = Transaction.objects.filter(
+            asset=asset,
+            datetime__gte=validator.validated_data.get('start_date'),
+            datetime__lte=validator.validated_data.get('end_date')
+        ).exclude(action=Transaction.CREATION).order_by('-datetime')
+
+        if asset.wallet_origin != place.wallet:
+            # Si place est juste fédéré à l'asset, on envoie que les transactions qu'il a encaissé
             wallet = place.wallet
-            transactions = Transaction.objects.filter(
-                Q(asset=asset, sender=wallet) | Q(asset=asset, receiver=wallet),
-                datetime__gte=validator.validated_data.get('start_date'),
-                datetime__lte=validator.validated_data.get('end_date')
+            transactions = transactions.filter(
+                Q(sender=wallet) | Q(receiver=wallet)
             )
-        serializer = CachedTransactionSerializer(transactions, many=True, context={
+
+
+        serializer = TransactionSimpleSerializer(transactions, many=True, context={
             'request': request,
-            'detailed_asset': True,
-            'serialized_sender': True,
-            'serialized_receiver': True,
         })
         return Response(serializer.data)
 

@@ -514,10 +514,14 @@ class TransactionSimpleSerializer(serializers.ModelSerializer):
         )
 
     def get_sender_name(self, obj: Transaction):
-        return obj.sender.get_name()
+        name = obj.sender.get_name()
+        # logger.info(f"get_sender_name : {name}")
+        return name
 
     def get_receiver_name(self, obj: Transaction):
-        return obj.receiver.get_name()
+        name = obj.receiver.get_name()
+        # logger.info(f"get_receiver_name : {name}")
+        return name
 
 
 class TokenSerializer(serializers.ModelSerializer):
