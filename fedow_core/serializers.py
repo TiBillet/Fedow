@@ -893,6 +893,12 @@ class TransactionRefilFromLespassSerializer(serializers.Serializer):
         return value
 
     def validate_metadata(self, metadata):
+        logger.info(f"metadata : {metadata}")
+        # Demandé lors du scan de carte pour une récompense, pas de checkout stripe
+        if metadata.get('rewarded_from_ticket_scanned'):
+            self.checkout_stripe = None
+            return metadata
+
         # Dans ce type de transaction, il doit y avoir l'uuid du produit qui fait le trigg
         # et l'id du checkout stripe pour vérification et traçabilité.
         keys = [
