@@ -894,9 +894,9 @@ class TransactionRefilFromLespassSerializer(serializers.Serializer):
 
     def validate_metadata(self, metadata):
         logger.info(f"metadata : {metadata}")
+        self.checkout_stripe = None
         # Demandé lors du scan de carte pour une récompense, pas de checkout stripe
         if metadata.get('rewarded_from_ticket_scanned'):
-            self.checkout_stripe = None
             return metadata
 
         # Dans ce type de transaction, il doit y avoir l'uuid du produit qui fait le trigg
@@ -915,28 +915,27 @@ class TransactionRefilFromLespassSerializer(serializers.Serializer):
             except ValueError:
                 raise serializers.ValidationError("No UUID in metadata for " + key)
 
+        # Si adhésion réalisée dans l'admin, pas de checkout session id stripe
+
         # Check checkout_session_id_stripe
         checkout_session_id_stripe = metadata.get('checkout_session_id_stripe') # dans le cas d'un paiement direct
         invoice_stripe_id = metadata.get('invoice_stripe_id') # dans le cas d'un renouvellement
+        if checkout_session_id_stripe or invoice_stripe_id:
+            if checkout_session_id_stripe:
+               if CheckoutStripe.objects.filter(checkout_session_id_stripe=checkout_session_id_stripe).exists():
+                    raise serializers.ValidationError("checkout_session_id_stripe Already reported")
+            if invoice_stripe_id:
+                if CheckoutStripe.objects.filter(invoice_stripe_id=invoice_stripe_id).exists():
+                    raise serializers.ValidationError("invoice_stripe_id Already reported")
 
-        if not checkout_session_id_stripe and not invoice_stripe_id:
-            raise serializers.ValidationError("No checkout_session_id_stripe nor invoice_stripe_id in metadata")
-
-        if checkout_session_id_stripe:
-           if CheckoutStripe.objects.filter(checkout_session_id_stripe=checkout_session_id_stripe).exists():
-                raise serializers.ValidationError("checkout_session_id_stripe Already reported")
-        if invoice_stripe_id:
-            if CheckoutStripe.objects.filter(invoice_stripe_id=invoice_stripe_id).exists():
-                raise serializers.ValidationError("invoice_stripe_id Already reported")
-
-        self.checkout_stripe = CheckoutStripe.objects.create(
-            checkout_session_id_stripe=checkout_session_id_stripe,
-            invoice_stripe_id=invoice_stripe_id,
-            metadata=metadata,
-            status=CheckoutStripe.FROM_LESPASS,
-            asset=self.asset,
-            user=self.receiver.user,
-        )
+            self.checkout_stripe = CheckoutStripe.objects.create(
+                checkout_session_id_stripe=checkout_session_id_stripe,
+                invoice_stripe_id=invoice_stripe_id,
+                metadata=metadata,
+                status=CheckoutStripe.FROM_LESPASS,
+                asset=self.asset,
+                user=self.receiver.user,
+            )
         return metadata
 
 
