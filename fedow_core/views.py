@@ -689,12 +689,16 @@ class WalletAPI(viewsets.ViewSet):
         wallet: Wallet = request.wallet
         place: Place = request.place
 
+        # Dans le cas d'une demande depuis la vue "basic card", le return url est envoyé en sus.
+        start_return_url = request.data.get('start_return_url')
+
         # On envoie dans les metadata la requete signée du django.
         # La billetterie pourra vérifier que la requete vient bien d'elle.
         lespass_signed_data = f"{request.data.get('lespass_signed_data')}"
         checkout_session = StripeAPI.create_stripe_checkout_for_federated_refill(
             user=wallet.user,
             place=place,
+            start_return_url=start_return_url,
             add_metadata={
                 'lespass_signed_data': lespass_signed_data,
                 'lespass_uuid': f"{place.uuid}"
@@ -1238,7 +1242,7 @@ class StripeAPI(viewsets.ViewSet):
 
     # Methode statique car utilisé avant les retours stripe et webhook
     @staticmethod
-    def create_stripe_checkout_for_federated_refill(user, add_metadata: dict = None, place=None):
+    def create_stripe_checkout_for_federated_refill(user, add_metadata: dict = None, place=None, start_return_url=None):
         # Construction du paiement vers stripe
         # Vérifier en POST et en GET, dans les methode de cette même classe
 
@@ -1293,7 +1297,13 @@ class StripeAPI(viewsets.ViewSet):
         # La demande a forcément un lesspass url
         # SI ça vient d'un cashless : esce que ça doit vraiment venir d'un cashless sans lespass ?
         # TODO: Oui, si ça vient d'un TPE STRIPE connecté à un pi ou un kiosk
-        return_url = f'https://{place.lespass_domain}/my_account/{checkout_db.uuid}/return_refill_wallet/'
+        if not start_return_url :
+            return_url = f'https://{place.lespass_domain}/my_account/{checkout_db.uuid}/return_refill_wallet/'
+        else :
+            if not start_return_url.endswith('/'):
+                start_return_url+='/'
+            return_url = f'{start_return_url}{checkout_db.uuid}'
+
         data_checkout = {
             'success_url': f"{return_url}",
             'cancel_url': f"{return_url}",
