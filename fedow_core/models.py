@@ -1040,13 +1040,6 @@ class Card(models.Model):
             return True
         return False
 
-    # def get_authority_delegation(self):
-        # Le lieu d'origine doit faire parti de la fédération du lieu de la carte
-        # card: Card = self
-        # place_origin = card.origin.place
-        # wallets = place_origin.wallet_federated_with()
-        # return wallets
-
     def __str__(self):
         return f"{self.origin} : {self.number_printed}"
 

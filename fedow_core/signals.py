@@ -25,8 +25,7 @@ def transaction_webhook_new_membership(sender, instance: Transaction, created, *
         place: Place = instance.sender.place
         url = place.lespass_domain
         requests.get(f"https://{url}/fwh/membership/{instance.uuid}",
-                     verify=bool(not settings.DEBUG),
-                     timeout=1)
+                     verify=bool(not settings.DEBUG))
 
 
 @receiver(post_save, sender=Asset)
