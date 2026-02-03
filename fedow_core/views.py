@@ -5,7 +5,6 @@ import time
 from datetime import timedelta, datetime
 from decimal import Decimal
 from io import StringIO
-from unicodedata import category
 from uuid import UUID
 
 import stripe
@@ -15,7 +14,7 @@ from django.core.management import call_command
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.signing import Signer
 from django.db.models import Q
-from django.http import JsonResponse, Http404, HttpResponse
+from django.http import JsonResponse, Http404
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from faker import Faker
@@ -27,15 +26,15 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from fedow_core.models import Transaction, Place, Configuration, Asset, CheckoutStripe, Token, Wallet, FedowUser, \
+from fedow_core.models import Transaction, Place, Configuration, Asset, CheckoutStripe, Token, Wallet, \
     OrganizationAPIKey, Card, Federation, CreatePlaceAPIKey
 from fedow_core.permissions import HasKeyAndPlaceSignature, HasAPIKey, IsStripe, CanCreatePlace, \
     HasOrganizationAPIKeyOnly, HasWalletSignature, HasPlaceKeyAndWalletSignature
-from fedow_core.serializers import TransactionSerializer, WalletCheckoutSerializer, HandshakeValidator, \
+from fedow_core.serializers import TransactionSerializer, HandshakeValidator, \
     TransactionW2W, CardSerializer, CardCreateValidator, \
-    AssetCreateValidator, OnboardSerializer, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator, \
-    FederationSerializer, BadgeCardValidator, WalletGetOrCreate, LinkWalletCardQrCode, BadgeByWalletSignatureValidator, \
-    OriginSerializer, CachedTransactionSerializer, TransactionQrCodeSerializer, TransactionRefilFromLespassSerializer, \
+    AssetCreateValidator, AssetSerializer, WalletSerializer, CardRefundOrVoidValidator, \
+    FederationSerializer, BadgeCardValidator, WalletGetOrCreate, LinkWalletCardQrCode, OriginSerializer, \
+    CachedTransactionSerializer, TransactionQrCodeSerializer, TransactionRefilFromLespassSerializer, \
     LinkWalletCard_card_number, TransactionSimpleSerializer
 from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict, b64_to_data, get_request_ip, \
     get_public_key, rsa_encrypt_string, verify_signature, data_to_b64
