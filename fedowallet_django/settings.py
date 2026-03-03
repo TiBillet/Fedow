@@ -41,7 +41,7 @@ CSRF_TRUSTED_ORIGINS = [f"https://{os.environ['DOMAIN']}", ]
 if DEBUG:
     ALLOWED_HOSTS.append('127.0.0.1')
     ALLOWED_HOSTS.append(f"fedow.{os.environ['DOMAIN']}")
-    CSRF_TRUSTED_ORIGINS.append(f"fedow.{os.environ['DOMAIN']}")
+    CSRF_TRUSTED_ORIGINS.append(f"https://fedow.{os.environ['DOMAIN']}")
 
 # Sentry
 if not DEBUG:
