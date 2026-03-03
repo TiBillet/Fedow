@@ -39,9 +39,11 @@ TEST = os.environ.get('TEST') == 'True' or os.environ.get('TEST') == '1'
 ALLOWED_HOSTS = [os.environ['DOMAIN'], ]
 CSRF_TRUSTED_ORIGINS = [f"https://{os.environ['DOMAIN']}", ]
 if DEBUG:
-    ALLOWED_HOSTS.append('127.0.0.1')  # pour webhook stripe test
-#     ALLOWED_HOSTS.append('*')
-#     CSRF_TRUSTED_ORIGINS.append('https://fedow.tibillet.localhost')
+    ALLOWED_HOSTS.append(
+        '127.0.0.1',
+        f"fedow.{os.environ['DOMAIN']}"
+    )  # pour webhook stripe test
+    CSRF_TRUSTED_ORIGINS.append(f"fedow.{os.environ['DOMAIN']}")
 
 # Sentry
 if not DEBUG:
