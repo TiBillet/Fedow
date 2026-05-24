@@ -1,28 +1,253 @@
 {% extends 'base.html' %}
+{% load static humanize i18n fedow_dashboard_tags %}
+
+{#
+VUE RÉSEAU GLOBALE (page d'accueil admin)
+/ Global network view (admin home page)
+
+LOCALISATION : fedow_dashboard/templates/index/index.html
+
+4 modules (données calculées et mises en cache dans fedow_dashboard/views.py:get_dashboard_reseau) :
+A. Masse monétaire par monnaie (groupée par catégorie)
+B. Top lieux (par nombre de transactions)
+C. Activité récente du réseau (pouls Chart.js + dernières transactions)
+D. Monnaie fédérée dormante (FED uniquement)
+
+Principe : on ne somme jamais des monnaies différentes (unités hétérogènes).
+#}
+
+{% block extra_css %}
+<style>
+    .chart-zone { position: relative; width: 100%; height: 300px; }
+    .mini-kpi { font-size: 1.25rem; font-weight: 700; }
+    .num { font-variant-numeric: tabular-nums; }
+    .kpi-value { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+    /* Masse monétaire : contraste et code couleur par catégorie */
+    /* Money supply: contrast and per-category color coding */
+    .cat-badge {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 0.5rem;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #fff;
+    }
+    .masse-table td { padding-top: 0.55rem; padding-bottom: 0.55rem; }
+    .masse-table tbody tr { transition: background-color 0.15s ease; }
+    .masse-table tbody tr:hover { background-color: rgba(128, 128, 128, 0.12); }
+    .asset-dot {
+        display: inline-block;
+        width: 0.65rem; height: 0.65rem;
+        border-radius: 50%;
+        margin-right: 0.5rem;
+        vertical-align: middle;
+    }
+    .asset-name { font-weight: 700; }
+    .unite-badge {
+        font-size: 0.65rem;
+        font-weight: 600;
+        padding: 0.1rem 0.45rem;
+        border-radius: 0.35rem;
+        margin-left: 0.4rem;
+        background: rgba(128, 128, 128, 0.18);
+    }
+    .val { font-variant-numeric: tabular-nums; font-weight: 500; }
+    .val-circulation { font-weight: 700; }
+</style>
+{% endblock %}
 
 {% block content %}
-    <hr class="dark horizontal my-3">
-    <p>{{ wallets.count }} portefeuilles en circulation pour {{ cards.count }} cartes de paiements en circulation</p>
-    <hr class="dark horizontal my-3">
 
-    <p>{{ assets.count }} monnaie(s) en circulation</p>
-    <div class="row">
-        {% for asset in assets %}
-            {% include 'asset/asset_card.html' %}
-        {% endfor %}
+    {# EN-TETE + COMPTEURS / HEADER + COUNTERS #}
+    <div class="mt-4 mb-2" data-testid="reseau-header">
+        <h1 class="mb-1">{% translate "Réseau" %} — {% translate "vue d'ensemble" %}</h1>
+    </div>
+    <div class="row" data-testid="reseau-compteurs">
+        <div class="col-6 col-md mb-2"><div class="card"><div class="card-body p-3">
+            <span class="mini-kpi num">{{ nb_assets | intcomma }}</span>
+            <p class="text-xs text-secondary mb-0">{% translate "Monnaies" %}</p></div></div></div>
+        <div class="col-6 col-md mb-2"><div class="card"><div class="card-body p-3">
+            <span class="mini-kpi num">{{ nb_federations | intcomma }}</span>
+            <p class="text-xs text-secondary mb-0">{% translate "Fédérations" %}</p></div></div></div>
+        <div class="col-6 col-md mb-2"><div class="card"><div class="card-body p-3">
+            <span class="mini-kpi num">{{ nb_places | intcomma }}</span>
+            <p class="text-xs text-secondary mb-0">{% translate "Lieux" %}</p></div></div></div>
+        <div class="col-6 col-md mb-2"><div class="card"><div class="card-body p-3">
+            <span class="mini-kpi num">{{ nb_wallets | intcomma }}</span>
+            <p class="text-xs text-secondary mb-0">{% translate "Portefeuilles" %}</p></div></div></div>
+        <div class="col-6 col-md mb-2"><div class="card"><div class="card-body p-3">
+            <span class="mini-kpi num">{{ nb_cards | intcomma }}</span>
+            <p class="text-xs text-secondary mb-0">{% translate "Cartes" %}</p></div></div></div>
     </div>
 
-    <hr class="dark horizontal my-3">
-    <p>{{ assets.count }} monnaie(s) en circulation dans {{ federations.count }} fédérations pour {{ places.count }}
-        lieu(x).</p>
-    <div class="card-group">
-        <ul>
-            {% for federation in federations %}
-                <li>{{ federation.name | upper }}</li>
-                <p>Assets : {{ federation.get_assets_names }}</p>
-                <p>Lieux : {{ federation.get_places_names }}</p>
+    {# A. MASSE MONÉTAIRE PAR MONNAIE / MONEY SUPPLY PER CURRENCY #}
+    <div class="card mb-4" data-testid="reseau-masse">
+        <div class="card-header pb-0">
+            <h5 class="mb-0">{% translate "Masse monétaire par monnaie" %}</h5>
+            <p class="text-sm text-secondary mb-0">
+                {% translate "Chaque monnaie dans son unité — pas de total inter-monnaies" %}</p>
+        </div>
+        <div class="card-body">
+            {% for groupe in masse %}
+                <div class="mt-3 mb-2">
+                    <span class="cat-badge" style="background-color: {{ groupe.couleur }};">{{ groupe.categorie }}</span>
+                </div>
+                <div class="table-responsive mb-2">
+                    <table class="table masse-table align-items-center mb-0">
+                        <thead>
+                        <tr>
+                            <th class="text-uppercase text-secondary text-xxs font-weight-bolder">{% translate "Monnaie" %}</th>
+                            <th class="text-end text-uppercase text-secondary text-xxs font-weight-bolder">{% translate "Créé" %}</th>
+                            <th class="text-end text-uppercase text-xxs font-weight-bolder" style="color: {{ groupe.couleur }};">{% translate "En circulation" %}</th>
+                            <th class="text-end text-uppercase text-secondary text-xxs font-weight-bolder">{% translate "Dans les lieux" %}</th>
+                            <th class="text-end text-uppercase text-secondary text-xxs font-weight-bolder">{% translate "Remis en banque" %}</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for a in groupe.assets %}
+                            <tr>
+                                <td style="border-left: 3px solid {{ groupe.couleur }};">
+                                    <span class="asset-dot" style="background-color: {{ groupe.couleur }};"></span>
+                                    <a href="{% url 'asset' a.uuid %}" class="asset-name text-sm">{{ a.name }}</a>
+                                    <span class="unite-badge">{{ a.unite }}</span>
+                                </td>
+                                <td class="text-end val text-sm text-secondary">{{ a.cree | floatformat:2 | intcomma }}</td>
+                                <td class="text-end val val-circulation text-sm">{{ a.circulation | floatformat:2 | intcomma }}</td>
+                                <td class="text-end val text-sm">{{ a.lieux | floatformat:2 | intcomma }}</td>
+                                <td class="text-end val text-sm">{{ a.banque | floatformat:2 | intcomma }}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% empty %}
+                <p class="text-secondary mb-0" data-testid="masse-empty">{% translate "Aucune monnaie." %}</p>
             {% endfor %}
-        </ul>
+        </div>
+    </div>
+
+    <div class="row">
+        {# B. TOP LIEUX / TOP PLACES #}
+        <div class="col-lg-7 mb-4">
+            <div class="card h-100" data-testid="reseau-top-lieux">
+                <div class="card-header pb-0">
+                    <h5 class="mb-0">{% translate "Top lieux" %}</h5>
+                    <p class="text-sm text-secondary mb-0">{% translate "Classés par nombre de transactions" %}</p>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table align-items-center mb-0">
+                            <thead>
+                            <tr>
+                                <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">{% translate "Lieu" %}</th>
+                                <th class="text-end text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">{% translate "Transactions" %}</th>
+                                <th class="text-end text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">{% translate "Solde (toutes monnaies)" %}</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for lieu in top_lieux %}
+                                <tr>
+                                    <td><a href="{% url 'place' lieu.uuid %}" class="text-sm font-weight-bold">{{ lieu.name }}</a></td>
+                                    <td class="text-end num text-sm">{{ lieu.nb_tx | intcomma }}</td>
+                                    <td class="text-end num text-sm text-secondary">{{ lieu.solde_indicatif | floatformat:2 | intcomma }}</td>
+                                </tr>
+                            {% empty %}
+                                <tr><td colspan="3" class="text-secondary" data-testid="top-lieux-empty">{% translate "Aucun lieu actif." %}</td></tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# D. MONNAIE FÉDÉRÉE DORMANTE / FEDERATED DORMANT MONEY #}
+        <div class="col-lg-5 mb-4">
+            <div class="card h-100" data-testid="reseau-dormance-fed">
+                <div class="card-header pb-0">
+                    <h5 class="mb-0">{% translate "Monnaie fédérée dormante" %}</h5>
+                    <p class="text-sm text-secondary mb-0">{% translate "Inactive depuis plus d'un mois" %}</p>
+                </div>
+                <div class="card-body">
+                    {% if dormance_fed %}
+                        {% if dormance_fed.total_max > 0 %}
+                            <p class="kpi-value mb-1" data-testid="dormance-fed-total">
+                                {{ dormance_fed.total_max | floatformat:2 | intcomma }}
+                                <span class="text-sm text-secondary">{{ dormance_fed.currency_code | upper }}</span>
+                            </p>
+                        {% else %}
+                            <p class="text-secondary" data-testid="dormance-fed-empty">
+                                {% translate "Aucune monnaie fédérée dormante." %}</p>
+                        {% endif %}
+                        <a class="btn btn-sm btn-outline-primary"
+                           href="{% url 'asset' dormance_fed.asset_uuid %}"
+                           data-testid="dormance-fed-lien">
+                            {% translate "Voir le détail / simuler la fonte" %}
+                        </a>
+                    {% else %}
+                        <p class="text-secondary mb-0">{% translate "Aucune monnaie fédérée configurée." %}</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# C. ACTIVITÉ RÉCENTE DU RÉSEAU / RECENT NETWORK ACTIVITY #}
+    <div class="card mb-4" data-testid="reseau-activite">
+        <div class="card-header pb-0">
+            <h5 class="mb-0">{% translate "Activité récente du réseau" %}</h5>
+            <p class="text-sm text-secondary mb-0">{% translate "Nombre de transactions par mois (toutes monnaies)" %}</p>
+        </div>
+        <div class="card-body">
+            {% if not pouls.vide %}
+                <div class="chart-zone mb-4">
+                    <canvas id="chart-volume-reseau"
+                            aria-label="{% translate 'Nombre de transactions du réseau par mois' %}"></canvas>
+                </div>
+            {% else %}
+                <p class="text-secondary" data-testid="pouls-empty">{% translate "Aucune transaction." %}</p>
+            {% endif %}
+
+            <h6 class="text-uppercase text-xs text-secondary">{% translate "Dernières transactions" %}</h6>
+            <div class="table-responsive">
+                <table class="table align-items-center mb-0">
+                    <thead>
+                    <tr>
+                        <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">{% translate "Date" %}</th>
+                        <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">{% translate "Monnaie" %}</th>
+                        <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">{% translate "Émetteur / Receveur" %}</th>
+                        <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">{% translate "Action" %}</th>
+                        <th class="text-end text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">{% translate "Montant" %}</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for tx in dernieres_transactions %}
+                        <tr>
+                            <td><p class="text-xs mb-0">{{ tx.datetime | naturaltime }}</p></td>
+                            <td><a href="{% url 'asset' tx.asset.uuid %}" class="text-xs font-weight-bold">{{ tx.asset.name }}</a></td>
+                            <td>
+                                <p class="text-xs mb-0">{{ tx.sender.get_name }}</p>
+                                <p class="text-xs text-secondary mb-0">&rarr; {{ tx.receiver.get_name }}</p>
+                            </td>
+                            <td class="text-xs">{{ tx.get_action_display }}</td>
+                            <td class="text-end num text-xs">{{ tx.amount | dround }} {{ tx.asset.currency_code | upper }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="5" class="text-secondary">{% translate "Aucune transaction." %}</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 
 {% endblock content %}
+
+{% block extra_js %}
+    <script src="{% static 'js/chart.umd.4.4.1.min.js' %}"></script>
+    {{ pouls|json_script:"data-pouls-reseau" }}
+    <script src="{% static 'js/fedow_charts.js' %}"></script>
+{% endblock %}

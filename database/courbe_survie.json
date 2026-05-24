@@ -1,0 +1,225 @@
+{
+  "genere_le": "2026-05-24T16:45:56.197021+00:00",
+  "methode": "FIFO par wallet user + survie Kaplan-Meier discrete (par mois d'age)",
+  "lecture_seule": true,
+  "assets": {
+    "4c0c7c49-b7d8-45e7-9d27-ebf42073667b": {
+      "asset_name": "Primary Asset",
+      "category": "FED",
+      "horizon_mois": 24,
+      "nb_transactions": 42938,
+      "nb_wallets_avec_solde": 2486,
+      "total_refill_centimes": 22387723,
+      "total_suivi_centimes": 22873703,
+      "survie": [
+        {
+          "age_mois": 0,
+          "part_restante": 1.0
+        },
+        {
+          "age_mois": 1,
+          "part_restante": 0.1118
+        },
+        {
+          "age_mois": 2,
+          "part_restante": 0.0915
+        },
+        {
+          "age_mois": 3,
+          "part_restante": 0.0858
+        },
+        {
+          "age_mois": 4,
+          "part_restante": 0.0828
+        },
+        {
+          "age_mois": 5,
+          "part_restante": 0.0813
+        },
+        {
+          "age_mois": 6,
+          "part_restante": 0.0795
+        },
+        {
+          "age_mois": 7,
+          "part_restante": 0.0782
+        },
+        {
+          "age_mois": 8,
+          "part_restante": 0.0766
+        },
+        {
+          "age_mois": 9,
+          "part_restante": 0.0758
+        },
+        {
+          "age_mois": 10,
+          "part_restante": 0.0734
+        },
+        {
+          "age_mois": 11,
+          "part_restante": 0.0713
+        },
+        {
+          "age_mois": 12,
+          "part_restante": 0.0679
+        },
+        {
+          "age_mois": 13,
+          "part_restante": 0.0672
+        },
+        {
+          "age_mois": 14,
+          "part_restante": 0.0661
+        },
+        {
+          "age_mois": 15,
+          "part_restante": 0.0658
+        },
+        {
+          "age_mois": 16,
+          "part_restante": 0.0657
+        },
+        {
+          "age_mois": 17,
+          "part_restante": 0.0652
+        },
+        {
+          "age_mois": 18,
+          "part_restante": 0.0652
+        },
+        {
+          "age_mois": 19,
+          "part_restante": 0.0645
+        },
+        {
+          "age_mois": 20,
+          "part_restante": 0.0633
+        },
+        {
+          "age_mois": 21,
+          "part_restante": 0.0633
+        },
+        {
+          "age_mois": 22,
+          "part_restante": 0.0633
+        },
+        {
+          "age_mois": 23,
+          "part_restante": 0.0633
+        },
+        {
+          "age_mois": 24,
+          "part_restante": 0.0633
+        }
+      ],
+      "stock_par_age": [
+        {
+          "age_mois": 0,
+          "montant_centimes": 231070,
+          "nb_cartes": 299
+        },
+        {
+          "age_mois": 1,
+          "montant_centimes": 68915,
+          "nb_cartes": 80
+        },
+        {
+          "age_mois": 2,
+          "montant_centimes": 161800,
+          "nb_cartes": 173
+        },
+        {
+          "age_mois": 3,
+          "montant_centimes": 38905,
+          "nb_cartes": 41
+        },
+        {
+          "age_mois": 4,
+          "montant_centimes": 46180,
+          "nb_cartes": 39
+        },
+        {
+          "age_mois": 5,
+          "montant_centimes": 27330,
+          "nb_cartes": 45
+        },
+        {
+          "age_mois": 6,
+          "montant_centimes": 308700,
+          "nb_cartes": 452
+        },
+        {
+          "age_mois": 7,
+          "montant_centimes": 102750,
+          "nb_cartes": 185
+        },
+        {
+          "age_mois": 8,
+          "montant_centimes": 88715,
+          "nb_cartes": 76
+        },
+        {
+          "age_mois": 9,
+          "montant_centimes": 400634,
+          "nb_cartes": 804
+        },
+        {
+          "age_mois": 10,
+          "montant_centimes": 43070,
+          "nb_cartes": 49
+        },
+        {
+          "age_mois": 11,
+          "montant_centimes": 71860,
+          "nb_cartes": 77
+        },
+        {
+          "age_mois": 12,
+          "montant_centimes": 51785,
+          "nb_cartes": 60
+        },
+        {
+          "age_mois": 13,
+          "montant_centimes": 20530,
+          "nb_cartes": 33
+        },
+        {
+          "age_mois": 14,
+          "montant_centimes": 40700,
+          "nb_cartes": 42
+        },
+        {
+          "age_mois": 15,
+          "montant_centimes": 7030,
+          "nb_cartes": 6
+        },
+        {
+          "age_mois": 16,
+          "montant_centimes": 4935,
+          "nb_cartes": 7
+        },
+        {
+          "age_mois": 17,
+          "montant_centimes": 3640,
+          "nb_cartes": 7
+        },
+        {
+          "age_mois": 18,
+          "montant_centimes": 850,
+          "nb_cartes": 2
+        },
+        {
+          "age_mois": 19,
+          "montant_centimes": 9900,
+          "nb_cartes": 18
+        },
+        {
+          "age_mois": 20,
+          "montant_centimes": 69900,
+          "nb_cartes": 67
+        }
+      ]
+    }
+  }
+}

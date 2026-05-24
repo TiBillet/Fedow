@@ -1,0 +1,141 @@
+# Changelog — Fedow
+
+Toutes les évolutions notables du projet. Format bilingue FR/EN, le plus récent en haut.
+/ All notable changes. Bilingual FR/EN, most recent on top.
+
+---
+
+## Dashboard Fedow — projection de la recette de fonte (courbe de survie) — 2026-05-24
+
+**Quoi / What:** Ajout d'une commande de gestion `courbe_survie` (calcul *offline* de la
+courbe de survie de la monnaie fédérée → fichier JSON) et refonte de la carte de fonte du
+dashboard en **« Recette de fonte attendue »** : un graphe en barres qui projette, mois par
+mois, ce qu'une fonte rapporterait sur l'argent **déjà rechargé**.
+**Why:** Répondre à « combien va-t-on toucher dans X mois ? » à partir des recharges
+**réelles** déjà encaissées, sans deviner les festivals futurs.
+
+**Contrainte transverse / Cross-cutting constraint:** **LECTURE SEULE en base.** La commande
+lit la chaîne et écrit un fichier ; la vue lit ce fichier. Aucune écriture en base, aucune migration.
+
+### Commande de gestion `courbe_survie` (`fedow_core/management/commands/courbe_survie.py`, nouveau)
+- Parcourt les transactions FED dans l'ordre du temps ; **FIFO par carte** (chaque dépense
+  consomme l'argent le plus ancien) → durée de vie de chaque euro chargé.
+- En déduit une **courbe de survie** `S(âge)` par **Kaplan-Meier discret** (taux de dépense
+  par mois d'âge, gère la censure → neutralise le biais de saisonnalité des festivals).
+- Écrit `database/courbe_survie.json` : `survie` (S par mois), `stock_par_age`
+  (`montant_centimes` + `nb_cartes` du stock actuel par âge), totaux. **FED uniquement.**
+- À **relancer à la main** pour rafraîchir (`python manage.py courbe_survie`, option `--horizon`).
+- Résultat prod observé : ~89 % d'une recharge dépensée le 1er mois, **survie ≈ 6,8 % à 12 mois**
+  (≈ taux de dormance durable), revenu de fonte récurrent ≈ volume annuel × ~7 %.
+
+### Carte « Recette de fonte attendue » (`asset/asset_transactions.html` + `fedow_simulateur.js`)
+- Remplace l'ancien simulateur « solde restant » **et** la projection run-off heuristique
+  (les deux supprimés). Un seul moteur : la courbe de survie.
+- **Graphe en barres** : chaque tranche d'argent devient « fondable » quand son âge atteint
+  le seuil ; la barre du mois `D+seuil` = `montant × survie(seuil)`. Les festivals passés
+  forment des **pics futurs** (ex : août 2025 → pic à +14 mois).
+- **Zone certaine uniquement [0, +seuil]** : 100 % basée sur l'argent déjà encaissé, aucune
+  spéculation sur les recharges à venir.
+- **2 séries comparées** : « tout d'un coup » vs « 1 €/mois » (étalé via `nb_cartes`).
+- Pilotage temps réel (client) : **seuil** (décale les barres + change le taux capté),
+  **montant fixe**, **fenêtre d'affichage**. KPI : total par mode, déjà fondable, cartes concernées.
+- Vue : helper `_charge_courbe_survie(asset)` lit le JSON (aucune requête base), passé en
+  contexte caché. Dégradation propre si le JSON n'existe pas (monnaies locales).
+
+### Autres
+- **`django_browser_reload` désactivé** (middleware commenté dans `settings.py`, réversible) :
+  plus de rechargement automatique de page.
+
+### Fichiers modifiés / Modified files
+| Fichier / File | Changement / Change |
+|---|---|
+| `fedow_core/management/commands/courbe_survie.py` | **nouveau** — calcul de la courbe de survie + stock par âge → JSON |
+| `fedow_dashboard/views.py` | helper `_charge_courbe_survie`, ajout au contexte caché de `get_dashboard_asset` |
+| `fedow_dashboard/templates/asset/asset_transactions.html` | carte « Recette de fonte attendue » (barres), `json_script` `data-courbe-survie` |
+| `fedow_dashboard/static/js/fedow_simulateur.js` | projection en barres (2 modes), suppression des courbes/run-off |
+| `fedowallet_django/settings.py` | `django_browser_reload` (middleware) désactivé |
+
+### Migration
+- **Migration nécessaire / Migration required:** **Non** (lecture seule, aucun modèle modifié).
+
+### Note déploiement / Deployment note
+- Rafraîchir la courbe : `docker exec fedow_django poetry run python manage.py courbe_survie`.
+- Modif **JS/CSS** → `collectstatic` ; modif **template / vue / settings** → reload gunicorn
+  (`docker exec fedow_django pkill -HUP gunicorn`).
+
+## Dashboard Fedow — enrichissement (admin réseau) — 2026-05-24
+
+**Quoi / What:** Refonte et enrichissement du `fedow_dashboard` (page d'accueil réseau +
+page détail d'un asset) avec des informations utiles pour un admin réseau / coopérative.
+**Pourquoi / Why:** Le dashboard ne montrait que des compteurs bruts ; on expose désormais
+la masse monétaire, le cycle de vie, la monnaie dormante, un simulateur de fonte, des
+moyennes par portefeuille, le breakage et une projection.
+
+**Contrainte transverse / Cross-cutting constraint:** **LECTURE SEULE en base** (aucune
+écriture, aucune migration). Tous les calculs sont des agrégations `SELECT`, mis en cache
+(memcached), conçus **sans N+1** (vérifié : requêtes constantes même sur 42 938 transactions).
+
+### Page détail asset (`asset/asset_transactions.html`, assets hors adhésion/badgeuse)
+- **Cartes KPI** : créé / en circulation / dans les lieux / remis en banque.
+- **Cycle de vie** : barre empilée CSS (où se trouve la monnaie). Correctif locale :
+  `|unlocalize` sur les largeurs CSS (la virgule décimale fr cassait `style="width:x%"`).
+- **Monnaie fondante** : courbe Chart.js du cumul dormant par seuil d'inactivité.
+  `_calcul_monnaie_fondante` en **O(wallets)** (2 `GROUP BY` `Max(datetime)`), renvoie une
+  liste anonymisée `wallets_dormants = [(âge_jours, solde_centimes)]` + `depense_totale`,
+  `nb_vides`, `total_charge`.
+- **Simulateur de fonte** (`fedow_simulateur.js`, 100 % client, zéro requête) : 2 modes en
+  **boutons radio** (montant fixe / totalité du portefeuille), curseur seuil d'inactivité
+  (défaut 14 mois) + horizon. Courbe = **solde dormant restant** (décroissant). Accordéon
+  d'aide « Comment ça marche ? ».
+- **Projection à 12 mois (run-off)** : heuristique **indicative** (> 12 mois = breakage
+  quasi-permanent, le reste s'écoule linéairement) — courbe + KPI « sortira / restera ».
+- **Moyennes par portefeuille** (après le simulateur, dynamiques, pilotées par le curseur
+  seuil) : dépense moyenne, solde moyen (détenteurs **et** par carte distribuée), médiane,
+  comparaison actifs/inactifs (moyenne + médiane), % de la masse dormante, compteur
+  détenteurs / vidées.
+- **Breakage (rétention)** : taux de breakage global + snapshot du solde par tranche d'âge.
+- **Graphe temporel** : barres empilées Chart.js par mois et par action. **Exclut `FIRST`
+  (genèse) et `CREATION` (frappe)** pour ne pas double-compter les recharges ; mois continus.
+- **Dernières transactions** : repliables (`<details>`) ; retrait de la re-vérification
+  `verify_hash` par ligne (intégrité garantie à l'écriture + Sentry) ; `select_related`
+  anti-N+1.
+
+### Page d'accueil réseau (`index/index.html`, `get_dashboard_reseau()` en cache)
+- **Masse monétaire par monnaie** groupée par catégorie, code **couleur** par catégorie
+  (`COULEUR_CATEGORIE`), **fiduciaire fédérée en premier**. Exclut adhésions (`SUB`) et
+  badgeuses (`BDG`). Sommes par asset (jamais de total inter-monnaies).
+- **Top lieux** par nombre de transactions (+ solde indicatif toutes monnaies).
+- **Activité récente** : pouls mensuel (nombre de transactions, agnostique à l'unité) +
+  dernières transactions.
+- **Monnaie fédérée dormante** (FED uniquement) + lien vers le simulateur.
+- Compteurs (Monnaies hors SUB/BDG, Fédérations, Lieux, Portefeuilles, Cartes).
+
+### Transverse
+- **Unités par catégorie** : filtre `unite_asset` (monnaie temps en « H », fidélité en
+  « pts », sinon code devise). `intcomma` + chiffres tabulaires.
+- **Accès** : `@staff_member_required` sur `asset_view` et `place_view` (redirige vers
+  `/admin/login/`) ; la home `/` reste publique.
+- **Thème clair par défaut** + mémorisation du choix en `sessionStorage` (`base.html`,
+  blocs `{% block extra_css %}` / `{% block extra_js %}` ajoutés).
+- **Chart.js** vendorisé localement (`static/js/chart.umd.4.4.1.min.js`).
+
+### Fichiers modifiés / Modified files
+| Fichier / File | Changement / Change |
+|---|---|
+| `fedow_dashboard/views.py` | helpers de calcul (cycle de vie, monnaie fondante O(wallets), temporel, réseau), `get_dashboard_asset` / `get_dashboard_reseau` en cache, `index` réécrit, auth sur `asset_view`/`place_view` |
+| `fedow_dashboard/templates/asset/asset_transactions.html` | refonte complète (KPI, cycle, fondante, breakage, simulateur, projection, moyennes, temporel, transactions repliables) |
+| `fedow_dashboard/templates/index/index.html` | vue réseau (masse, top lieux, activité, dormance FED) |
+| `fedow_dashboard/templates/base.html` | blocs extra_css/extra_js, thème clair + sessionStorage |
+| `fedow_dashboard/templatetags/fedow_dashboard_tags.py` | filtre `unite_asset` |
+| `fedow_dashboard/static/js/fedow_charts.js` | graphes fondante / temporel / pouls réseau |
+| `fedow_dashboard/static/js/fedow_simulateur.js` | simulateur + moyennes + breakage + projection run-off |
+| `fedow_dashboard/static/js/chart.umd.4.4.1.min.js` | Chart.js v4.4.1 vendorisé (nouveau) |
+
+### Migration
+- **Migration nécessaire / Migration required:** **Non** (aucun changement de modèle,
+  lecture seule).
+
+### Note déploiement / Deployment note
+- Modif **template / vue Python** → reload gunicorn (`docker exec fedow_django pkill -HUP
+  gunicorn`) car `cached.Loader` actif (DEBUG=False) ; modif **JS/CSS** → `collectstatic`
+  (servi par nginx via le volume partagé `../Fedow/www:/www`).

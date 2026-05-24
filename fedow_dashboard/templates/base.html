@@ -11,17 +11,32 @@
     <link rel="stylesheet" href="{% static 'css/main.css' %}"/>
     <link rel="shortcut icon" type="image/png" href="{% static 'img/fav_blanc.png' %}">
 
+    {# CSS additionnel propre à une page / Page-specific extra CSS #}
+    {% block extra_css %}{% endblock %}
+
 </head>
-<body class="container dark-version">
+<body class="container">
+<script>
+    // Thème CLAIR par défaut ; on restaure le choix éventuel de la session.
+    // / LIGHT theme by default; restore the session's choice if any.
+    if (sessionStorage.getItem("fedow-theme") === "dark") {
+        document.body.classList.add("dark-version");
+    }
+</script>
 
 <div>
-    <button class="btn btn-dark btn-sm mt-5"
-            _="on click toggle .dark-version on body
-            then toggle .btn-light on me
-            then toggle .btn-dark on me">
+    <button class="btn btn-dark btn-sm mt-5" id="theme-toggle">
         Dark / Light
     </button>
 </div>
+<script>
+    // Bascule le thème et mémorise le choix pour la durée de la session.
+    // / Toggle the theme and remember the choice for the session.
+    document.getElementById("theme-toggle").addEventListener("click", function () {
+        const sombre = document.body.classList.toggle("dark-version");
+        sessionStorage.setItem("fedow-theme", sombre ? "dark" : "light");
+    });
+</script>
 
 
 {% block content %}
@@ -34,6 +49,9 @@
 <script src="{% static 'js/htmx.min.1.9.6.js' %}"></script>
 <script src="{% static 'js/loading-states.js' %}"></script>
 <script src="{% static 'js/hyperscript.0.9.11.min.js' %}"></script>
+
+{# JS additionnel propre à une page (ex: graphiques Chart.js) / Page-specific extra JS #}
+{% block extra_js %}{% endblock %}
 
 {% if DEBUG %}
     <script src="https://unpkg.com/htmx.org/dist/ext/debug.js"></script>

@@ -1,47 +1,501 @@
 {% extends 'base.html' %}
-{% load humanize i18n fedow_dashboard_tags %}
+{% load static humanize i18n l10n fedow_dashboard_tags %}
+
+{#
+TABLEAU DE BORD D'UN ASSET (monnaie / token)
+/ Asset (currency / token) dashboard
+
+LOCALISATION : fedow_dashboard/templates/asset/asset_transactions.html
+
+Affiche, pour une monnaie donnee, dans cet ordre :
+1. En-tete : identite de l'asset (nom, code, categorie, origine, federation)
+2. 4 cartes KPI : Cree / En circulation / Dans les lieux / Remis en banque
+3. Cycle de vie : barre empilee CSS (ou se trouve la monnaie aujourd'hui)
+4. Monnaie fondante : courbe Chart.js des tokens dormants par seuil d'inactivite
+5. Transactions dans le temps : barres empilees Chart.js par type d'action
+6. Les 50 dernieres transactions
+
+DONNEES : calculees cote serveur et mises en cache dans fedow_dashboard/views.py
+(get_dashboard_asset). Les graphiques sont dessines par static/js/fedow_charts.js
+qui lit les balises json_script en bas de page.
+#}
+
+{% block extra_css %}
+<style>
+    /* Barre empilee du cycle de vie / Lifecycle stacked bar */
+    .cycle-bar {
+        display: flex;
+        width: 100%;
+        height: 1.75rem;
+        border-radius: 0.5rem;
+        overflow: hidden;
+        background-color: rgba(128, 128, 128, 0.15);
+    }
+    .cycle-bar .segment {
+        height: 100%;
+        transition: width 0.3s ease;
+    }
+    .cycle-seg-circulation { background-color: #5e72e4; }
+    .cycle-seg-lieux { background-color: #2dce89; }
+    .cycle-legend-dot {
+        display: inline-block;
+        width: 0.75rem;
+        height: 0.75rem;
+        border-radius: 50%;
+        margin-right: 0.4rem;
+        vertical-align: middle;
+    }
+    /* Hauteur fixe pour que les graphiques Chart.js responsive se calent bien */
+    /* Fixed height so responsive Chart.js charts size correctly */
+    .chart-zone {
+        position: relative;
+        width: 100%;
+        height: 320px;
+    }
+    .kpi-value { font-size: 1.5rem; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .kpi-label { text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.7rem; }
+    /* Chiffres alignes en colonnes / Tabular figures for column alignment */
+    .table td, .cycle-legend-val { font-variant-numeric: tabular-nums; }
+
+    /* Accordéon d'aide du simulateur (natif <details>, sans JS) */
+    /* Simulator help accordion (native <details>, no JS) */
+    .sim-aide { border: 1px solid rgba(128, 128, 128, 0.25); border-radius: 0.5rem; padding: 0.5rem 0.85rem; }
+    .sim-aide summary { cursor: pointer; font-weight: 600; list-style: none; }
+    .sim-aide summary::-webkit-details-marker { display: none; }
+    .sim-aide summary::before { content: "▸"; color: #fb6340; margin-right: 0.4rem; }
+    .sim-aide[open] summary::before { content: "▾"; }
+    .sim-aide-contenu { margin-top: 0.6rem; }
+    .sim-aide-contenu ul { padding-left: 1.1rem; margin-bottom: 0.5rem; }
+</style>
+{% endblock %}
+
 {% block content %}
-    <div>
-        <h1>Asset : {{ asset.name }}</h1>
-        {% if asset.wallet_origin.place %}
-            <h5>Origin : {{ asset.wallet_origin.place.name }}</h5>
-        {% elif asset.is_stripe_primary %}
-            <h5>Origin : Stripe Primary</h5>
-        {% endif %}
-        <h6>Categorie : {{ asset.get_category_display }}</h6>
-        <h6>Federated with : {{ asset.place_federated_with }}</h6>
-        <h6>Total Market : {{ asset.total_token_value | dround }}</h6>
-        <h6> In place wallet : {{ asset.total_in_place | dround }}</h6>
-        <h6> In users wallets : {{ asset.total_in_wallet_not_place  | dround }}</h6>
-        <h6> total bank deposits : {{ asset.total_bank_deposit  | dround }}</h6>
+
+    {# 1. EN-TETE / HEADER #}
+    <div class="d-flex flex-wrap align-items-center justify-content-between mt-4 mb-2"
+         data-testid="asset-header">
+        <div>
+            <h1 class="mb-1">{{ asset.name }}
+                <span class="badge bg-gradient-dark ms-2">{{ asset.currency_code | upper }}</span>
+            </h1>
+            <p class="mb-0 text-secondary">
+                {{ asset.get_category_display }}
+                {% if asset.wallet_origin.place %}
+                    &middot; {% translate "Origine" %} : {{ asset.wallet_origin.place.name }}
+                {% elif asset.is_stripe_primary %}
+                    &middot; {% translate "Origine" %} : Stripe Primary
+                {% endif %}
+            </p>
+            <p class="mb-0 text-xs text-secondary">
+                <i class="material-icons text-sm align-middle" aria-hidden="true">hub</i>
+                {% translate "Federe avec" %} : {{ asset.place_federated_with }}
+            </p>
+        </div>
     </div>
+
     <hr class="dark horizontal my-3">
 
-    <div>
-        <h3>Last transactions :</h3>
+    {# 2. CARTES KPI / KPI CARDS #}
+    <div class="row" data-testid="asset-kpi">
+        <div class="col-xl-3 col-sm-6 mb-3">
+            <div class="card h-100">
+                <div class="card-body p-3">
+                    <p class="kpi-label text-secondary mb-1">{% translate "Cree (cumule)" %}</p>
+                    <p class="kpi-value mb-0" data-testid="kpi-cree">
+                        {{ cycle_de_vie.cree_euros | floatformat:2 | intcomma }}
+                        <span class="text-sm text-secondary">{{ asset | unite_asset }}</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-sm-6 mb-3">
+            <div class="card h-100">
+                <div class="card-body p-3">
+                    <p class="kpi-label text-secondary mb-1">{% translate "En circulation" %}</p>
+                    <p class="kpi-value mb-0" data-testid="kpi-circulation">
+                        {{ cycle_de_vie.en_circulation_euros | floatformat:2 | intcomma }}
+                        <span class="text-sm text-secondary">{{ asset | unite_asset }}</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-sm-6 mb-3">
+            <div class="card h-100">
+                <div class="card-body p-3">
+                    <p class="kpi-label text-secondary mb-1">{% translate "Dans les lieux" %}</p>
+                    <p class="kpi-value mb-0" data-testid="kpi-lieux">
+                        {{ cycle_de_vie.dans_les_lieux_euros | floatformat:2 | intcomma }}
+                        <span class="text-sm text-secondary">{{ asset | unite_asset }}</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-sm-6 mb-3">
+            <div class="card h-100">
+                <div class="card-body p-3">
+                    <p class="kpi-label text-secondary mb-1">{% translate "Remis en banque (cumule)" %}</p>
+                    <p class="kpi-value mb-0" data-testid="kpi-banque">
+                        {{ cycle_de_vie.remis_en_banque_euros | floatformat:2 | intcomma }}
+                        <span class="text-sm text-secondary">{{ asset | unite_asset }}</span>
+                    </p>
+                </div>
+            </div>
+        </div>
     </div>
-    <div class="card">
+
+    {# 3. CYCLE DE VIE / LIFECYCLE #}
+    <div class="card mb-4" data-testid="asset-cycle-de-vie">
+        <div class="card-header pb-0">
+            <h5 class="mb-0">{% translate "Cycle de vie de la monnaie" %}</h5>
+            <p class="text-sm text-secondary mb-0">
+                {% translate "Ou se trouve la monnaie qui existe aujourd'hui" %}
+                ({{ cycle_de_vie.total_actuel_euros | floatformat:2 | intcomma }} {{ asset | unite_asset }})
+            </p>
+        </div>
+        <div class="card-body">
+            {% if cycle_de_vie.total_actuel_euros > 0 %}
+                {# Barre empilee : largeurs en pourcentage calculees cote serveur #}
+                {# Stacked bar: widths as server-computed percentages #}
+                <div class="cycle-bar mb-3"
+                     role="img"
+                     aria-label="{% blocktranslate with circ=cycle_de_vie.pct_circulation lieux=cycle_de_vie.pct_lieux %}En circulation {{ circ }} pour cent, dans les lieux {{ lieux }} pour cent{% endblocktranslate %}">
+                    {# unlocalize : forcer le point décimal, sinon la virgule fr casse le CSS width #}
+                    {# unlocalize: force dot decimal, otherwise the fr comma breaks the CSS width #}
+                    <div class="segment cycle-seg-circulation"
+                         style="width: {{ cycle_de_vie.pct_circulation|unlocalize }}%;"></div>
+                    <div class="segment cycle-seg-lieux"
+                         style="width: {{ cycle_de_vie.pct_lieux|unlocalize }}%;"></div>
+                </div>
+                <div class="row text-sm">
+                    <div class="col-sm-6 mb-2">
+                        <span class="cycle-legend-dot cycle-seg-circulation"></span>
+                        {% translate "En circulation (portefeuilles)" %} :
+                        <strong class="cycle-legend-val">{{ cycle_de_vie.en_circulation_euros | floatformat:2 | intcomma }}</strong>
+                        ({{ cycle_de_vie.pct_circulation }}%)
+                    </div>
+                    <div class="col-sm-6 mb-2">
+                        <span class="cycle-legend-dot cycle-seg-lieux"></span>
+                        {% translate "Dans les lieux" %} :
+                        <strong class="cycle-legend-val">{{ cycle_de_vie.dans_les_lieux_euros | floatformat:2 | intcomma }}</strong>
+                        ({{ cycle_de_vie.pct_lieux }}%)
+                    </div>
+                </div>
+            {% else %}
+                <p class="text-secondary mb-0" data-testid="cycle-empty">
+                    {% translate "Aucune monnaie en circulation pour cet asset." %}
+                </p>
+            {% endif %}
+        </div>
+    </div>
+
+    {# 4. MONNAIE FONDANTE / MELTING MONEY #}
+    <div class="card mb-4" data-testid="asset-monnaie-fondante">
+        <div class="card-header pb-0">
+            <h5 class="mb-0">{% translate "Monnaie fondante" %}</h5>
+            <p class="text-sm text-secondary mb-0">
+                {% translate "Tokens dormants sur les portefeuilles inactifs (cumule par anciennete)" %}
+            </p>
+        </div>
+        <div class="card-body">
+            {% if monnaie_fondante_json.total_max > 0 %}
+                <div class="chart-zone">
+                    <canvas id="chart-monnaie-fondante"
+                            aria-label="{% translate 'Courbe des tokens dormants par seuil d inactivite' %}"></canvas>
+                </div>
+            {% else %}
+                <p class="text-secondary mb-0" data-testid="fondante-empty">
+                    {% translate "Aucune monnaie dormante : tous les portefeuilles sont actifs." %}
+                </p>
+            {% endif %}
+        </div>
+    </div>
+
+    {# 4-breakage. RÉTENTION / BREAKAGE (snapshot par âge, rempli par JS) #}
+    {# Retention / breakage (age snapshot, filled by JS) #}
+    <div class="card mb-4" data-testid="asset-breakage">
+        <div class="card-header pb-0">
+            <h5 class="mb-0">{% translate "Rétention (breakage)" %}</h5>
+            <p class="text-sm text-secondary mb-0">
+                {% translate "Part du chargé encore sur les cartes, par ancienneté (snapshot)" %}</p>
+        </div>
+        <div class="card-body">
+            {% if monnaie_fondante_json.wallets_dormants %}
+                <p class="mb-3">
+                    {% translate "Taux de breakage" %} :
+                    <strong id="brk-taux" class="kpi-value" data-testid="brk-taux">—</strong>
+                    <span class="text-sm text-secondary">
+                        (<span id="brk-restant">—</span> {% translate "encore sur cartes, sur" %}
+                        <span id="brk-charge">—</span> {% translate "chargés au total" %})</span>
+                </p>
+                <div class="table-responsive">
+                    <table class="table align-items-center mb-0">
+                        <thead>
+                        <tr>
+                            <th class="text-uppercase text-secondary text-xxs font-weight-bolder">{% translate "Ancienneté (dernière activité)" %}</th>
+                            <th class="text-end text-uppercase text-secondary text-xxs font-weight-bolder">{% translate "Solde sur cartes" %}</th>
+                            <th class="text-end text-uppercase text-secondary text-xxs font-weight-bolder">{% translate "% du chargé" %}</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr><td class="text-sm">{% translate "Moins d'1 mois" %}</td>
+                            <td class="text-end num text-sm" id="brk-b0-solde">—</td>
+                            <td class="text-end num text-sm text-secondary" id="brk-b0-pct">—</td></tr>
+                        <tr><td class="text-sm">{% translate "1 à 3 mois" %}</td>
+                            <td class="text-end num text-sm" id="brk-b1-solde">—</td>
+                            <td class="text-end num text-sm text-secondary" id="brk-b1-pct">—</td></tr>
+                        <tr><td class="text-sm">{% translate "3 à 6 mois" %}</td>
+                            <td class="text-end num text-sm" id="brk-b2-solde">—</td>
+                            <td class="text-end num text-sm text-secondary" id="brk-b2-pct">—</td></tr>
+                        <tr><td class="text-sm">{% translate "6 à 12 mois" %}</td>
+                            <td class="text-end num text-sm" id="brk-b3-solde">—</td>
+                            <td class="text-end num text-sm text-secondary" id="brk-b3-pct">—</td></tr>
+                        <tr><td class="text-sm">{% translate "Plus de 12 mois" %}</td>
+                            <td class="text-end num text-sm" id="brk-b4-solde">—</td>
+                            <td class="text-end num text-sm text-secondary" id="brk-b4-pct">—</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="text-xs text-secondary mt-2 mb-0">
+                    {% translate "Snapshot par âge depuis la dernière activité — approximation, sans rejouer la chaîne." %}</p>
+            {% else %}
+                <p class="text-secondary mb-0" data-testid="breakage-empty">
+                    {% translate "Aucune monnaie sur les cartes." %}</p>
+            {% endif %}
+        </div>
+    </div>
+
+    {# 4bis. RECETTE DE FONTE ATTENDUE (projection des recharges déjà faites) #}
+    {# Expected melting revenue (projection of recharges already made) — powered by the survival curve #}
+    <div class="card mb-4" data-testid="asset-devenir">
+        <div class="card-header pb-0">
+            <h5 class="mb-0">{% translate "Recette de fonte attendue" %}</h5>
+            <p class="text-sm text-secondary mb-0">
+                {% translate "Ce que la fonte rapporterait, mois par mois, sur l'argent déjà rechargé (lecture seule)" %}</p>
+        </div>
+        <div class="card-body">
+            {# Accordéon d'aide : explique la projection, les 2 modes, le seuil et l'horizon #}
+            {# Help accordion: explains the projection, the 2 modes, the threshold and the horizon #}
+            <details class="sim-aide mb-3" data-testid="sim-aide">
+                <summary>{% translate "Comment ça marche ?" %}</summary>
+                <div class="sim-aide-contenu text-sm">
+                    <p class="mb-2">
+                        {% translate "On projette l'argent DÉJÀ rechargé sur les cartes : chaque montant devient « fondable » quand son ancienneté atteint le seuil. La barre d'un mois = ce qu'on récupérerait ce mois-là." %}
+                    </p>
+                    <p class="mb-2">
+                        <strong>{% translate "Pourquoi ça monte" %}</strong> :
+                        {% translate "les gros week-ends (festivals) passés franchissent le seuil dans le futur → un pic de recette environ « seuil » mois après chaque festival." %}
+                    </p>
+                    <p class="mb-2">
+                        <strong>{% translate "Zone certaine" %}</strong> :
+                        {% translate "on n'affiche que ce qui repose sur de l'argent déjà encaissé (jusqu'à +seuil mois). Au-delà, il faudrait deviner les recharges futures : on ne le montre pas." %}
+                    </p>
+                    <p class="mb-1"><strong>{% translate "Les deux séries" %}</strong> :</p>
+                    <ul>
+                        <li><strong>{% translate "Tout d'un coup" %}</strong> :
+                            {% translate "on récupère tout le montant fondable au mois où il franchit le seuil." %}</li>
+                        <li><strong>{% translate "1 €/mois" %}</strong> :
+                            {% translate "on prélève un petit montant par carte chaque mois → recette plus étalée et plus lissée." %}</li>
+                    </ul>
+                    <p class="mb-1"><strong>{% translate "Les réglages" %}</strong> :</p>
+                    <ul>
+                        <li><strong>{% translate "Fonte au-delà de X mois" %}</strong> :
+                            {% translate "le seuil. Il décale les barres et change le taux capté (seuil court = on capte plus, l'argent a moins eu le temps de partir). Il pilote aussi les moyennes plus bas." %}</li>
+                        <li><strong>{% translate "Montant fixe par mois" %}</strong> :
+                            {% translate "le prélèvement par carte pour la série « 1 €/mois »." %}</li>
+                        <li><strong>{% translate "Afficher X mois" %}</strong> :
+                            {% translate "la fenêtre visible." %}</li>
+                    </ul>
+                    <p class="mb-1"><strong>{% translate "Les chiffres" %}</strong> :</p>
+                    <ul class="mb-0">
+                        <li><strong>{% translate "Total tout d'un coup / 1 €/mois" %}</strong> :
+                            {% translate "recette cumulée sur la fenêtre, pour chaque mode." %}</li>
+                        <li><strong>{% translate "Déjà fondable" %}</strong> :
+                            {% translate "l'argent qui a déjà dépassé le seuil aujourd'hui (la barre d'aujourd'hui)." %}</li>
+                        <li><strong>{% translate "Cartes concernées" %}</strong> :
+                            {% translate "le nombre de cartes dont l'argent deviendra fondable (estimation)." %}</li>
+                    </ul>
+                </div>
+            </details>
+
+            {% if monnaie_fondante_json.wallets_dormants and courbe_survie_json.survie %}
+                <div class="row" id="simulateur-controles">
+                    {# Contrôles / Controls #}
+                    <div class="col-lg-5">
+                        <div class="mb-3">
+                            <label class="form-label text-sm" for="sim-seuil">
+                                {% translate "Fonte au-delà de" %}
+                                <strong><span id="sim-seuil-val">14</span></strong> {% translate "mois" %}</label>
+                            <input type="range" class="form-range" id="sim-seuil" min="1" max="24" value="14">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-sm" for="sim-montant">
+                                {% translate "Montant fixe par mois (par carte)" %}</label>
+                            <input type="number" class="form-control form-control-sm" id="sim-montant" min="0" step="0.5" value="1">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-sm" for="sim-horizon">
+                                {% translate "Afficher" %}
+                                <strong><span id="sim-horizon-val">18</span></strong> {% translate "mois" %}</label>
+                            <input type="range" class="form-range" id="sim-horizon" min="1" max="36" value="18">
+                        </div>
+                    </div>
+                    {# Sorties / Outputs #}
+                    <div class="col-lg-7">
+                        <div class="row">
+                            <div class="col-6 mb-2">
+                                <p class="kpi-label text-secondary mb-0">{% translate "Total — tout d'un coup" %}</p>
+                                <p class="kpi-value mb-0" id="dev-total-tout" data-testid="dev-total-tout">—</p>
+                                <p class="text-xs text-secondary mb-0">{% translate "recette cumulée sur la fenêtre" %}</p>
+                            </div>
+                            <div class="col-6 mb-2">
+                                <p class="kpi-label text-secondary mb-0">{% translate "Total — 1 €/mois" %}</p>
+                                <p class="kpi-value mb-0" id="dev-total-fixe" data-testid="dev-total-fixe">—</p>
+                                <p class="text-xs text-secondary mb-0">{% translate "plus étalée (peut déborder la fenêtre)" %}</p>
+                            </div>
+                            <div class="col-6 mb-2">
+                                <p class="kpi-label text-secondary mb-0">{% translate "Déjà fondable" %}</p>
+                                <p class="mb-0" id="dev-deja">—</p>
+                                <p class="text-xs text-secondary mb-0">{% translate "argent au-delà du seuil aujourd'hui" %}</p>
+                            </div>
+                            <div class="col-6 mb-2">
+                                <p class="kpi-label text-secondary mb-0">{% translate "Cartes concernées" %}</p>
+                                <p class="mb-0" id="dev-cartes">—</p>
+                                <p class="text-xs text-secondary mb-0">{% translate "deviendront fondables (estim.)" %}</p>
+                            </div>
+                        </div>
+                        <div class="chart-zone" style="height: 260px;">
+                            <canvas id="chart-devenir"
+                                    aria-label="{% translate 'Recette de fonte attendue par mois : tout d un coup et 1 euro par mois' %}"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <p class="text-xs text-secondary mt-2 mb-0" data-testid="dev-source">
+                    {% translate "Basé sur l'argent déjà sur les cartes — zone certaine jusqu'au seuil, sans spéculation au-delà." %}
+                    {% if courbe_survie_json.genere_le %}
+                        {% translate "Survie générée le" %} {{ courbe_survie_json.genere_le|slice:":10" }}.{% endif %}</p>
+            {% elif monnaie_fondante_json.wallets_dormants %}
+                {# Pas de courbe de survie pour cet asset (ex : monnaie locale) : pas de projection. #}
+                {# No survival curve for this asset (e.g. local currency): no projection. #}
+                <p class="text-secondary mb-0" data-testid="dev-no-survie">
+                    ⚠️ {% translate "Projection indisponible pour cette monnaie : lancez la commande courbe_survie pour la calculer." %}</p>
+            {% else %}
+                <p class="text-secondary mb-0" data-testid="devenir-empty">
+                    {% translate "Aucune donnée de portefeuille pour projeter." %}</p>
+            {% endif %}
+        </div>
+    </div>
+
+    {# 4ter. MOYENNES PAR PORTEFEUILLE (dynamique, piloté par le curseur du simulateur) #}
+    {# Per-wallet averages (dynamic, driven by the simulator slider) — rempli par fedow_simulateur.js #}
+    <div class="card mb-4" data-testid="asset-moyennes">
+        <div class="card-header pb-0">
+            <h5 class="mb-0">{% translate "Moyennes par portefeuille" %}</h5>
+            <p class="text-sm text-secondary mb-0">
+                <span id="moy-nb-detenteurs">—</span> {% translate "avec solde" %}
+                · <span id="moy-nb-vides">—</span> {% translate "vidées" %}
+                · <span id="moy-nb-total">—</span> {% translate "cartes ayant utilisé l'asset" %}</p>
+        </div>
+        <div class="card-body">
+            {% if monnaie_fondante_json.wallets_dormants %}
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <p class="kpi-label text-secondary mb-1">{% translate "Dépense moyenne / portefeuille" %}</p>
+                        <p class="kpi-value mb-0" id="moy-depense" data-testid="moy-depense">—</p>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <p class="kpi-label text-secondary mb-1">{% translate "Solde moyen / portefeuille" %}</p>
+                        <p class="kpi-value mb-0" id="moy-solde" data-testid="moy-solde">—</p>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <p class="kpi-label text-secondary mb-1">{% translate "Solde médian / portefeuille" %}</p>
+                        <p class="kpi-value mb-0" id="moy-solde-median" data-testid="moy-solde-median">—</p>
+                    </div>
+                </div>
+                <p class="text-sm mb-2">
+                    {% translate "Rapporté à toutes les cartes ayant utilisé l'asset (vidées incluses)" %} :
+                    <strong id="moy-solde-carte">—</strong> {% translate "de solde moyen" %}</p>
+                <hr class="horizontal dark my-2">
+                <p class="text-sm text-secondary mb-2">
+                    {% translate "Selon l'activité — inactif depuis plus de" %}
+                    <strong><span id="moy-seuil">14</span> {% translate "mois" %}</strong>
+                    {% translate "(réglé par le curseur du simulateur ci-dessus)" %} :</p>
+                <div class="row">
+                    <div class="col-md-6 mb-2">
+                        <span class="badge bg-gradient-success">{% translate "Actifs" %}</span>
+                        <span class="text-xs text-secondary"><span id="moy-nb-actifs">—</span> {% translate "portefeuilles" %}</span>
+                        <p class="mb-0 text-sm">{% translate "moyenne" %}
+                            <strong id="moy-actifs" data-testid="moy-actifs">—</strong>
+                            · {% translate "médiane" %} <strong id="moy-actifs-median">—</strong></p>
+                    </div>
+                    <div class="col-md-6 mb-2">
+                        <span class="badge bg-gradient-secondary">{% translate "Inactifs" %}</span>
+                        <span class="text-xs text-secondary"><span id="moy-nb-inactifs">—</span> {% translate "portefeuilles" %}</span>
+                        <p class="mb-0 text-sm">{% translate "moyenne" %}
+                            <strong id="moy-inactifs" data-testid="moy-inactifs">—</strong>
+                            · {% translate "médiane" %} <strong id="moy-inactifs-median">—</strong></p>
+                    </div>
+                </div>
+                <p class="mb-0 mt-2">
+                    <span class="badge bg-gradient-warning">{% translate "Part de la masse dormante" %}</span>
+                    <strong id="moy-pct-dormant" data-testid="moy-pct-dormant">—</strong>
+                    <span class="text-xs text-secondary">{% translate "de la monnaie détenue par les portefeuilles inactifs" %}</span>
+                </p>
+            {% else %}
+                <p class="text-secondary mb-0" data-testid="moyennes-empty">
+                    {% translate "Aucun portefeuille détenteur." %}</p>
+            {% endif %}
+        </div>
+    </div>
+
+    {# 5. TRANSACTIONS DANS LE TEMPS / TRANSACTIONS OVER TIME #}
+    <div class="card mb-4" data-testid="asset-temporel">
+        <div class="card-header pb-0">
+            <h5 class="mb-0">{% translate "Transactions dans le temps" %}</h5>
+            <p class="text-sm text-secondary mb-0">
+                {% translate "Volume mensuel par type d'action" %}
+            </p>
+        </div>
+        <div class="card-body">
+            {% if not temporel_json.vide %}
+                <div class="chart-zone">
+                    <canvas id="chart-temporel"
+                            aria-label="{% translate 'Barres empilees du volume de transactions par mois et par action' %}"></canvas>
+                </div>
+            {% else %}
+                <p class="text-secondary mb-0" data-testid="temporel-empty">
+                    {% translate "Aucune transaction pour cet asset." %}
+                </p>
+            {% endif %}
+        </div>
+    </div>
+
+    {# 6. DERNIÈRES TRANSACTIONS (repliable) / LAST TRANSACTIONS (collapsible) #}
+    <details class="card mb-4" data-testid="asset-transactions-table">
+        <summary class="p-3" style="cursor: pointer;">
+            <h5 class="d-inline mb-0">{% translate "Dernières transactions" %}</h5>
+            <span class="text-sm text-secondary ms-2">{% translate "50 dernières — cliquer pour déplier" %}</span>
+        </summary>
         <div class="table-responsive">
             <table class="table align-items-center mb-0">
                 <thead>
                 <tr>
                     <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">
-                        Sender/Receiver
+                        {% translate "Emetteur / Receveur" %}
                     </th>
                     <th class="text-center text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">
-                        Date & time
+                        {% translate "Date & heure" %}
                     </th>
                     <th class="text-center text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">
-                        Action
+                        {% translate "Action" %}
                     </th>
                     <th class="text-center text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">
-                        Amount
+                        {% translate "Montant" %}
                     </th>
                     <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-2">
-                        Hash
+                        {% translate "Hash" %}
                     </th>
                     <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-2">
-                        Card
+                        {% translate "Carte" %}
                     </th>
                 </tr>
                 </thead>
@@ -49,16 +503,10 @@
                 {% for transaction in transactions %}
                     <tr>
                         <td>
-                            <div class="d-flex px-2 py-1">
-                                <div>
-                                    <img src=""
-                                         class="avatar avatar-sm me-3">
-                                </div>
-                                <div class="d-flex flex-column justify-content-center">
-                                    <h6 class="mb-0 text-xs">Wallet {{ transaction.sender.get_name }}</h6>
-                                    <p class="text-xs text-secondary mb-0">
-                                        Wallet {{ transaction.receiver.get_name }}</p>
-                                </div>
+                            <div class="d-flex flex-column justify-content-center px-2 py-1">
+                                <h6 class="mb-0 text-xs">{{ transaction.sender.get_name }}</h6>
+                                <p class="text-xs text-secondary mb-0">
+                                    &rarr; {{ transaction.receiver.get_name }}</p>
                             </div>
                         </td>
                         <td>
@@ -66,30 +514,45 @@
                             <p class="text-xs text-secondary mb-0">{{ transaction.datetime | naturaltime }}</p>
                         </td>
                         <td class="align-middle text-center text-sm">
-                            <span class="">{{ transaction.get_action_display }}</span>
+                            <span>{{ transaction.get_action_display }}</span>
                         </td>
                         <td class="align-middle text-center">
                             <span class="text-xs font-weight-normal">{{ transaction.amount | dround }}</span>
                         </td>
                         <td>
                             <p class="text-xs font-weight-bold mb-0">{{ transaction.hash | slice:":8" }}</p>
-                            <p class="text-xs text-secondary mb-0">{{ transaction.verify_hash }}</p>
                         </td>
                         <td>
                             {% if transaction.card %}
                                 <p class="text-xs font-weight-bold mb-0">N° {{ transaction.card.number_printed }}</p>
-                                <p class="text-xs text-secondary mb-0">Origin : {{ transaction.card.origin.place }}</p>
+                                <p class="text-xs text-secondary mb-0">{{ transaction.card.origin.place }}</p>
                             {% else %}
-                                <span class="text-xs font-weight-normal">None</span>
+                                <span class="text-xs font-weight-normal text-secondary">—</span>
                             {% endif %}
                         </td>
                     </tr>
                 {% endfor %}
-
                 </tbody>
             </table>
         </div>
-    </div>
-
+    </details>
 
 {% endblock content %}
+
+{% block extra_js %}
+    {# Chart.js vendorise localement / Chart.js vendored locally #}
+    <script src="{% static 'js/chart.umd.4.4.1.min.js' %}"></script>
+
+    {# Donnees calculees cote serveur, lues par fedow_charts.js #}
+    {# Server-computed data, read by fedow_charts.js #}
+    {{ monnaie_fondante_json|json_script:"data-monnaie-fondante" }}
+    {{ temporel_json|json_script:"data-temporel" }}
+    {# Courbe de survie pre-calculee (fichier JSON), lue par le simulateur fusionne #}
+    {# Pre-computed survival curve (JSON file), read by the merged simulator #}
+    {{ courbe_survie_json|json_script:"data-courbe-survie" }}
+
+    <script src="{% static 'js/fedow_charts.js' %}"></script>
+    {# Devenir de la monnaie dormante : lit data-monnaie-fondante + data-courbe-survie #}
+    {# Fate of dormant money: reads data-monnaie-fondante + data-courbe-survie #}
+    <script src="{% static 'js/fedow_simulateur.js' %}"></script>
+{% endblock %}

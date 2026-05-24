@@ -97,7 +97,11 @@ MIDDLEWARE = [
 ]
 
 if DEBUG:
-    MIDDLEWARE += ['django_browser_reload.middleware.BrowserReloadMiddleware']
+    # Auto-reload du navigateur DESACTIVE a la demande du mainteneur (2026-05-24).
+    # Pour reactiver : decommenter la ligne ci-dessous.
+    # / Browser auto-reload DISABLED on request; uncomment the line below to re-enable.
+    pass
+    # MIDDLEWARE += ['django_browser_reload.middleware.BrowserReloadMiddleware']
 
 ROOT_URLCONF = 'fedowallet_django.urls'
 
