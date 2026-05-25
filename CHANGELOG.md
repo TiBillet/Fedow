@@ -5,6 +5,45 @@ Toutes les évolutions notables du projet. Format bilingue FR/EN, le plus récen
 
 ---
 
+## OrganizationAPIKey — FK `place` et `user` en PROTECT (anti-suppression silencieuse) — 2026-05-25
+
+**Quoi / What:** Les deux FK `place` et `user` de `OrganizationAPIKey` passent de
+`CASCADE` à **`PROTECT`**. Supprimer un user (ou une place) qui porte encore une
+clé d'organisation lève désormais `ProtectedError`, au lieu d'effacer la clé en
+silence.
+/ Both `OrganizationAPIKey` FKs (`place`, `user`) switched from `CASCADE` to
+`PROTECT`. Deleting a user (or place) that still owns an org key now raises
+`ProtectedError` instead of silently deleting the key.
+
+**Why:** Incident prod (tenant Lespass « sophie-houot ») : la suppression du
+**compte user admin** d'un lieu avait CASCADE-supprimé sa clé d'organisation et
+vidé `place.admins`, **la place restant intacte** — d'où un diagnostic non
+évident. Résultat : appairage cassé → `wallet/get_or_create` en **403**
+(`HasOrganizationAPIKeyOnly`) → login Lespass en **500**. `PROTECT` force une
+opération **délibérée** (retirer/réémettre la clé avant de supprimer le compte).
+/ Prod incident: deleting a place's admin user CASCADE-deleted its org key and
+emptied `place.admins` while the place stayed intact — hard to diagnose. Broke
+pairing → 403 on `wallet/get_or_create` → 500 on the Lespass login. PROTECT forces
+a deliberate key removal first.
+
+### Migration
+- `0023_alter_organizationapikey_place_and_more` — deux `AlterField`.
+- **No-op au niveau schéma** : `on_delete` est géré par l'ORM Django, pas par une
+  contrainte SQL. `migrate` requis seulement pour la cohérence de l'état des
+  migrations. / Schema-level no-op; `migrate` only for migration-state consistency.
+
+### Remise en service d'un lieu cassé / Restoring a broken place
+Recréer l'admin + réémettre une clé côté Fedow, puis la stocker (chiffrée) côté
+Lespass : `get_or_create_user(email)` → `place.admins.add(user)` →
+`OrganizationAPIKey.objects.create_key(name=f"lespass_{place.name}:{user.email}", place=place, user=user)`
+→ côté Lespass `FedowConfig.set_fedow_place_admin_apikey(key)` + `save()`.
+
+### Fichiers modifiés / Modified files
+| Fichier / File | Changement / Change |
+|---|---|
+| `fedow_core/models.py` | `OrganizationAPIKey.place` et `.user` : `CASCADE` → `PROTECT` |
+| `fedow_core/migrations/0023_alter_organizationapikey_place_and_more.py` | Migration (2 `AlterField`) |
+
 ## Dashboard Fedow — frais Stripe & recette de fonte nette — 2026-05-25
 
 **Quoi / What:** Intégration des **frais Stripe** dans la page asset FED : nouvelle carte

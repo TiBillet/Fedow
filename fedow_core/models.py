@@ -1046,13 +1046,13 @@ class Card(models.Model):
 class OrganizationAPIKey(AbstractAPIKey):
     place = models.ForeignKey(
         Place,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="api_keys",
     )
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="api_keys",
     )
 
