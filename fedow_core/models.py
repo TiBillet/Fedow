@@ -92,7 +92,7 @@ class CheckoutStripe(models.Model):
         return stripe.PaymentIntent.retrieve(intent_payment_id_stripe)
 
 
-    def refund_payment_intent(self, amount):
+    def refund_payment_intent(self, amount, idempotency_key=None):
         if not amount :
             raise Exception(f"CheckoutStripe Refund : {self.uuid} without amount")
         config = Configuration.get_solo()
@@ -102,10 +102,15 @@ class CheckoutStripe(models.Model):
 
         try :
             logger.info(f"launch stripe refund for {payment_intent_stripe_id} amount {amount}")
+            # idempotency_key : deux tentatives identiques (meme checkout + meme montant)
+            # ne declenchent qu'UN seul remboursement Stripe (fenetre 24h). Protege
+            # contre le double-clic / la course concurrente sur le remboursement.
+            # / Same (checkout, amount) retry collapses into a single Stripe refund.
             refund = stripe.Refund.create(
                 payment_intent=payment_intent_stripe_id,
                 reason='requested_by_customer',
                 amount=amount,
+                idempotency_key=idempotency_key,
             )
             logger.info(f"Refund response : \n{refund}")
             self.status = self.REFUND

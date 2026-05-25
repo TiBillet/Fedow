@@ -5,6 +5,31 @@ Toutes les évolutions notables du projet. Format bilingue FR/EN, le plus récen
 
 ---
 
+## Remboursement en ligne — clé d'idempotence Stripe (anti double-remboursement) — 2026-05-25
+
+**Quoi / What:** `CheckoutStripe.refund_payment_intent` accepte une `idempotency_key`,
+et `wallet/refund_fed_by_signature` la fournit par (checkout, montant) :
+`refund:{checkout.uuid}:{amount}`. Deux tentatives **identiques** (double-clic /
+requête rejouée) ne déclenchent **qu'UN seul** remboursement Stripe (fenêtre 24 h).
+/ Per-(checkout, amount) Stripe idempotency key on the online refund: duplicate
+attempts collapse into a single Stripe refund.
+
+**Why:** Incident festival (trace `dfb487…`) : double-tap sur
+`/my_account/refund_online/` (iPhone, réseau saturé) → deux remboursements
+concurrents. Le registre était déjà protégé par l'assert `REFUND` (pas de
+double-écriture en base), mais l'appel Stripe partait **avant** l'assert → risque
+de double versement Stripe non tracé en multi-recharges. La clé ferme ce risque.
+
+**Limite connue / Known limit:** la clé couvre le rejeu du **même** checkout. Le cas
+multi-recharges où la 2ᵉ requête vise un **autre** checkout (après bascule de statut)
+demanderait un verrou par wallet (memcache) — **non implémenté** (décision : minimal).
+
+### Fichiers modifiés / Modified files
+| Fichier / File | Changement / Change |
+|---|---|
+| `fedow_core/models.py` | `refund_payment_intent(self, amount, idempotency_key=None)` → transmis à `stripe.Refund.create` |
+| `fedow_core/views.py` | `refund_fed_by_signature` : clé `refund:{checkout.uuid}:{amount}` |
+
 ## OrganizationAPIKey — FK `place` et `user` en PROTECT (anti-suppression silencieuse) — 2026-05-25
 
 **Quoi / What:** Les deux FK `place` et `user` de `OrganizationAPIKey` passent de

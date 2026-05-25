@@ -638,8 +638,13 @@ class WalletAPI(viewsets.ViewSet):
             # Traitement des remboursements
             for checkout, value in checkouts_db.items():
                 try:
-                    # Effectue le remboursement via Stripe
-                    refund = checkout.refund_payment_intent(value)
+                    # Effectue le remboursement via Stripe, avec une cle d'idempotence
+                    # par (checkout, montant) : un double-clic / une requete rejouee
+                    # ne rembourse pas deux fois le meme paiement.
+                    # / Stripe refund with a per-(checkout, amount) idempotency key.
+                    refund = checkout.refund_payment_intent(
+                        value, idempotency_key=f"refund:{checkout.uuid}:{value}"
+                    )
                     if not refund.status == 'succeeded':
                         logger.error(f"Remboursement échoué : {refund}")
                         return Response(f"Remboursement échoué : {refund}", status=status.HTTP_406_NOT_ACCEPTABLE)
