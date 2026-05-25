@@ -1,5 +1,5 @@
 {
-  "genere_le": "2026-05-24T16:45:56.197021+00:00",
+  "genere_le": "2026-05-25T07:18:48.830878+00:00",
   "methode": "FIFO par wallet user + survie Kaplan-Meier discrete (par mois d'age)",
   "lecture_seule": true,
   "assets": {
@@ -218,6 +218,96 @@
           "age_mois": 20,
           "montant_centimes": 69900,
           "nb_cartes": 67
+        }
+      ],
+      "refill_par_age": [
+        {
+          "age_mois": 0,
+          "montant_centimes": 2238700
+        },
+        {
+          "age_mois": 1,
+          "montant_centimes": 269200
+        },
+        {
+          "age_mois": 2,
+          "montant_centimes": 1677540
+        },
+        {
+          "age_mois": 3,
+          "montant_centimes": 184290
+        },
+        {
+          "age_mois": 4,
+          "montant_centimes": 198680
+        },
+        {
+          "age_mois": 5,
+          "montant_centimes": 211680
+        },
+        {
+          "age_mois": 6,
+          "montant_centimes": 3417560
+        },
+        {
+          "age_mois": 7,
+          "montant_centimes": 1837550
+        },
+        {
+          "age_mois": 8,
+          "montant_centimes": 397535
+        },
+        {
+          "age_mois": 9,
+          "montant_centimes": 9102558
+        },
+        {
+          "age_mois": 10,
+          "montant_centimes": 329686
+        },
+        {
+          "age_mois": 11,
+          "montant_centimes": 564789
+        },
+        {
+          "age_mois": 12,
+          "montant_centimes": 278210
+        },
+        {
+          "age_mois": 13,
+          "montant_centimes": 148750
+        },
+        {
+          "age_mois": 14,
+          "montant_centimes": 228510
+        },
+        {
+          "age_mois": 15,
+          "montant_centimes": 39200
+        },
+        {
+          "age_mois": 16,
+          "montant_centimes": 38275
+        },
+        {
+          "age_mois": 17,
+          "montant_centimes": 41450
+        },
+        {
+          "age_mois": 18,
+          "montant_centimes": 48060
+        },
+        {
+          "age_mois": 19,
+          "montant_centimes": 116500
+        },
+        {
+          "age_mois": 20,
+          "montant_centimes": 1016000
+        },
+        {
+          "age_mois": 21,
+          "montant_centimes": 3000
         }
       ]
     }

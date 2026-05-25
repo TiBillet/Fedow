@@ -105,6 +105,12 @@ class Command(BaseCommand):
 
         total_refill = 0      # somme des vraies recharges (action REFILL), en centimes
         nb_transactions = 0
+        maintenant = timezone.now()
+        # refill_par_age[age] = montant TOTAL recharge il y a `age` mois (toute la
+        # cohorte, pas seulement le dormant). Sert a calculer les frais Stripe par
+        # barre du graphe (frais sur la totalite rechargee de chaque cohorte).
+        # / Total amount recharged `age` months ago (whole cohort), for Stripe fees per bar.
+        refill_par_age = defaultdict(int)
 
         transactions = (
             Transaction.objects
@@ -128,6 +134,8 @@ class Command(BaseCommand):
                 files[receiver].append([montant, dt])
                 if action == Transaction.REFILL:
                     total_refill += montant
+                    age_refill = _mois_ecoules(dt, maintenant)
+                    refill_par_age[age_refill if age_refill < horizon else horizon] += montant
 
             # DEBIT : de l'argent sort d'une carte user -> on consomme en FIFO.
             # / Debit: money leaves a user card -> consume FIFO.
@@ -157,7 +165,6 @@ class Command(BaseCommand):
         # 4. Ce qui reste dans les files = argent encore vivant (censure).
         # / What remains in the queues = still-alive money (censored).
         # ---------------------------------------------------------------
-        maintenant = timezone.now()
         nb_wallets_vivants = 0
         # stock_par_age[age] = montant actuellement sur les cartes a cet age (en centimes).
         # Sert a projeter le stock actuel avec la courbe de survie (dashboard).
@@ -214,6 +221,12 @@ class Command(BaseCommand):
             }
             for age, montant in sorted(stock_par_age.items())
         ]
+        # Recharge totale par age (toute la cohorte) — pour les frais Stripe par barre.
+        # / Total recharge per age (whole cohort) — for Stripe fees per bar.
+        refill_liste = [
+            {"age_mois": age, "montant_centimes": montant}
+            for age, montant in sorted(refill_par_age.items())
+        ]
 
         # ---------------------------------------------------------------
         # 6. Ecriture du resultat dans le JSON. AUCUNE ecriture en base.
@@ -239,6 +252,7 @@ class Command(BaseCommand):
                     "total_suivi_centimes": total_suivi,
                     "survie": courbe,
                     "stock_par_age": stock_liste,
+                    "refill_par_age": refill_liste,
                 }
             },
         }

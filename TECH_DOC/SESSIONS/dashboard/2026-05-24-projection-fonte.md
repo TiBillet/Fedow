@@ -95,3 +95,36 @@ Dégradation propre si pas de JSON (monnaies locales → message).
   recharge plus seule. Réversible (décommenter).
 - Vérif : `Client.force_login(superuser)` + `HTTP_HOST=fedow.tibillet.localhost`, ou Chrome sur
   `https://fedow.tibillet.localhost/dashboard/asset/<uuid-FED>/`.
+
+## 7. Frais Stripe & récupérable net (ajout 2026-05-25)
+
+Voir aussi l'entrée `CHANGELOG.md` du 2026-05-25.
+
+**Cadrage comptable** : les frais Stripe (réf. FR : en ligne **1,5 % + 0,25 €** / TPE WisePOS
+**1,4 % + 0,10 €**) sont payés **à la recharge**, prélevés côté Stripe (invisibles dans Fedow),
+sur la **totalité** du rechargé. La fonte (mouvement interne de token) ne coûte rien et sert à
+les **rembourser**. Sur l'argent dépensé → frais perdus (encaissé ~98 %, remboursé 100 % aux
+lieux) ; sur le dormant fondu → récupéré. → **Récupérable net = fonte − frais sur tout le rechargé.**
+Une cohorte presque entièrement dépensée peut être à perte (frais > son dormant) ; globalement
+positif tant que le dormant accumulé dépasse les frais.
+
+**Taux** : le canal TPE **n'est pas distinguable en base** (toutes les recharges ont une
+`checkout_session`) et le tarif peut être négocié → **taux effectif unique, saisissable**
+(input `sim-frais`, défaut **2 %**) qui recalcule bilan + graphe en direct. Le solde réel du
+compte Stripe n'est **pas** dans Fedow (on recalcule).
+
+**Donnée** : `courbe_survie` publie `refill_par_age` (montant total rechargé par âge de cohorte).
+
+**Calcul (`fedow_simulateur.js`)** — fonte d'une cohorte d'âge `a` :
+- `a < seuil` : **`refill(a) × survie(seuil)`** (part de la recharge qui dormira encore au seuil) ;
+- `a >= seuil` : **`stock(a)`** réel (dormant déjà observé, au-delà du seuil).
+- ⚠️ NE PAS utiliser le stock résiduel pour les jeunes cohortes : il est biaisé par le mois
+  courant (partiel) → sous-estime → barres négatives artificielles (corrigé le 2026-05-25).
+- frais cohorte = `refill(a) × taux` ; net = fonte − frais. `fonteBrute − frais_totaux` = bilan net.
+
+**Carte « Bilan Stripe ↔ fonte »** : rechargé / frais / fonte au seuil / **récupérable net** /
+**couverture** (< 100 % = encore à perte). **Graphe** : barres = net (2 modes) + **ligne rouge** =
+frais Stripe de la cohorte. Au pic festival, la ligne rouge approche la barre.
+
+**Pistes** : marquer le canal TPE en base pour appliquer les 2 tarifs exactement ; remonter le
+solde réel du compte via l'API Stripe (hors périmètre lecture-seule-DB actuel).

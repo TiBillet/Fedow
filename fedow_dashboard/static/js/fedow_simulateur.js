@@ -1,29 +1,23 @@
 /**
- * Recette de fonte attendue + moyennes par portefeuille — 100% cote client.
- * / Expected melting revenue + per-wallet averages — 100% client-side.
+ * Recette de fonte attendue (nette des frais Stripe) + bilan + moyennes — 100% client.
+ * / Expected melting revenue (net of Stripe fees) + balance + averages — 100% client-side.
  *
  * LOCALISATION : fedow_dashboard/static/js/fedow_simulateur.js
  *
- * Lit deux sources injectees par le template :
+ * Sources injectees par le template :
+ *  #data-monnaie-fondante : wallets_dormants, depense_totale, currency_code, nb_vides, total_charge.
+ *  #data-courbe-survie    : survie [{age_mois, part_restante}],
+ *                           stock_par_age [{age_mois, montant_centimes, nb_cartes}],
+ *                           refill_par_age [{age_mois, montant_centimes}] (recharge totale par age),
+ *                           total_refill_centimes.
  *
- *  #data-monnaie-fondante (calcule en base, par carte) :
- *    wallets_dormants = [[age_jours, solde_centimes], ...]  (cartes user, solde > 0)
- *    depense_totale, currency_code, nb_vides, total_charge
+ * FRAIS STRIPE : payes A LA RECHARGE (0,25 + 1,6% selon canal), pas a la fonte. On les
+ * recalcule au taux effectif saisi (defaut 2%, modifiable a l'ecran), sur la TOTALITE
+ * du rechargé. La fonte sert a rembourser ces frais → recette NETTE = fonte − frais.
  *
- *  #data-courbe-survie (fichier JSON pre-calcule, commande `courbe_survie`) :
- *    survie        = [{age_mois, part_restante}, ...]                 (S(age))
- *    stock_par_age = [{age_mois, montant_centimes, nb_cartes}, ...]   (stock actuel par age)
- *    Absente pour les monnaies sans courbe : on n'affiche alors pas la projection.
- *
- * GRAPHE « chart-devenir » : recette de fonte ATTENDUE dans le futur, mois par mois.
- * On projette l'argent DEJA sur les cartes : une tranche d'age `a` devient fondable
- * quand son age atteint le seuil, soit dans (seuil - a) mois. Le montant fondable est
- * ce qui en reste a ce moment-la (via la courbe de survie). On ne montre que la zone
- * CERTAINE [0, seuil] : aucune recharge future supposee, aucune speculation.
- * Deux series comparees : « tout d'un coup » et « 1 euro / mois » (etale).
- *
- * Le curseur seuil pilote la projection ET la comparaison actifs/inactifs des moyennes.
- * Tout est recalcule en direct, aucune requete, aucune ecriture.
+ * GRAPHE « chart-devenir » (zone certaine [0, seuil]) : barres = recette de fonte NETTE
+ * par mois (cohorte rechargee a `mois − seuil`), 2 modes (tout d'un coup / 1 €/mois) ;
+ * ligne rouge = frais Stripe de la cohorte. BILAN : rechargé / frais / dormant / net.
  *
  * Depend de : Chart.js (charge avant ce fichier).
  */
@@ -40,32 +34,31 @@ document.addEventListener("DOMContentLoaded", function () {
         return;
     }
 
-    const walletsDormants = donnees.wallets_dormants || [];   // [[age_jours, solde_centimes], ...]
+    const walletsDormants = donnees.wallets_dormants || [];
     const devise = donnees.currency_code || "";
-    const depenseTotale = donnees.depense_totale || 0;        // centimes
+    const depenseTotale = donnees.depense_totale || 0;
 
-    // ---------- Courbe de survie + stock par age (peut etre absent) ----------
-    // / Survival curve + stock per age (may be missing for non-FED currencies).
-    let survieMap = [];     // survieMap[age_mois] = part_restante (0..1)
-    let stockParAge = [];   // [{age_mois, montant_centimes, nb_cartes}, ...]
+    // ---------- Courbe de survie + stock + recharge par age (peut etre absent) ----------
+    let survieMap = [];        // survieMap[age] = part_restante
+    let stockParAge = [];      // [{age_mois, montant_centimes, nb_cartes}]
+    let refillMap = {};        // refillMap[age] = montant recharge total a cet age (centimes)
+    let totalRefill = 0;       // recharge totale (centimes)
+    let stockTotal = 0;        // dormant total sur les cartes (centimes)
     const baliseSurvie = document.getElementById("data-courbe-survie");
     if (baliseSurvie) {
         try {
-            const survieJson = JSON.parse(baliseSurvie.textContent) || {};
-            (survieJson.survie || []).forEach(function (p) {
-                survieMap[p.age_mois] = p.part_restante;
-            });
-            stockParAge = survieJson.stock_par_age || [];
+            const sj = JSON.parse(baliseSurvie.textContent) || {};
+            (sj.survie || []).forEach(function (p) { survieMap[p.age_mois] = p.part_restante; });
+            stockParAge = sj.stock_par_age || [];
+            (sj.refill_par_age || []).forEach(function (r) { refillMap[r.age_mois] = r.montant_centimes; });
+            totalRefill = sj.total_refill_centimes || 0;
+            stockTotal = stockParAge.reduce(function (s, x) { return s + x.montant_centimes; }, 0);
         } catch (e) {
             console.error("Devenir : JSON courbe-survie illisible", e);
         }
     }
-    // On peut projeter seulement si la courbe est presente.
-    // / We can only project if the curve is present.
     const survieDispo = survieMap.length > 0 && stockParAge.length > 0;
 
-    // S(age) : part restante a cet age, cappee a l'horizon de la courbe.
-    // / S(age): remaining share at this age, capped at the curve horizon.
     function S(age) {
         if (!survieMap.length) return null;
         let idx = age;
@@ -97,29 +90,20 @@ document.addEventListener("DOMContentLoaded", function () {
     const soldeTotal = soldes.reduce(function (s, v) { return s + v; }, 0);
 
     const nbVides = donnees.nb_vides || 0;
-    const nbCartesAsset = nbWallets + nbVides;  // détenteurs (>0) + vidées = cartes ayant utilisé l'asset
+    const nbCartesAsset = nbWallets + nbVides;
     if (nbWallets > 0) {
         texte("moy-nb-detenteurs", nbWallets.toLocaleString("fr-FR"));
         texte("moy-nb-vides", nbVides.toLocaleString("fr-FR"));
         texte("moy-nb-total", nbCartesAsset.toLocaleString("fr-FR"));
-        // Dépense moyenne rapportée à toutes les cartes ayant utilisé l'asset.
-        // / Average spend over all cards that used the asset.
         texte("moy-depense", formate(nbCartesAsset ? depenseTotale / nbCartesAsset : 0));
-        // Solde moyen / médian sur les détenteurs ACTUELS (solde > 0).
-        // / Average / median balance over CURRENT holders (balance > 0).
         texte("moy-solde", formate(soldeTotal / nbWallets));
         texte("moy-solde-median", formate(mediane(soldes)));
-        // Solde moyen rapporté à TOUTES les cartes ayant utilisé l'asset (vidées incluses).
-        // / Average balance over ALL cards that used the asset (emptied included).
         texte("moy-solde-carte", formate(nbCartesAsset ? soldeTotal / nbCartesAsset : 0));
     }
 
     // ---------- Breakage (rétention) : snapshot du solde sur cartes par ancienneté ----------
-    // / Breakage (retention): snapshot of on-card balance by age since last activity.
     const totalCharge = donnees.total_charge || 0;
     if (nbWallets > 0) {
-        // Tranches d'âge (jours) : <1 mois, 1-3, 3-6, 6-12, >12 mois.
-        // / Age buckets (days): <1 month, 1-3, 3-6, 6-12, >12 months.
         const buckets = [0, 0, 0, 0, 0];
         for (let i = 0; i < walletsDormants.length; i++) {
             const age = walletsDormants[i][0];
@@ -148,98 +132,125 @@ document.addEventListener("DOMContentLoaded", function () {
     const champSeuil = document.getElementById("sim-seuil");
     const champMontant = document.getElementById("sim-montant");
     const champHorizon = document.getElementById("sim-horizon");
+    const champFrais = document.getElementById("sim-frais");
     const canvas = document.getElementById("chart-devenir");
 
     let graphique = null;
 
-    // Recalcule la projection de recette ET les moyennes dynamiques selon les controles.
-    // / Recompute the revenue projection AND the dynamic averages from the controls.
     function recalculer() {
         if (!champSeuil) {
-            return; // Pas de simulateur sur cette page (etat vide).
+            return;
         }
-        const seuil = parseInt(champSeuil.value, 10);                       // mois
+        const seuil = parseInt(champSeuil.value, 10);
         const montantFixe = Math.round(parseFloat(champMontant.value || "0") * 100); // centimes/mois/carte
-        const horizon = parseInt(champHorizon.value, 10);                   // mois affiches
+        const horizon = parseInt(champHorizon.value, 10);
+        const taux = parseFloat(champFrais.value || "0") / 100;                       // ex 0.02
 
-        // ----- Recette de fonte ATTENDUE, mois par mois (zone certaine) -----
-        // Pour chaque tranche d'age `a` du stock actuel :
-        //   - elle devient fondable dans (seuil - a) mois (0 si deja au-dela),
-        //   - le montant fondable = ce qui en reste a ce moment-la (survie conditionnelle).
-        // / Expected melting revenue per month; each age tranche becomes fondable
-        //   when its age reaches the threshold; amount = what survives until then.
-        const barreTout = [];   // centimes : on recupere tout d'un coup
-        const barreFixe = [];   // centimes : on preleve un montant fixe par mois
-        for (let t = 0; t <= horizon; t++) { barreTout.push(0); barreFixe.push(0); }
-        let cartesConcernees = 0;
+        // ---------- Recette de fonte NETTE, mois par mois (zone certaine) ----------
+        // Barre nette = fonte de la cohorte − frais Stripe de la cohorte (sur tout son rechargé).
+        // / Net bar = cohort melting − the cohort's Stripe fees (on its whole recharge).
+        const netTout = [];     // mode « tout d'un coup »
+        const netFixe = [];     // mode « 1 €/mois »
+        const fraisBar = [];    // ligne rouge : frais Stripe de la cohorte du mois
+        for (let t = 0; t <= horizon; t++) { netTout.push(0); netFixe.push(0); fraisBar.push(0); }
+        let fonteBrute = 0, fraisProjetes = 0, cartesConcernees = 0;
 
-        if (survieDispo && montantFixe >= 0) {
+        if (survieDispo) {
             const survieSeuil = S(seuil);
-            for (let i = 0; i < stockParAge.length; i++) {
-                const age = stockParAge[i].age_mois;
-                const montant = stockParAge[i].montant_centimes;
-                const cartes = stockParAge[i].nb_cartes || 0;
+            // Stock dormant REEL par age (pour les cohortes deja au-dela du seuil).
+            // / Real dormant stock per age (for cohorts already past the threshold).
+            const stockMap = {}, cartesMap = {};
+            stockParAge.forEach(function (s) {
+                stockMap[s.age_mois] = s.montant_centimes;
+                cartesMap[s.age_mois] = s.nb_cartes || 0;
+            });
+            const soldeMoyenDormant = nbWallets > 0 ? (soldeTotal / nbWallets) : 0;
 
-                let partRestante;   // part encore presente quand l'age atteint le seuil
-                let moisFonte;      // dans combien de mois la tranche devient fondable
+            // On parcourt chaque COHORTE de recharge (par age). La fonte d'une cohorte
+            // se calcule sur sa RECHARGE (pas sur le stock residuel) :
+            //   - age < seuil : recharge × survie(seuil) = ce qui dormira encore au seuil ;
+            //   - age >= seuil : dormant REEL observe aujourd'hui (deja au-dela du seuil).
+            // / Melting per recharge cohort: recharge × survival(threshold), or real stock if older.
+            Object.keys(refillMap).forEach(function (cle) {
+                const age = parseInt(cle, 10);
+                const refillCohorte = refillMap[age];
+
+                let fondMontant, fondCartes, moisFonte;
                 if (age >= seuil) {
-                    partRestante = 1;       // deja au-dela du seuil : fondable maintenant
+                    fondMontant = stockMap[age] || 0;
+                    fondCartes = cartesMap[age] || 0;
                     moisFonte = 0;
                 } else {
-                    const survieAge = S(age);
-                    partRestante = (survieAge && survieAge > 0) ? (survieSeuil / survieAge) : 0;
+                    fondMontant = refillCohorte * survieSeuil;
+                    fondCartes = soldeMoyenDormant > 0 ? (fondMontant / soldeMoyenDormant) : 0;
                     moisFonte = seuil - age;
                 }
-                if (partRestante > 1) partRestante = 1;   // garde-fou
 
-                const fondMontant = montant * partRestante;
-                const fondCartes = cartes * partRestante;
+                const fraisCohorte = refillCohorte * taux;     // frais sur TOUT le rechargé de la cohorte
+                const netCohorte = fondMontant - fraisCohorte;
+                const ratioNet = fondMontant > 0 ? (netCohorte / fondMontant) : 0;
+
+                fonteBrute += fondMontant;
+                fraisProjetes += fraisCohorte;
                 cartesConcernees += fondCartes;
 
-                // Mode « tout d'un coup » : tout au mois de fondabilite.
+                // Mode « tout d'un coup » : net au mois de fondabilite ; frais sur la ligne rouge.
                 if (moisFonte <= horizon) {
-                    barreTout[moisFonte] += fondMontant;
+                    netTout[moisFonte] += netCohorte;
+                    fraisBar[moisFonte] += fraisCohorte;
                 }
 
-                // Mode « 1 euro / mois » : on etale a partir du mois de fondabilite,
-                // au rythme de (cartes x montant fixe) par mois, jusqu'a epuisement.
+                // Mode « 1 €/mois » : on etale la fonte ; le net suit le meme ratio.
                 let reste = fondMontant;
-                const rythme = fondCartes * montantFixe;   // centimes / mois
+                const rythme = fondCartes * montantFixe;
                 let t = moisFonte;
                 while (reste > 0.5 && t <= horizon) {
                     const pris = (rythme > 0 && rythme < reste) ? rythme : reste;
-                    barreFixe[t] += pris;
+                    netFixe[t] += pris * ratioNet;
                     reste -= pris;
-                    if (rythme <= 0) break;   // montant fixe nul : pas d'etalement possible
+                    if (rythme <= 0) break;
                     t++;
                 }
-            }
+            });
         }
+
+        // ---------- BILAN : fonte (au seuil) − frais sur TOUT le rechargé ----------
+        // / Balance: melting (at the threshold) − fees on the WHOLE recharged amount.
+        const fraisTotaux = Math.round(totalRefill * taux);
+        const recupNet = fonteBrute - fraisTotaux;
+        texte("bil-recharge", formate(totalRefill));
+        texte("bil-frais", formate(fraisTotaux));
+        texte("bil-dormant", formate(fonteBrute));
+        texte("bil-net", formate(recupNet));
+        texte("bil-couverture", fraisTotaux > 0
+            ? Math.round(fonteBrute / fraisTotaux * 100).toLocaleString("fr-FR") + " %"
+            : "—");
 
         // Series + labels (centimes -> unite).
         const labels = [];
-        const dataTout = [];
-        const dataFixe = [];
+        const dataTout = [], dataFixe = [], dataFrais = [];
         for (let t = 0; t <= horizon; t++) {
             labels.push(t === 0 ? "Auj." : "M+" + t);
-            dataTout.push(barreTout[t] / 100);
-            dataFixe.push(barreFixe[t] / 100);
+            dataTout.push(netTout[t] / 100);
+            dataFixe.push(netFixe[t] / 100);
+            dataFrais.push(fraisBar[t] / 100);
         }
 
-        // KPI
-        const totalTout = barreTout.reduce(function (s, v) { return s + v; }, 0);
-        const totalFixe = barreFixe.reduce(function (s, v) { return s + v; }, 0);
-        texte("dev-total-tout", formate(totalTout));
-        texte("dev-total-fixe", formate(totalFixe));
-        texte("dev-deja", formate(barreTout[0]));
+        // KPI de la carte recette
+        const totalNetTout = netTout.reduce(function (s, v) { return s + v; }, 0);
+        const totalNetFixe = netFixe.reduce(function (s, v) { return s + v; }, 0);
+        texte("dev-total-tout", formate(totalNetTout));
+        texte("dev-total-fixe", formate(totalNetFixe));
+        texte("dev-frais", formate(fraisProjetes));
         texte("dev-cartes", Math.round(cartesConcernees).toLocaleString("fr-FR"));
 
-        // Graphe en barres groupees : « tout d'un coup » vs « 1 euro / mois ».
+        // Graphe : barres nettes (2 modes) + ligne rouge des frais.
         if (canvas) {
             if (graphique) {
                 graphique.data.labels = labels;
                 graphique.data.datasets[0].data = dataTout;
                 graphique.data.datasets[1].data = dataFixe;
+                graphique.data.datasets[2].data = dataFrais;
                 graphique.update();
             } else {
                 graphique = new Chart(canvas, {
@@ -247,15 +258,12 @@ document.addEventListener("DOMContentLoaded", function () {
                     data: {
                         labels: labels,
                         datasets: [
+                            { type: "bar", label: "Net — tout d'un coup (" + devise + ")", data: dataTout, backgroundColor: "#fb6340" },
+                            { type: "bar", label: "Net — 1 €/mois (" + devise + ")", data: dataFixe, backgroundColor: "#5e72e4" },
                             {
-                                label: "Tout d'un coup (" + devise + ")",
-                                data: dataTout,
-                                backgroundColor: "#fb6340",
-                            },
-                            {
-                                label: "1 € / mois (" + devise + ")",
-                                data: dataFixe,
-                                backgroundColor: "#5e72e4",
+                                type: "line", label: "Frais Stripe (" + devise + ")", data: dataFrais,
+                                borderColor: "#f5365c", backgroundColor: "transparent",
+                                borderDash: [4, 4], pointRadius: 0, borderWidth: 2,
                             },
                         ],
                     },
@@ -273,7 +281,6 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         // ----- Moyennes dynamiques : actifs / inactifs selon le seuil -----
-        // / Dynamic averages: active vs inactive split by the threshold.
         const seuilJours = seuil * 30;
         const inactifs = [];
         const actifs = [];
@@ -302,7 +309,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     // ---------- Ecouteurs ----------
-    [champSeuil, champMontant, champHorizon].forEach(function (el) {
+    [champSeuil, champMontant, champHorizon, champFrais].forEach(function (el) {
         if (el) el.addEventListener("input", function () { majLibelles(); recalculer(); });
     });
 

@@ -5,6 +5,59 @@ Toutes les évolutions notables du projet. Format bilingue FR/EN, le plus récen
 
 ---
 
+## Dashboard Fedow — frais Stripe & recette de fonte nette — 2026-05-25
+
+**Quoi / What:** Intégration des **frais Stripe** dans la page asset FED : nouvelle carte
+**« Bilan Stripe ↔ fonte »** et recette de fonte affichée **nette** (barres nettes + ligne
+rouge des frais). Suite directe de la projection de fonte du 2026-05-24.
+**Why:** Les frais Stripe sont payés à la recharge (et prélevés côté Stripe, invisibles dans
+Fedow) ; ils grèvent la totalité du rechargé. La fonte sert à les rembourser → on montre le
+**récupérable net** et si la fonte **couvre** les frais.
+
+**Contrainte / Constraint:** **LECTURE SEULE.** Frais **recalculés** (jamais stockés) ; le
+solde réel du compte Stripe reste hors Fedow.
+
+### Cadrage comptable retenu
+- Frais payés **à la recharge**, pas à la fonte (mouvement interne de token, sans frais).
+- Sur l'argent **dépensé** → frais perdus (encaissé ~98 %, remboursé 100 % aux lieux). Sur le
+  **dormant fondu** → récupéré. **Récupérable net = fonte − frais sur la totalité du rechargé.**
+- Une cohorte presque entièrement dépensée peut être **à perte** (frais > son dormant) ;
+  globalement positif tant que le dormant accumulé dépasse les frais.
+
+### Commande `courbe_survie`
+- Publie en plus **`refill_par_age`** (montant total rechargé par âge de cohorte) → frais par cohorte.
+
+### Carte « Bilan Stripe ↔ fonte » (`asset_transactions.html` + `fedow_simulateur.js`)
+- **Taux de frais effectif** saisissable (`sim-frais`, défaut **2 %**) → recalcul direct du
+  bilan ET du graphe. Paramétrable car le canal **TPE WisePOS** n'est pas distinguable en base
+  (toutes les recharges ont une `checkout_session`) et le tarif peut être négocié.
+  Tarifs Stripe FR de référence : en ligne **1,5 % + 0,25 €**, TPE WisePOS **1,4 % + 0,10 €**.
+- Affiche : rechargé (cumul), frais Stripe, fonte au seuil, **récupérable net**, **couverture**
+  des frais par la fonte (< 100 % = encore à perte).
+
+### Recette de fonte affichée NETTE
+- Barres = **fonte − frais Stripe** de la cohorte, 2 modes (tout / 1 €/mois) ; **ligne rouge** =
+  frais Stripe de la cohorte (déjà déduits). Au pic festival, la ligne rouge approche la barre
+  (un festival génère beaucoup de frais mais peu de dormant).
+- **Correctif de méthode** : la fonte d'une cohorte se calcule sur sa **recharge × survie(seuil)**
+  (cohortes < seuil) ou sur le **stock réel** (cohortes déjà au-delà du seuil) — et non sur le
+  stock résiduel, qui sous-estimait le mois courant (partiel) et créait des barres négatives.
+
+### Fichiers modifiés / Modified files
+| Fichier / File | Changement / Change |
+|---|---|
+| `fedow_core/management/commands/courbe_survie.py` | sortie `refill_par_age` (+ `nb_cartes` déjà présent) |
+| `fedow_dashboard/views.py` | `_charge_courbe_survie` transmet `refill_par_age` + `total_refill_centimes` |
+| `fedow_dashboard/templates/asset/asset_transactions.html` | carte « Bilan Stripe ↔ fonte », input taux, barres nettes |
+| `fedow_dashboard/static/js/fedow_simulateur.js` | bilan, recette nette, ligne rouge des frais, calcul recharge × survie |
+
+### Migration
+- **Migration nécessaire / Migration required:** **Non.**
+
+### Note déploiement
+- Après modif **JS** → `collectstatic` ; **template / vue** → reload gunicorn ; rafraîchir la
+  courbe → `python manage.py courbe_survie`.
+
 ## Dashboard Fedow — projection de la recette de fonte (courbe de survie) — 2026-05-24
 
 **Quoi / What:** Ajout d'une commande de gestion `courbe_survie` (calcul *offline* de la

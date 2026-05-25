@@ -264,13 +264,59 @@ qui lit les balises json_script en bas de page.
         </div>
     </div>
 
+    {# 4bis-0. BILAN STRIPE ↔ FONTE (récupérable net) — rempli par fedow_simulateur.js #}
+    {# Stripe ↔ melting balance (net recoverable) — filled by fedow_simulateur.js #}
+    <div class="card mb-4" data-testid="asset-bilan-stripe">
+        <div class="card-header pb-0">
+            <h5 class="mb-0">{% translate "Bilan Stripe ↔ fonte" %}</h5>
+            <p class="text-sm text-secondary mb-0">
+                {% translate "Les frais Stripe sont payés à la recharge ; la fonte sert à les rembourser (lecture seule)" %}</p>
+        </div>
+        <div class="card-body">
+            {% if courbe_survie_json.survie %}
+                <div class="mb-3" style="max-width: 18rem;">
+                    <label class="form-label text-sm" for="sim-frais">
+                        {% translate "Taux de frais Stripe effectif" %} (%)</label>
+                    <input type="number" class="form-control form-control-sm" id="sim-frais" min="0" max="10" step="0.1" value="2">
+                </div>
+                <div class="row">
+                    <div class="col-md-3 col-6 mb-2">
+                        <p class="kpi-label text-secondary mb-0">{% translate "Rechargé (cumul)" %}</p>
+                        <p class="kpi-value mb-0" id="bil-recharge" data-testid="bil-recharge">—</p>
+                    </div>
+                    <div class="col-md-3 col-6 mb-2">
+                        <p class="kpi-label text-secondary mb-0">{% translate "Frais Stripe" %}</p>
+                        <p class="kpi-value mb-0 text-danger" id="bil-frais" data-testid="bil-frais">—</p>
+                    </div>
+                    <div class="col-md-3 col-6 mb-2">
+                        <p class="kpi-label text-secondary mb-0">{% translate "Fonte au seuil" %}</p>
+                        <p class="kpi-value mb-0" id="bil-dormant">—</p>
+                    </div>
+                    <div class="col-md-3 col-6 mb-2">
+                        <p class="kpi-label text-secondary mb-0">{% translate "Récupérable net" %}</p>
+                        <p class="kpi-value mb-0 text-success" id="bil-net" data-testid="bil-net">—</p>
+                    </div>
+                </div>
+                <p class="text-sm mb-0">
+                    {% translate "La fonte couvre" %}
+                    <strong id="bil-couverture">—</strong> {% translate "des frais Stripe" %}
+                    <span class="text-xs text-secondary">{% translate "(moins de 100 % = encore à perte)" %}</span></p>
+                <p class="text-xs text-secondary mt-2 mb-0">
+                    {% translate "Frais recalculés (le solde réel du compte Stripe n'est pas dans Fedow). Récupérable net = fonte au seuil − frais sur la totalité du rechargé. Réglez le seuil dans la carte ci-dessous." %}</p>
+            {% else %}
+                <p class="text-secondary mb-0" data-testid="bilan-no-survie">
+                    {% translate "Bilan indisponible : lancez la commande courbe_survie." %}</p>
+            {% endif %}
+        </div>
+    </div>
+
     {# 4bis. RECETTE DE FONTE ATTENDUE (projection des recharges déjà faites) #}
     {# Expected melting revenue (projection of recharges already made) — powered by the survival curve #}
     <div class="card mb-4" data-testid="asset-devenir">
         <div class="card-header pb-0">
             <h5 class="mb-0">{% translate "Recette de fonte attendue" %}</h5>
             <p class="text-sm text-secondary mb-0">
-                {% translate "Ce que la fonte rapporterait, mois par mois, sur l'argent déjà rechargé (lecture seule)" %}</p>
+                {% translate "Recette NETTE (après frais Stripe), mois par mois, sur l'argent déjà rechargé (lecture seule)" %}</p>
         </div>
         <div class="card-body">
             {# Accordéon d'aide : explique la projection, les 2 modes, le seuil et l'horizon #}
@@ -289,12 +335,14 @@ qui lit les balises json_script en bas de page.
                         <strong>{% translate "Zone certaine" %}</strong> :
                         {% translate "on n'affiche que ce qui repose sur de l'argent déjà encaissé (jusqu'à +seuil mois). Au-delà, il faudrait deviner les recharges futures : on ne le montre pas." %}
                     </p>
-                    <p class="mb-1"><strong>{% translate "Les deux séries" %}</strong> :</p>
+                    <p class="mb-1"><strong>{% translate "Les barres sont NETTES de frais Stripe" %}</strong> :</p>
                     <ul>
                         <li><strong>{% translate "Tout d'un coup" %}</strong> :
-                            {% translate "on récupère tout le montant fondable au mois où il franchit le seuil." %}</li>
+                            {% translate "on récupère tout le fondable au mois où il franchit le seuil, moins les frais de cette recharge." %}</li>
                         <li><strong>{% translate "1 €/mois" %}</strong> :
                             {% translate "on prélève un petit montant par carte chaque mois → recette plus étalée et plus lissée." %}</li>
+                        <li><strong>{% translate "Ligne rouge" %}</strong> :
+                            {% translate "les frais Stripe de la recharge concernée, déjà déduits des barres." %}</li>
                     </ul>
                     <p class="mb-1"><strong>{% translate "Les réglages" %}</strong> :</p>
                     <ul>
@@ -307,10 +355,10 @@ qui lit les balises json_script en bas de page.
                     </ul>
                     <p class="mb-1"><strong>{% translate "Les chiffres" %}</strong> :</p>
                     <ul class="mb-0">
-                        <li><strong>{% translate "Total tout d'un coup / 1 €/mois" %}</strong> :
-                            {% translate "recette cumulée sur la fenêtre, pour chaque mode." %}</li>
-                        <li><strong>{% translate "Déjà fondable" %}</strong> :
-                            {% translate "l'argent qui a déjà dépassé le seuil aujourd'hui (la barre d'aujourd'hui)." %}</li>
+                        <li><strong>{% translate "Net tout d'un coup / 1 €/mois" %}</strong> :
+                            {% translate "recette NETTE cumulée sur la fenêtre, pour chaque mode." %}</li>
+                        <li><strong>{% translate "Frais Stripe (projetés)" %}</strong> :
+                            {% translate "les frais des recharges qui deviennent fondables sur la fenêtre." %}</li>
                         <li><strong>{% translate "Cartes concernées" %}</strong> :
                             {% translate "le nombre de cartes dont l'argent deviendra fondable (estimation)." %}</li>
                     </ul>
@@ -343,19 +391,19 @@ qui lit les balises json_script en bas de page.
                     <div class="col-lg-7">
                         <div class="row">
                             <div class="col-6 mb-2">
-                                <p class="kpi-label text-secondary mb-0">{% translate "Total — tout d'un coup" %}</p>
+                                <p class="kpi-label text-secondary mb-0">{% translate "Net — tout d'un coup" %}</p>
                                 <p class="kpi-value mb-0" id="dev-total-tout" data-testid="dev-total-tout">—</p>
-                                <p class="text-xs text-secondary mb-0">{% translate "recette cumulée sur la fenêtre" %}</p>
+                                <p class="text-xs text-secondary mb-0">{% translate "recette nette cumulée sur la fenêtre" %}</p>
                             </div>
                             <div class="col-6 mb-2">
-                                <p class="kpi-label text-secondary mb-0">{% translate "Total — 1 €/mois" %}</p>
+                                <p class="kpi-label text-secondary mb-0">{% translate "Net — 1 €/mois" %}</p>
                                 <p class="kpi-value mb-0" id="dev-total-fixe" data-testid="dev-total-fixe">—</p>
                                 <p class="text-xs text-secondary mb-0">{% translate "plus étalée (peut déborder la fenêtre)" %}</p>
                             </div>
                             <div class="col-6 mb-2">
-                                <p class="kpi-label text-secondary mb-0">{% translate "Déjà fondable" %}</p>
-                                <p class="mb-0" id="dev-deja">—</p>
-                                <p class="text-xs text-secondary mb-0">{% translate "argent au-delà du seuil aujourd'hui" %}</p>
+                                <p class="kpi-label text-secondary mb-0">{% translate "Frais Stripe (projetés)" %}</p>
+                                <p class="mb-0 text-danger" id="dev-frais" data-testid="dev-frais">—</p>
+                                <p class="text-xs text-secondary mb-0">{% translate "déduits des barres" %}</p>
                             </div>
                             <div class="col-6 mb-2">
                                 <p class="kpi-label text-secondary mb-0">{% translate "Cartes concernées" %}</p>

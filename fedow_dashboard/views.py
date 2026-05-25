@@ -278,6 +278,8 @@ def _charge_courbe_survie(asset):
     return {
         "survie": asset_data.get("survie", []),
         "stock_par_age": asset_data.get("stock_par_age", []),
+        "refill_par_age": asset_data.get("refill_par_age", []),
+        "total_refill_centimes": asset_data.get("total_refill_centimes", 0),
         "horizon_mois": asset_data.get("horizon_mois", 24),
         "genere_le": donnees.get("genere_le"),
     }
