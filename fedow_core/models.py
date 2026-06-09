@@ -13,7 +13,7 @@ from django.contrib.auth.models import AbstractUser
 from django.core.cache import cache
 from django.core.signing import Signer
 from django.db import models
-from django.db.models import UniqueConstraint, Q, Sum
+from django.db.models import UniqueConstraint, Q, Sum, F
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework_api_key.models import AbstractAPIKey
@@ -575,6 +575,12 @@ class Transaction(models.Model):
         except Token.DoesNotExist:
             token_receiver = Token.objects.create(wallet=self.receiver, asset=self.asset)
 
+        # On note le solde des tokens au moment ou on les lit. Il servira a
+        # calculer la difference (delta) a appliquer en base de donnees.
+        # / Snapshot the loaded balances to compute the delta to apply later.
+        valeur_du_token_sender_au_chargement = token_sender.value
+        valeur_du_token_receiver_au_chargement = token_receiver.value
+
         ## Check previous transaction
         # Le hash ne peut se faire que si la transaction précédente est validée
         self.previous_transaction = self._previous_asset_transaction()
@@ -744,8 +750,25 @@ class Transaction(models.Model):
             self.hash = self.create_hash()
 
         if self.verify_hash():
-            token_sender.save()
-            token_receiver.save()
+            # On applique la DIFFERENCE de solde (delta), pas la valeur absolue.
+            # token.save() ecrirait "value = <valeur lue en memoire>" : deux ventes
+            # simultanees liraient le meme solde de depart et la seconde ecraserait
+            # la premiere (lost update). Avec "value = value + delta", c'est SQLite
+            # qui calcule l'increment sur le solde reel courant, et le mode WAL
+            # serialise les ecritures : les montants s'additionnent sans perte.
+            # / Persist the balance delta via F() to prevent concurrent lost updates.
+            delta_du_token_sender = token_sender.value - valeur_du_token_sender_au_chargement
+            delta_du_token_receiver = token_receiver.value - valeur_du_token_receiver_au_chargement
+
+            if delta_du_token_sender != 0:
+                Token.objects.filter(pk=token_sender.pk).update(
+                    value=F("value") + delta_du_token_sender
+                )
+            if delta_du_token_receiver != 0:
+                Token.objects.filter(pk=token_receiver.pk).update(
+                    value=F("value") + delta_du_token_receiver
+                )
+
             print(f"*** {self.action} : {token_sender} -> {token_receiver}")
             super(Transaction, self).save(*args, **kwargs)
         else:
