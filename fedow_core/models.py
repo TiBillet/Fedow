@@ -493,6 +493,7 @@ class Transaction(models.Model):
 
     FIRST, SALE, CREATION, REFILL, TRANSFER, SUBSCRIBE, BADGE, FUSION, REFUND, VOID, DEPOSIT = 'FST', 'SAL', 'CRE', 'REF', 'TRF', 'SUB', 'BDG', 'FUS', 'RFD', 'VID', 'BNK'
     QRCODE_SALE = 'QRS'
+    CORRECTION = 'COR'
 
     TYPE_ACTION = (
         (FIRST, "Premier bloc"),
@@ -507,6 +508,7 @@ class Transaction(models.Model):
         (REFUND, 'Remboursement'),
         (VOID, 'Dissocciation de la carte et du wallet user'),
         (DEPOSIT, 'Remise en banque'),
+        (CORRECTION, 'Correction de dérive (réconciliation)'),
     )
     action = models.CharField(max_length=3, choices=TYPE_ACTION, default=SALE)
 
@@ -744,6 +746,17 @@ class Transaction(models.Model):
             # On vide le sender
             # On ne rempli pas le receiver, ça part a la banque
             token_sender.value -= self.amount
+
+        if self.action == Transaction.CORRECTION:
+            # Recale un solde derive par un lost-update concurrent (cf TECH_DEV/DRIFT).
+            # Transaction append-only et auditable. Le wallet primaire sert de pivot :
+            #   - receiver != primaire => on CREDITE le receiver (cas d'un lieu sous-compte)
+            #   - receiver == primaire => on DEBITE le sender (cas du primaire sur-compte)
+            # / Reconcile a token balance drifted by a concurrent lost-update.
+            if self.receiver_id != Configuration.get_solo().primary_wallet_id:
+                token_receiver.value += self.amount
+            else:
+                token_sender.value -= self.amount
 
         # ALL VALIDATOR PASSED : HASH CREATION
         if not self.hash:
