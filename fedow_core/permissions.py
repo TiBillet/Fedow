@@ -8,7 +8,7 @@ from rest_framework import permissions
 from rest_framework.permissions import AllowAny
 from rest_framework.views import PermissionDenied
 from rest_framework_api_key.permissions import BaseHasAPIKey
-from stripe.error import SignatureVerificationError
+from stripe import SignatureVerificationError
 
 from fedow_core.models import OrganizationAPIKey, Configuration, CreatePlaceAPIKey, Wallet
 from fedow_core.utils import verify_signature, data_to_b64
