@@ -10,28 +10,28 @@ package-mode = false
 [tool.poetry.dependencies]
 python = "^3.10"
 django = "^4.2"
-django-solo = "2.1.0"
+django-solo = "^2.1"
 django-extensions = "3.2.3"
 werkzeug = "^3.0.1"
 django-browser-reload = "^1.11.0"
-djangorestframework = "^3.14.0"
+djangorestframework = "^3.14"
 markdown = "^3.4.4"
 django-filter = "^23.5"
 djangorestframework-api-key = "^3"
 django-stdimage = "^6.0.1"
-stripe = "^7.10.0"
+stripe = "^15"
 coverage = "^7.4.0"
 python-dotenv = "^1.0.0"
-gunicorn = "^21.2.0"
-cryptography = "^41.0.3"
-channels = {extras = ["daphne"], version = "^4.0.0"}
-django-htmx = "^1.16.0"
+gunicorn = "^26"
+cryptography = "^48"
+channels = {extras = ["daphne"], version = "^4"}
+django-htmx = "^1.16"
 faker = "^22"
-ipdb = "^0.13.13"
+ipdb = "^0.13"
 sentry-sdk = {extras = ["django"], version = "^1.39.1"}
-pymemcache = "^4.0.0"
-transaction = "^5.0"
-psycopg = {extras = ["binary"], version = "^3.2.9"}
+pymemcache = "^4"
+transaction = "^5"
+psycopg = {extras = ["binary"], version = "^3"}
 
 [build-system]
 requires = ["poetry-core"]
