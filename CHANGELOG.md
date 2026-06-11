@@ -5,6 +5,32 @@ Toutes les évolutions notables du projet. Format bilingue FR/EN, le plus récen
 
 ---
 
+## Fix recharges cassées par stripe 15 + tests de non-régression StripeObject — 2026-06-11
+
+**Quoi / What:** Depuis stripe 12, `StripeObject` n'hérite plus de `dict` : la
+méthode `.get()` n'existe plus. Le bump stripe 7 → 15 (commit `b350f16`) a donc
+cassé les **recharges de wallet en ligne** (`checkout.metadata.get('signed_data')`,
+issue Sentry FEDOW-DJANGO-2G) et, de façon latente, les **recharges par TPE**
+(`stripe_payment.get('created')`). Remplacés par `getattr(..., None)` et l'accès
+attribut. Quatre tests de non-régression mockent désormais les appels réseau
+Stripe avec de **vrais `StripeObject.construct_from()`** — un `MagicMock` ne peut
+pas détecter cette classe de bug car `.get()` « marche » sur un mock.
+/ Since stripe 12, `StripeObject` no longer subclasses `dict`: `.get()` is gone.
+Fixed both refill flows; added regression tests that mock Stripe network calls
+with **real `StripeObject` instances** (a `MagicMock` cannot catch this bug class).
+
+**Why:** Crash prod le 11/06/2026 (place lamiete) : paiement Stripe encaissé mais
+refill non crédité, checkout bloqué en `PROGRESS`.
+
+### Fichiers modifiés / Modified files
+| Fichier / File | Changement / Change |
+|---|---|
+| `fedow_core/views.py` | `validate_stripe_checkout_and_make_transaction` : `getattr(checkout.metadata, 'signed_data', None)` ; `validate_stripe_reader_wise_pose_and_make_transaction` : `stripe_payment.created` |
+| `fedow_core/tests/test_stripe_refill_regression.py` | **Nouveau.** 10 tests : canari comportement StripeObject, recharge en ligne, rejeu sans double crédit, recharge TPE Wise POS, et 6 tests de bout en bout de la vue `POST /webhook_stripe/` (signature HMAC réelle vérifiée par `construct_event` : paiement 200, rejeu 208, type étranger 204, signed_data absent 203, signature falsifiée refusée, TPE 200 + rejeu 208) |
+
+### Migration
+- **Migration nécessaire / Migration required:** Non / No
+
 ## Remboursement en ligne — clé d'idempotence Stripe (anti double-remboursement) — 2026-05-25
 
 **Quoi / What:** `CheckoutStripe.refund_payment_intent` accepte une `idempotency_key`,
