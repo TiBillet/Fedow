@@ -1129,7 +1129,7 @@ class StripeAPI(viewsets.ViewSet):
         # Fabrication du CheckoutStripe avec l'id paiement intent
         # Création d'une trace CheckoutStripe
         checkout_stripe = CheckoutStripe.objects.create(
-            datetime=datetime.fromtimestamp(stripe_payment.get('created')),
+            datetime=datetime.fromtimestamp(stripe_payment.created),
             checkout_session_id_stripe=payment_intent_stripe_id,
             asset=stripe_asset,
             metadata=metadata,
@@ -1175,7 +1175,9 @@ class StripeAPI(viewsets.ViewSet):
 
         # Vérification de la signature Django et des uuid token par la même occasion.
         signer = Signer()
-        signed_data = checkout.metadata.get('signed_data')
+        # stripe >= 12 : StripeObject n'est plus un dict, .get() n'existe plus
+        # / stripe >= 12: StripeObject no longer subclasses dict, .get() is gone
+        signed_data = getattr(checkout.metadata, 'signed_data', None)
 
         if not signed_data:
             raise ValueError("No signed data on session")
