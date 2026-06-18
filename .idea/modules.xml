@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/FederatedOpenWallet.iml" filepath="$PROJECT_DIR$/.idea/FederatedOpenWallet.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/federatedopenwallet.iml" filepath="$PROJECT_DIR$/.idea/federatedopenwallet.iml" />
     </modules>
   </component>
 </project>
