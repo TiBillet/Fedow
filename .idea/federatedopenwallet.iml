@@ -14,7 +14,7 @@
   </component>
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
-      <sourceFolder url="file://$MODULE_DIR$/fedow_dashboard/static" />
+      <sourceFolder url="file://$MODULE_DIR$/fedow_dashboard/static" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/htmlcov" />
       <excludeFolder url="file://$MODULE_DIR$/www" />
       <excludeFolder url="file://$MODULE_DIR$/logs" />

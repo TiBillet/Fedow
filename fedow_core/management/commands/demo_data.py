@@ -51,4 +51,3 @@ class Command(BaseCommand):
             print(f"Error creating demo data: {e}")
             pass
         # card.primary_places
-

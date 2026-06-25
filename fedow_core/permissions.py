@@ -240,11 +240,26 @@ class HasKeyAndPlaceSignature(BaseHasAPIKey):
             api_key = self.model.objects.get_from_key(key)
             place = api_key.place
             request.place = place
-            # On va chercher la clé publique du cashless
-            cashless_public_key = place.cashless_public_key()
         except OrganizationAPIKey.DoesNotExist:
             logger.warning(f"HasKeyAndCashlessSignature : no api key")
             return False
+
+        # EXTENSION S6 : une place Lespass (mono-repo de confiance, etablie au
+        # handshake) n'a PAS de cashless RSA et ne peut donc pas produire de
+        # signature de place. Pour elle, l'API key de la place SUFFIT — le
+        # filtrage par place / federation reste applique en aval (validators
+        # TransactionW2W, CardRefundOrVoidValidator, accepted_assets...).
+        # / S6 EXTENSION: a Lespass place (trusted mono-repo, set at the handshake)
+        # has NO cashless RSA and cannot produce a place signature, so its place
+        # API key is ENOUGH — per-place / federation filtering still applies
+        # downstream (TransactionW2W, CardRefundOrVoidValidator, accepted_assets).
+        if place.lespass_domain and not place.cashless_rsa_pub_key:
+            return super().has_permission(request, view)
+
+        # Place avec cashless RSA (LaBoutik V1) : signature de place exigee.
+        # / Place with a cashless RSA (LaBoutik V1): place signature required.
+        try:
+            cashless_public_key = place.cashless_public_key()
         except Exception as e:
             # Pas de cashless_public_key ?
             logger.warning(f"HasKeyAndCashlessSignature : {e}")
