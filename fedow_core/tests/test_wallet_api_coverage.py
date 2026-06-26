@@ -120,6 +120,58 @@ class WalletAPITest(FedowTestCase):
         card.refresh_from_db()
         self.assertEqual(card.user, self.wallet.user)
 
+    def test_fusion_autorise_asset_archive(self):
+        """Regression : la liaison d'une carte doit pouvoir recuperer le solde
+        d'un asset ARCHIVE. TransactionW2W accepte un asset archive pour l'action
+        FUSION (sinon 400 {'asset': [...]} sur /wallet/linkwallet_cardqrcode/ et
+        la liaison echoue entierement).
+        / Regression: card linking must transfer the balance of an ARCHIVED asset.
+        TransactionW2W accepts an archived asset for the FUSION action."""
+        from fedow_core.serializers import TransactionW2W
+
+        # On archive l'asset local du setUp.
+        # / Archive the local asset from setUp.
+        self.asset.archive = True
+        self.asset.save()
+
+        data = {
+            'action': Transaction.FUSION,
+            'amount': 100,
+            'sender': str(self.wallet.uuid),
+            'receiver': str(self.wallet.uuid),
+            'asset': str(self.asset.uuid),
+        }
+        serializer = TransactionW2W(data=data)
+        serializer.is_valid()
+
+        # Le champ 'asset' ne doit PAS rejeter l'asset archive pour une FUSION.
+        # (D'autres erreurs non liees a 'asset' peuvent subsister : place, etc.)
+        # / The 'asset' field must NOT reject the archived asset for a FUSION.
+        self.assertNotIn('asset', serializer.errors)
+
+    def test_asset_archive_refuse_hors_fusion(self):
+        """Hors FUSION, un asset archive reste refuse : la protection des
+        transactions classiques (vente, recharge...) est preservee.
+        / Outside FUSION, an archived asset stays rejected: protection preserved."""
+        from fedow_core.serializers import TransactionW2W
+
+        self.asset.archive = True
+        self.asset.save()
+
+        data = {
+            'action': Transaction.SALE,
+            'amount': 100,
+            'sender': str(self.wallet.uuid),
+            'receiver': str(self.wallet.uuid),
+            'asset': str(self.asset.uuid),
+        }
+        serializer = TransactionW2W(data=data)
+        serializer.is_valid()
+
+        # L'asset archive doit etre rejete par le champ pour une vente.
+        # / The archived asset must be rejected by the field for a sale.
+        self.assertIn('asset', serializer.errors)
+
     @patch('stripe.checkout.Session.retrieve')
     @patch('stripe.Refund.create')
     @patch('fedow_core.models.CheckoutStripe.refund_payment_intent')

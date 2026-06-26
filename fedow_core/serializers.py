@@ -1138,6 +1138,22 @@ class TransactionW2W(serializers.Serializer):
         queryset=Card.objects.all(),
         required=False, slug_field='first_tag_id')
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Cas de la fusion d'un wallet éphémère de carte vers le wallet d'un
+        # utilisateur (liaison de carte). On autorise alors les assets archivés :
+        # l'utilisateur doit pouvoir récupérer le solde de sa carte même si la
+        # monnaie a été archivée entre-temps (monnaie temps/cadeau d'un évènement
+        # passé, ancienne monnaie locale remplacée…). Sans ça, un seul token sur
+        # un asset archivé bloque toute la liaison (erreur 400 sur 'asset').
+        # / Ephemeral card wallet fusion into a user wallet (card linking). We then
+        #   allow archived assets so the user can still recover the card balance
+        #   even if the currency was archived in the meantime. Otherwise a single
+        #   token on an archived asset blocks the whole linking (400 on 'asset').
+        initial_data = getattr(self, 'initial_data', None)
+        if isinstance(initial_data, dict) and initial_data.get('action') == Transaction.FUSION:
+            self.fields['asset'].queryset = Asset.objects.all()
+
     def validate_amount(self, value):
         # Positive amount only
         if value < 0:
