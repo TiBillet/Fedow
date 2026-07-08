@@ -13,6 +13,7 @@ from django.core.cache import cache
 from django.core.management import call_command
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.signing import Signer
+from django.db import IntegrityError
 from django.db.models import Q
 from django.http import JsonResponse, Http404
 from django.shortcuts import get_object_or_404, render
@@ -1101,13 +1102,20 @@ class StripeAPI(viewsets.ViewSet):
         data = json.loads(metadata['data'])
         place = Place.objects.get(uuid=data['fedow_place_uuid'])
 
-        # La demande a bien été initiée par un serveur cashless recenu : la signature est OK
-        signature = stripe_payment.metadata['signature']
-        if not verify_signature(place.cashless_public_key(),
-                                data_to_b64(data),
-                                signature):
-            raise Exception(
-                f"validate_stripe_reader_wise_pose_and_make_transaction : Signature verification failed {metadata}")
+        # Place Lespass de confiance (mono-serveur, clé Stripe Root exclusive) : pas de
+        # signature de place — le PaymentIntent sur le compte Root suffit (miroir EXTENSION S6).
+        # / Trusted Lespass place: no place signature (mirror of the S6 extension).
+        if place.lespass_domain and not place.cashless_rsa_pub_key:
+            pass
+        else:
+            # Place avec cashless RSA (LaBoutik V1) : signature exigée. / LaBoutik: signature required.
+            # La demande a bien été initiée par un serveur cashless recenu : la signature est OK
+            signature = stripe_payment.metadata['signature']
+            if not verify_signature(place.cashless_public_key(),
+                                    data_to_b64(data),
+                                    signature):
+                raise Exception(
+                    f"validate_stripe_reader_wise_pose_and_make_transaction : Signature verification failed {metadata}")
 
         card = Card.objects.get(first_tag_id=data['tag_id'])
         wallet = card.get_wallet()
@@ -1405,6 +1413,15 @@ class WebhookStripe(APIView):
                 except ValueError as e:
                     return Response(f"Error validate_stripe_checkout_and_make_transaction : {e}",
                                     status=status.HTTP_400_BAD_REQUEST)
+                except IntegrityError as e:
+                    # Redélivrance concurrente du même event Stripe (fenêtre TOCTOU entre le
+                    # check exists() ci-dessus et la création du CheckoutStripe) : la contrainte
+                    # unique sur checkout_session_id_stripe a bloqué le doublon.
+                    # / Concurrent redelivery of the same Stripe event: the unique
+                    # constraint on checkout_session_id_stripe caught the duplicate.
+                    logger.warning(
+                        f"WebhookStripe 208 IntegrityError (doublon concurrent) payment_intent_stripe_id {payment_intent_stripe_id} : {e}")
+                    return Response("payment_intent Already reported", status=status.HTTP_208_ALREADY_REPORTED)
                 except Exception as e:
                     raise e
 

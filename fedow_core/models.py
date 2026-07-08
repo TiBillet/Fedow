@@ -35,7 +35,11 @@ class CheckoutStripe(models.Model):
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, db_index=True)
     datetime = models.DateTimeField(auto_now_add=True)
 
-    checkout_session_id_stripe = models.CharField(max_length=80, editable=False, blank=True, null=True)
+    # unique=True : anti-rejeu / anti double-crédit (Postgres et SQLite autorisent
+    # plusieurs NULL dans un index unique, donc les checkouts sans id ne collisionnent pas).
+    # / unique=True: anti-replay / anti double-credit (multiple NULLs are still allowed
+    # in a unique index by both Postgres and SQLite).
+    checkout_session_id_stripe = models.CharField(max_length=80, editable=False, blank=True, null=True, unique=True)
     intent_payment_id_stripe = models.CharField(max_length=80, editable=False, blank=True, null=True)
     invoice_stripe_id = models.CharField(max_length=27, editable=False, blank=True, null=True) # dans le cas de renouvellement d'adhésion
 

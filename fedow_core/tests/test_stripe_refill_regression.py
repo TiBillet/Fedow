@@ -34,6 +34,7 @@ from uuid import uuid4
 from unittest.mock import patch
 
 from django.core.signing import Signer
+from django.db import IntegrityError
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIRequestFactory
@@ -345,6 +346,212 @@ class StripeRefillRegressionTest(FedowTestCase):
         self.assertEqual(transaction_refill.card, carte_nfc)
         self.assertEqual(transaction_refill.receiver, wallet_de_la_carte)
         self.assertTrue(transaction_refill.verify_hash())
+
+    @patch('fedow_core.views.stripe.PaymentIntent.retrieve')
+    def test_recharge_par_tpe_place_lespass_credite_sans_signature(self, mock_payment_intent_retrieve):
+        """
+        CHANTIER-04 (04A) : une place Lespass (lespass_domain renseigné, pas de
+        cashless_rsa_pub_key) crédite la carte SANS signature de place.
+        / A Lespass place (lespass_domain set, no cashless_rsa_pub_key) credits
+        the card WITHOUT a place signature (mirror of the S6 extension).
+
+        Le PaymentIntent Stripe sur le compte Root suffit : les metadata ne
+        contiennent volontairement PAS de clé 'signature'. Si la lecture de
+        metadata['signature'] n'était pas passée dans le else, ceci lèverait
+        un KeyError (piège relevé en relecture Fable 5).
+        """
+        # Place Lespass de confiance : lespass_domain posé, pas de clé cashless
+        # / Trusted Lespass place: lespass_domain set, no cashless key
+        self.place.lespass_domain = 'kiosk-test.tibillet.localhost'
+        self.place.cashless_rsa_pub_key = None
+        self.place.save()
+
+        generation_origine = Origin.objects.create(place=self.place, generation=1)
+        complete_tag_id_uuid = str(uuid4())
+        qrcode_uuid = str(uuid4())
+        carte_nfc = Card.objects.create(
+            complete_tag_id_uuid=complete_tag_id_uuid,
+            first_tag_id=f"{complete_tag_id_uuid.split('-')[0]}",
+            qrcode_uuid=qrcode_uuid,
+            number_printed=f"{qrcode_uuid.split('-')[0]}",
+            origin=generation_origine,
+        )
+
+        donnees_non_signees = {
+            'fedow_place_uuid': str(self.place.uuid),
+            'tag_id': carte_nfc.first_tag_id,
+        }
+        montant_recu_en_centimes = 1000
+        payment_intent_id = f'pi_test_{uuid4().hex}'
+
+        objet_stripe_reel = StripeObject.construct_from(
+            {
+                'id': payment_intent_id,
+                'created': int(timezone.now().timestamp()),
+                'amount_received': montant_recu_en_centimes,
+                # Pas de clé 'signature' : c'est le point testé
+                # / No 'signature' key: that is exactly what is tested
+                'metadata': {
+                    'data': json.dumps(donnees_non_signees),
+                },
+            },
+            'sk_test_fake',
+        )
+        mock_payment_intent_retrieve.return_value = objet_stripe_reel
+
+        requete_webhook = APIRequestFactory().post('/webhook_stripe/')
+
+        checkout_en_base = StripeAPI.validate_stripe_reader_wise_pose_and_make_transaction(
+            payment_intent_id, requete_webhook)
+
+        self.assertEqual(checkout_en_base.status, CheckoutStripe.WALLET_USER_OK)
+
+        carte_nfc.refresh_from_db()
+        token_de_la_carte = Token.objects.get(
+            wallet=carte_nfc.get_wallet(),
+            asset=self.stripe_asset,
+        )
+        self.assertEqual(token_de_la_carte.value, montant_recu_en_centimes)
+
+    @patch('fedow_core.views.stripe.PaymentIntent.retrieve')
+    def test_recharge_par_tpe_place_cashless_signature_toujours_exigee(self, mock_payment_intent_retrieve):
+        """
+        Non-régression : une place LaBoutik (cashless_rsa_pub_key renseigné)
+        exige toujours une signature de place valide.
+        / Non-regression: a LaBoutik place (cashless_rsa_pub_key set) still
+        requires a valid place signature.
+        """
+        self.place.cashless_rsa_pub_key = self.public_cashless_pem
+        self.place.save()
+
+        generation_origine = Origin.objects.create(place=self.place, generation=1)
+        complete_tag_id_uuid = str(uuid4())
+        qrcode_uuid = str(uuid4())
+        carte_nfc = Card.objects.create(
+            complete_tag_id_uuid=complete_tag_id_uuid,
+            first_tag_id=f"{complete_tag_id_uuid.split('-')[0]}",
+            qrcode_uuid=qrcode_uuid,
+            number_printed=f"{qrcode_uuid.split('-')[0]}",
+            origin=generation_origine,
+        )
+
+        donnees = {
+            'fedow_place_uuid': str(self.place.uuid),
+            'tag_id': carte_nfc.first_tag_id,
+        }
+        payment_intent_id = f'pi_test_{uuid4().hex}'
+
+        # Signature RSA réelle mais calculée sur d'AUTRES données : verify_signature
+        # renvoie False et la fonction lève son Exception explicite. Une chaîne
+        # non-base64 lèverait un binascii.Error AVANT la vérification RSA, et le
+        # test ne prouverait plus le bon chemin.
+        # / Genuine RSA signature computed over DIFFERENT data: verify_signature
+        # returns False and the function raises its explicit Exception. A
+        # non-base64 string would raise binascii.Error BEFORE the RSA check,
+        # and the test would no longer prove the right path.
+        signature_sur_autres_donnees = sign_message(
+            data_to_b64({'fedow_place_uuid': str(uuid4()), 'tag_id': 'autre_carte'}),
+            self.private_cashless_rsa,
+        ).decode('utf-8')
+
+        objet_stripe_reel = StripeObject.construct_from(
+            {
+                'id': payment_intent_id,
+                'created': int(timezone.now().timestamp()),
+                'amount_received': 1000,
+                'metadata': {
+                    'data': json.dumps(donnees),
+                    # Signature présente mais invalide : ne correspond pas aux données
+                    # / Signature present but invalid: does not match the data
+                    'signature': signature_sur_autres_donnees,
+                },
+            },
+            'sk_test_fake',
+        )
+        mock_payment_intent_retrieve.return_value = objet_stripe_reel
+
+        requete_webhook = APIRequestFactory().post('/webhook_stripe/')
+
+        with self.assertRaisesRegex(Exception, 'Signature verification failed'):
+            StripeAPI.validate_stripe_reader_wise_pose_and_make_transaction(
+                payment_intent_id, requete_webhook)
+
+        # Aucun crédit n'a eu lieu
+        # / No credit happened
+        self.assertFalse(
+            CheckoutStripe.objects.filter(checkout_session_id_stripe=payment_intent_id).exists())
+
+    @patch('fedow_core.views.stripe.PaymentIntent.retrieve')
+    def test_recharge_par_tpe_rejoue_leve_integrity_error(self, mock_payment_intent_retrieve):
+        """
+        CHANTIER-04 (04B) : rejouer le même payment_intent_stripe_id lève une
+        IntegrityError (contrainte unique sur checkout_session_id_stripe), au
+        lieu de créditer deux fois.
+        / Replaying the same payment_intent_stripe_id raises an IntegrityError
+        (unique constraint on checkout_session_id_stripe) instead of a double
+        credit.
+
+        C'est le garde-fou dont dépend la décision « pas de signature côté
+        Lespass » (§8bis) : sans lui, une redélivrance concurrente pourrait
+        doublement créditer une place de confiance sans facteur de sécurité
+        additionnel.
+        """
+        self.place.lespass_domain = 'kiosk-test.tibillet.localhost'
+        self.place.cashless_rsa_pub_key = None
+        self.place.save()
+
+        generation_origine = Origin.objects.create(place=self.place, generation=1)
+        complete_tag_id_uuid = str(uuid4())
+        qrcode_uuid = str(uuid4())
+        carte_nfc = Card.objects.create(
+            complete_tag_id_uuid=complete_tag_id_uuid,
+            first_tag_id=f"{complete_tag_id_uuid.split('-')[0]}",
+            qrcode_uuid=qrcode_uuid,
+            number_printed=f"{qrcode_uuid.split('-')[0]}",
+            origin=generation_origine,
+        )
+
+        donnees_non_signees = {
+            'fedow_place_uuid': str(self.place.uuid),
+            'tag_id': carte_nfc.first_tag_id,
+        }
+        payment_intent_id = f'pi_test_{uuid4().hex}'
+
+        objet_stripe_reel = StripeObject.construct_from(
+            {
+                'id': payment_intent_id,
+                'created': int(timezone.now().timestamp()),
+                'amount_received': 1000,
+                'metadata': {'data': json.dumps(donnees_non_signees)},
+            },
+            'sk_test_fake',
+        )
+        mock_payment_intent_retrieve.return_value = objet_stripe_reel
+
+        requete_webhook = APIRequestFactory().post('/webhook_stripe/')
+
+        # Premier passage : crédit normal
+        # / First pass: normal credit
+        StripeAPI.validate_stripe_reader_wise_pose_and_make_transaction(
+            payment_intent_id, requete_webhook)
+
+        # Deuxième passage sur le même payment_intent_stripe_id : la contrainte
+        # unique sur checkout_session_id_stripe bloque le doublon
+        # / Second pass on the same payment_intent_stripe_id: the unique
+        # constraint on checkout_session_id_stripe blocks the duplicate
+        with self.assertRaises(IntegrityError):
+            StripeAPI.validate_stripe_reader_wise_pose_and_make_transaction(
+                payment_intent_id, requete_webhook)
+
+        # Une seule REFILL a été créée
+        # / Only one REFILL was created
+        self.assertEqual(
+            Transaction.objects.filter(
+                action=Transaction.REFILL,
+                checkout_stripe__checkout_session_id_stripe=payment_intent_id,
+            ).count(),
+            1,
+        )
 
 
 # Secret de webhook utilisé uniquement par les tests, jamais en prod
@@ -663,4 +870,83 @@ class WebhookStripeEndToEndTest(FedowTestCase):
         reponse_rejeu = self._poster_webhook_signe(payload_stripe)
         self.assertEqual(reponse_rejeu.status_code, 208)
         token_de_la_carte.refresh_from_db()
+        self.assertEqual(token_de_la_carte.value, montant_recu_en_centimes)
+
+    @patch('fedow_core.views.stripe.PaymentIntent.retrieve')
+    def test_webhook_tpe_rejeu_concurrent_repond_208_via_integrity_error(
+            self, mock_payment_intent_retrieve):
+        """
+        CHANTIER-04 (04B) : si le rejeu passe le pré-filtre exists() (fenêtre
+        TOCTOU d'une redélivrance vraiment concurrente), la contrainte unique
+        sur checkout_session_id_stripe lève une IntegrityError que la vue
+        capte pour répondre 208 au lieu de planter en 500.
+        / If the replay slips past the exists() pre-filter (TOCTOU window of a
+        truly concurrent redelivery), the unique constraint on
+        checkout_session_id_stripe raises an IntegrityError that the view
+        catches to answer 208 instead of crashing with a 500.
+        """
+        self.place.lespass_domain = 'kiosk-test.tibillet.localhost'
+        self.place.cashless_rsa_pub_key = None
+        self.place.save()
+
+        generation_origine = Origin.objects.create(place=self.place, generation=1)
+        complete_tag_id_uuid = str(uuid4())
+        qrcode_uuid = str(uuid4())
+        carte_nfc = Card.objects.create(
+            complete_tag_id_uuid=complete_tag_id_uuid,
+            first_tag_id=f"{complete_tag_id_uuid.split('-')[0]}",
+            qrcode_uuid=qrcode_uuid,
+            number_printed=f"{qrcode_uuid.split('-')[0]}",
+            origin=generation_origine,
+        )
+
+        donnees_non_signees = {
+            'fedow_place_uuid': str(self.place.uuid),
+            'tag_id': carte_nfc.first_tag_id,
+        }
+        montant_recu_en_centimes = 1500
+        payment_intent_id = f'pi_test_{uuid4().hex}'
+        mock_payment_intent_retrieve.return_value = StripeObject.construct_from(
+            {
+                'id': payment_intent_id,
+                'created': int(timezone.now().timestamp()),
+                'amount_received': montant_recu_en_centimes,
+                'metadata': {'data': json.dumps(donnees_non_signees)},
+            },
+            'sk_test_fake',
+        )
+
+        payload_stripe = {
+            'type': 'terminal.reader.action_succeeded',
+            'data': {'object': {'action': {'process_payment_intent': {
+                'payment_intent': payment_intent_id,
+            }}}},
+        }
+
+        reponse = self._poster_webhook_signe(payload_stripe)
+        self.assertEqual(reponse.status_code, 200)
+
+        # Simule la fenêtre TOCTOU : le pré-filtre exists() ne voit pas encore
+        # le CheckoutStripe créé par le premier passage (redélivrance vraiment
+        # concurrente). Seule la contrainte unique en base protège alors.
+        # / Simulates the TOCTOU window: the exists() pre-filter does not see
+        # the CheckoutStripe created by the first pass yet (a truly concurrent
+        # redelivery). Only the DB unique constraint protects at that point.
+        with patch('fedow_core.views.CheckoutStripe.objects.filter') as mock_filter:
+            mock_filter.return_value.exists.return_value = False
+            reponse_rejeu = self._poster_webhook_signe(payload_stripe)
+
+        self.assertEqual(reponse_rejeu.status_code, 208)
+
+        # Pas de double crédit. refresh_from_db obligatoire : la vue a créé le
+        # wallet éphémère de la carte au premier passage, notre instance
+        # Python ne le connaît pas encore.
+        # / No double credit. refresh_from_db required: the view created the
+        # card ephemeral wallet on the first pass, our stale Python instance
+        # does not know it yet.
+        carte_nfc.refresh_from_db()
+        token_de_la_carte = Token.objects.get(
+            wallet=carte_nfc.get_wallet(),
+            asset=self.stripe_asset,
+        )
         self.assertEqual(token_de_la_carte.value, montant_recu_en_centimes)

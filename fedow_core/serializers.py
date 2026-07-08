@@ -929,8 +929,12 @@ class TransactionRefilFromLespassSerializer(serializers.Serializer):
                     raise serializers.ValidationError("invoice_stripe_id Already reported")
 
             self.checkout_stripe = CheckoutStripe.objects.create(
-                checkout_session_id_stripe=checkout_session_id_stripe,
-                invoice_stripe_id=invoice_stripe_id,
+                # `or None` : normalise toute chaine vide en NULL. La contrainte unique
+                # sur checkout_session_id_stripe autorise plusieurs NULL mais un seul ''.
+                # / `or None`: normalize any empty string to NULL. The unique constraint
+                # allows many NULLs but only one '' — never store '' here.
+                checkout_session_id_stripe=checkout_session_id_stripe or None,
+                invoice_stripe_id=invoice_stripe_id or None,
                 metadata=metadata,
                 status=CheckoutStripe.FROM_LESPASS,
                 asset=self.asset,
