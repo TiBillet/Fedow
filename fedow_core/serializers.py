@@ -1318,8 +1318,15 @@ class TransactionW2W(serializers.Serializer):
                 f"{timezone.localtime()} INFO NewTransactionWallet2WalletValidator : receiver token does not exist -> create")
             self.token_receiver = Token.objects.create(wallet=self.receiver, asset=self.asset, value=0)
 
-        # On vérifie qu'une transaction CREATION pour refill avec le même checkout id stripe n'existe déja ?
-        if Transaction.objects.filter(
+        # Anti-rejeu Stripe : ne vérifier QUE s'il y a un checkout a dédupliquer.
+        # Sans checkout (vente, adhésion, recharge locale), self.checkout_stripe=None :
+        # rien à rejouer, et un filtre checkout_stripe=None serait empoisonné par toute
+        # CREATION FED sans checkout persistée ailleurs (invariant fragile). La garde
+        # `self.checkout_stripe and` supprime ce risque sans changer le comportement Stripe.
+        # / Stripe anti-replay: only check when there IS a checkout to dedupe. Without one,
+        # there is nothing to replay; a checkout_stripe=None filter would otherwise be
+        # poisoned by any stray FED CREATION with a null checkout.
+        if self.checkout_stripe and Transaction.objects.filter(
                 action=Transaction.CREATION,
                 checkout_stripe=self.checkout_stripe,
                 asset__category=Asset.STRIPE_FED_FIAT,
