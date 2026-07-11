@@ -24,8 +24,34 @@ def transaction_webhook_new_membership(sender, instance: Transaction, created, *
         # Récupération du lieu
         place: Place = instance.sender.place
         url = place.lespass_domain
-        requests.get(f"https://{url}/fwh/membership/{instance.uuid}",
-                     verify=bool(not settings.DEBUG))
+        # Le webhook vers Lespass est best-effort : il ne doit JAMAIS bloquer ni
+        # faire echouer la transaction Fedow (qui est deja committee et fait foi).
+        # Sinon la vente en caisse LaBoutik attend la reponse, timeoute a 5s
+        # (read timeout de create_sub) et derive : souscription creee cote Fedow
+        # mais aucune vente enregistree cote LaBoutik.
+        # Le timeout borne l'attente sous les 5s de LaBoutik ; le try/except evite
+        # qu'un Lespass lent ou injoignable ne casse la souscription.
+        # (Regression 18d73ed : le timeout=1 avait ete retire ici.)
+        # / Best-effort webhook: must never block nor fail the committed Fedow transaction.
+        try:
+            reponse_webhook = requests.get(
+                f"https://{url}/fwh/membership/{instance.uuid}",
+                verify=bool(not settings.DEBUG),
+                timeout=(1, 2))
+            # Un 4xx/5xx de Lespass (500, 404 route/tenant absent) ne leve pas tout seul :
+            # on force l'erreur pour rendre l'echec de propagation visible dans Sentry.
+            # Le nominal Lespass (200/201/208) est en 2xx -> pas d'impact.
+            # / Force error on 4xx/5xx so propagation failures surface in Sentry.
+            reponse_webhook.raise_for_status()
+        except requests.RequestException:
+            # Adhesion NON propagee a Lespass (qui est la source de verite de l'adhesion).
+            # logger.exception attache la stacktrace -> event Sentry complet (event_level=ERROR).
+            # Rattrapage manuel : rejouer le GET ci-dessous (handler idempotent, 208 si deja la).
+            # / Membership NOT propagated to Lespass (source of truth). Manual replay of the GET.
+            logger.exception(
+                f"transaction_webhook_new_membership : webhook Lespass ECHEC pour la "
+                f"transaction {instance.uuid} — adhesion NON propagee a Lespass. "
+                f"Rattrapage : GET https://{url}/fwh/membership/{instance.uuid}")
 
 
 @receiver(post_save, sender=Asset)
