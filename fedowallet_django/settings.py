@@ -37,10 +37,10 @@ DEBUG = os.environ.get('DEBUG') == 'True' or os.environ.get('DEBUG') == '1'
 TEST = os.environ.get('TEST') == 'True' or os.environ.get('TEST') == '1'
 
 ALLOWED_HOSTS = [os.environ['DOMAIN'], ]
+ALLOWED_HOSTS.append(f"fedow.{os.environ['DOMAIN']}")
 CSRF_TRUSTED_ORIGINS = [f"https://{os.environ['DOMAIN']}", ]
 if DEBUG:
     ALLOWED_HOSTS.append('127.0.0.1')
-    ALLOWED_HOSTS.append(f"fedow.{os.environ['DOMAIN']}")
     CSRF_TRUSTED_ORIGINS.append(f"https://fedow.{os.environ['DOMAIN']}")
 
 # Sentry
