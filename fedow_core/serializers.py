@@ -241,7 +241,16 @@ class CardRefundOrVoidValidator(serializers.Serializer):
         if attrs.get('action') == Transaction.VOID:
             logger.info('action VOID !')
             self.user_card.user = None
-            self.user_card.primary_places.clear()
+            # On retire le lien primaire du SEUL lieu qui signe la requete.
+            # Card.primary_places est un ManyToMany : la meme carte physique peut
+            # ouvrir la caisse de plusieurs lieux de la federation. Un .clear()
+            # ici couperait aussi les autres lieux, qui n'ont rien demande : leur
+            # LaBoutik garderait sa CarteMaitresse en base locale et toutes leurs
+            # transactions seraient ensuite refusees par « Carte primaire non valide ».
+            # / Remove the primary link of the ONLY place signing the request. A
+            #   .clear() would also cut the other places of the federation, which
+            #   asked for nothing.
+            self.user_card.primary_places.remove(self.place)
             self.user_card.wallet_ephemere = None
             self.user_card.save()
 
@@ -1164,27 +1173,59 @@ class TransactionW2W(serializers.Serializer):
             raise serializers.ValidationError("Amount cannot be negative")
         return value
 
-    def validate_primary_card(self, value):
-        try:
-            request = self.context.get('request')
-            self.place: Place = getattr(request, 'place', None)
-            if self.place not in value.primary_places.all():
-                raise serializers.ValidationError("Carte primaire non valide")
-            return value
-        except Exception as e:
-            logger.error(f"TransactionW2W validate_primary_card {e}")
+    def _verifie_carte_primaire_du_lieu(self, carte: Card, nom_du_champ: str) -> Card:
+        """
+        Verifie que la carte est declaree primaire pour le lieu qui signe la requete.
+        / Checks the card is registered as primary for the place signing the request.
+
+        LOCALISATION : fedow_core/serializers.py
+
+        Une carte primaire est celle qui ouvre la caisse d'un lieu. Le lien vit
+        dans le ManyToMany Card.primary_places : une meme carte physique peut etre
+        primaire sur plusieurs lieux de la federation a la fois.
+
+        Le message renvoye au client reste volontairement vague. Le log serveur,
+        lui, doit tout donner : le tag reel, le lieu demandeur et les lieux
+        reellement enregistres. Sans ces trois informations, l'erreur est
+        indiagnosticable a distance — LaBoutik valide sa carte primaire sur sa
+        propre table CarteMaitresse, jamais aupres de Fedow, donc une carte peut
+        passer d'un cote et etre refusee de l'autre.
+
+        :param carte: la carte primaire envoyee par le serveur LaBoutik
+        :param nom_du_champ: nom du champ valide, pour retrouver la ligne dans les logs
+        :return: la carte, si elle est bien primaire pour ce lieu
+        """
+        request = self.context.get('request')
+        self.place: Place = getattr(request, 'place', None)
+
+        # Sans lieu signataire, on ne peut rien verifier du tout.
+        # / Without a signing place, nothing can be checked at all.
+        if not self.place:
+            logger.error(
+                f"{nom_du_champ} : aucun lieu sur la requete "
+                f"(carte {getattr(carte, 'first_tag_id', 'inconnue')})"
+            )
             raise serializers.ValidationError("Carte primaire non valide")
 
-    def validate_primary_card_fisrtTagId(self, value: Card):
-        try:
-            request = self.context.get('request')
-            self.place: Place = getattr(request, 'place', None)
-            if self.place not in value.primary_places.all():
-                raise serializers.ValidationError("Carte primaire non valide")
-            return value
-        except Exception as e:
-            logger.error(f"TransactionW2W validate_primary_card_fisrtTagId {e}")
+        lieux_primaires = list(carte.primary_places.all())
+        if self.place not in lieux_primaires:
+            noms_des_lieux_primaires = [lieu.name for lieu in lieux_primaires]
+            logger.error(
+                f"{nom_du_champ} : carte {carte.first_tag_id} "
+                f"(n° {carte.number_printed}, origine {carte.origin.place.name}) "
+                f"non primaire pour le lieu demandeur « {self.place.name} ». "
+                f"Lieux primaires enregistres : "
+                f"{noms_des_lieux_primaires if noms_des_lieux_primaires else 'AUCUN'}"
+            )
             raise serializers.ValidationError("Carte primaire non valide")
+
+        return carte
+
+    def validate_primary_card(self, value: Card):
+        return self._verifie_carte_primaire_du_lieu(value, 'validate_primary_card')
+
+    def validate_primary_card_fisrtTagId(self, value: Card):
+        return self._verifie_carte_primaire_du_lieu(value, 'validate_primary_card_fisrtTagId')
 
     def get_action(self, attrs):
         # Quel type de transaction ?

@@ -5,6 +5,42 @@ Toutes les évolutions notables du projet. Format bilingue FR/EN, le plus récen
 
 ---
 
+## Carte primaire multi-lieux : le VOID d'un lieu ne coupe plus les autres — 2026-07-22
+
+**Quoi / What:** `Card.primary_places` est un ManyToMany : une même carte physique
+peut ouvrir la caisse de plusieurs lieux de la fédération. L'action **VOID**
+(`CardRefundOrVoidValidator`) faisait un `primary_places.clear()`, ce qui coupait
+le lien primaire de **tous** les lieux, y compris ceux qui n'avaient rien demandé.
+Remplacé par `remove(self.place)` : un lieu ne modifie plus que sa propre ligne.
+Le validateur `TransactionW2W` loggue désormais le tag de la carte, le lieu
+demandeur et les lieux primaires réellement enregistrés.
+/ VOID used to `clear()` the whole `primary_places` M2M, cutting every other place
+of the federation. Now scoped to the requesting place with `remove(self.place)`.
+`TransactionW2W` now logs the card tag, the requesting place and the actual
+registered primary places.
+
+**Why:** Erreur récurrente en production `{'primary_card_fisrtTagId':
+'Carte primaire non valide'}` alors que la carte passe côté LaBoutik. LaBoutik
+valide sa carte primaire sur sa propre table `CarteMaitresse` et ne re-vérifie
+jamais auprès de Fedow : une fois le lien coupé par le VOID d'un autre lieu, sa
+caisse continue d'accepter la carte mais **toutes** ses transactions fédérées
+sont refusées. Le message d'erreur, lui, ne donnait ni le tag ni le lieu, ce qui
+rendait la panne indiagnosticable à distance.
+
+**Non modifié / Left as is:** `lost_my_card_by_signature` garde son `clear()`
+global. Une carte déclarée perdue par son porteur ne doit plus ouvrir aucune
+caisse, nulle part — et ce endpoint s'authentifie par signature de wallet, sans
+lieu signataire.
+
+### Fichiers modifiés / Modified files
+| Fichier / File | Changement / Change |
+|---|---|
+| `fedow_core/serializers.py` | `CardRefundOrVoidValidator.validate` : `primary_places.clear()` → `remove(self.place)`. `TransactionW2W` : `validate_primary_card` / `validate_primary_card_fisrtTagId` délèguent à `_verifie_carte_primaire_du_lieu`, qui loggue le tag, le lieu demandeur et les lieux primaires, et ne masque plus le cas « aucun lieu sur la requête » |
+| `fedow_core/tests/test_void_primary_card_multi_place.py` | **Nouveau.** Une carte primaire sur deux lieux, VOID depuis le lieu 1 : le lieu 1 perd son lien, le lieu 2 le conserve |
+
+### Migration
+- **Migration nécessaire / Migration required:** Non / No
+
 ## Fix recharges cassées par stripe 15 + tests de non-régression StripeObject — 2026-06-11
 
 **Quoi / What:** Depuis stripe 12, `StripeObject` n'hérite plus de `dict` : la
