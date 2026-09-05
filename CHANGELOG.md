@@ -5,6 +5,96 @@ Toutes les évolutions notables du projet. Format bilingue FR/EN, le plus récen
 
 ---
 
+## Recharges perdues sous concurrence : appariement CREATION/REFILL — 2026-09-04
+
+**Quoi / What:** `Transaction.save()` validait une recharge avec
+`assert self.previous_transaction.action == Transaction.CREATION`, où
+`previous_transaction` est la **dernière transaction de l'asset entier**, lue sans
+verrou. Remplacé par `_verifie_creation_monetaire_associee()`, qui vérifie le vrai
+invariant métier — *il existe une création monétaire adossée à CE refill* — par
+appariement explicite (attribut `creation_associee` posé par les serializers),
+puis par `checkout_stripe`, puis par un filet historique. La paire CREATION+REFILL
+de `TransactionW2W` est désormais **atomique**.
+/ The refill guard checked the asset's last transaction instead of the mint
+actually backing this refill. Replaced by explicit pairing; the mint+refill pair
+in `TransactionW2W` is now atomic.
+
+**Why:** Une recharge écrit `CREATION` puis `REFILL` sur un asset partagé par tout
+le réseau. Avec 5 workers gunicorn sur SQLite, deux recharges simultanées
+s'entrelacent — `CRE_A, CRE_B, REF_A, REF_B` — et `REF_B` voyait `REF_A` comme
+précédent. L'`AssertionError` remontait hors de `is_valid()` (DRF n'attrape que
+`ValidationError`), la vue renvoyait 500, et **la CREATION restait committée faute
+d'atomicité** : monnaie créée, jamais transférée, blocage définitif. Les retries
+Stripe butaient ensuite sur l'anti-rejeu et repartaient en 500 pendant 3 jours.
+Incident des 28-29/08/2026 : **24 recharges payées jamais créditées, 381,00 €**
+immobilisés sur le wallet primaire (410,00 € avec 2 cas d'août 2025 restés
+invisibles). Issues Sentry `FEDOW-DJANGO-4M` (24 événements) et `4N` / `4P`
+(118 + 102 retries).
+
+**Effet de bord à connaître / Known side effect:** Django 4.2 ouvre `atomic()` en
+`BEGIN DEFERRED` : le verrou d'écriture n'est pris qu'à la première écriture, et
+SQLite peut alors renvoyer `SQLITE_BUSY_SNAPSHOT` **immédiatement**, sans respecter
+le `busy_timeout` (« database is locked »). Le bloc prend donc le verrou dès son
+entrée par une écriture neutre (`Token.objects.filter(...).update(value=F("value"))`),
+ce qui fait attendre les workers concurrents au lieu de les faire échouer.
+`transaction_mode="IMMEDIATE"` n'existe qu'à partir de Django 5.1.
+
+**Index indispensable / Required index:** rendre la paire atomique déplace les
+lectures de `_previous_asset_transaction()` **dans** le verrou d'écriture, qui est
+global et unique sous SQLite. Or cette requête (`WHERE asset_id=? ORDER BY datetime`)
+n'avait aucun index et déclenchait un `USE TEMP B-TREE` sur les 78 931 transactions
+de l'asset fédéré. Mesuré sur les données de production : **159 ms par appel, soit
+318 ms de verrou par recharge**. L'index `(asset, datetime)` ramène cela à **1,3 ms,
+soit 2,5 ms par recharge — 125 fois moins**. Il accélère aussi chaque vente, qui fait
+la même lecture. Sans lui, l'atomicité aurait sérialisé tout le trafic d'un soir de
+festival derrière un verrou d'un tiers de seconde par recharge.
+/ Making the pair atomic moves this read inside SQLite's single global write lock;
+the index cuts it from 159 ms to 1.3 ms per call on production data.
+
+**Retry borné / Bounded retry:** 3 tentatives (100 puis 200 ms) sur
+`OperationalError … locked`, **uniquement sur le chemin REFILL**. Ailleurs
+(`SALE`, `SUBSCRIBE`, `QRCODE_SALE`), `Transaction.save()` committe les deux soldes
+en autocommit *avant* d'insérer la transaction : rejouer y débiterait le client une
+seconde fois, en silence. On ne rejoue que ce qu'on sait annuler. Le retry s'arrête
+aussi au bout de 4 s cumulées, car LaBoutik coupe à 5 s (`timeout=(3, 5)`) et
+qu'une réussite tardive produirait un doublon — ni la vente ni la recharge locale
+n'ont de clé d'idempotence.
+/ Retries only the atomic refill path, and stops after 4 s since LaBoutik gives up
+at 5 s and a late success would duplicate the operation.
+
+**Limite du lot B / Lot B caveat:** la commande suppose un remboursement Stripe
+**intégral**. Un remboursement partiel demanderait d'ajuster le montant du `REFUND`.
+
+**Non modifié / Left as is:** Le **fork de chaîne** décrit au §6 de
+`TECH_DEV/DRIFT/README.md` demeure : après entrelacement, `REF_B` pointe toujours
+`REF_A` comme précédent. On passe de « argent perdu + fork » à « fork seul ». La
+sérialisation de l'attribution de `previous_transaction` par asset reste à faire —
+`select_for_update()` étant un no-op sur SQLite, elle suppose un verrou fichier ou
+le passage à PostgreSQL. Le décorateur `@transaction.atomic` sur l'ensemble de
+`TransactionW2W.validate()` reste volontairement désactivé : le même `validate()`
+traite les `SUBSCRIBE`, dont le signal `post_save` appelle Lespass en synchrone.
+
+### Fichiers modifiés / Modified files
+
+| Fichier | Changement |
+|---|---|
+| `fedow_core/models.py` | `_verifie_creation_monetaire_associee()` remplace l'assert du REFILL ; index `(asset, datetime)` |
+| `fedow_core/migrations/0026_transaction_transaction_asset_datetime.py` | **Nouveau.** L'index ci-dessus |
+| `fedow_core/serializers.py` | `creation_associee` posée dans `TransactionW2W` et `TransactionRefilFromLespassSerializer` ; paire atomique |
+| `fedow_core/management/commands/rattrapage_recharges_perdues.py` | **Nouveau.** Termine les recharges restées à mi-chemin (dry-run par défaut) |
+| `fedow_core/tests/test_refill_creation_pairing.py` | **Nouveau.** 4 tests, dont la séquence entrelacée |
+| `fedow_core/tests/test_rattrapage_recharges_perdues_command.py` | **Nouveau.** 8 tests sur les 3 lots |
+
+### Migration
+
+- **Migration nécessaire / Migration required:** Oui / Yes —
+  `0026_transaction_transaction_asset_datetime`, création d'index seule. Aucun champ
+  ajouté, donc **aucun hash invalidé** ; création mesurée à 0,3 s sur la base de
+  production. `creation_associee` reste un attribut d'instance non persisté : une FK
+  serait entrée dans `dict_for_hash()` et aurait invalidé tous les hash existants.
+
+---
+
 ## Carte primaire multi-lieux : le VOID d'un lieu ne coupe plus les autres — 2026-07-22
 
 **Quoi / What:** `Card.primary_places` est un ManyToMany : une même carte physique

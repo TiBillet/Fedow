@@ -1,7 +1,8 @@
 import logging
 from collections import OrderedDict
+from contextlib import nullcontext
 from random import choices
-from time import sleep
+from time import monotonic, sleep
 from uuid import UUID
 
 from django.db import transaction
@@ -10,8 +11,9 @@ import stripe
 from cryptography.hazmat.primitives.asymmetric import rsa
 from django.conf import settings
 from django.core.cache import cache
-from django.db.models import Sum
+from django.db.models import F, Sum
 from django.db.transaction import atomic
+from django.db.utils import OperationalError
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.generics import get_object_or_404
@@ -21,6 +23,23 @@ from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction, Organ
 from fedow_core.utils import get_request_ip, get_public_key, dict_to_b64, verify_signature, data_to_b64
 
 logger = logging.getLogger(__name__)
+
+# SQLite n'accepte qu'un seul writer a la fois : sous forte affluence, une ecriture
+# peut trouver le verrou occupe au-dela du busy_timeout (5 s). Trois tentatives
+# espacees de 100 ms puis 200 ms suffisent largement au regard du trafic mesure
+# (pic reel a 1,5 transaction/seconde sur le festival 2026).
+# / SQLite allows a single writer; three short attempts cover measured peak traffic.
+NOMBRE_DE_TENTATIVES_SI_BASE_VERROUILLEE = 3
+DELAI_ENTRE_TENTATIVES_EN_SECONDES = 0.1
+# Budget total, borne DURE. La caisse LaBoutik coupe a 5 s (timeout=(3, 5) dans
+# son fedow_api). Une tentative qui aboutirait APRES ce delai serait pire que
+# l'echec : le benevole a deja vu l'erreur et refait l'operation, et ni la vente
+# ni la recharge locale n'ont de cle d'idempotence => doublon. Chaque tentative
+# pouvant elle-meme attendre jusqu'au busy_timeout (5 s), on verifie le temps
+# ecoule avant d'en relancer une.
+# / Hard budget: LaBoutik gives up at 5 s, and a late success would cause a
+# duplicate since local sales and refills have no idempotency key.
+BUDGET_MAXIMAL_DU_RETRY_EN_SECONDES = 4.0
 
 
 class HandshakeValidator(serializers.Serializer):
@@ -991,7 +1010,14 @@ class TransactionRefilFromLespassSerializer(serializers.Serializer):
             "card": None,
             "subscription_start_datetime": None
         }
-        transaction = Transaction.objects.create(**transaction_dict)
+        transaction = Transaction(**transaction_dict)
+        # Meme raison qu'en TransactionW2W : on adosse explicitement le refill a sa
+        # creation monetaire. Ici checkout_stripe peut valoir None (reward Lespass
+        # sur ticket scanne), donc l'appariement par checkout ne suffirait pas.
+        # / Same as in TransactionW2W: hand the model the exact mint. Here
+        # checkout_stripe may be None (Lespass reward), so checkout matching is moot.
+        transaction.creation_associee = crea_transaction
+        transaction.save(force_insert=True)
 
         if not transaction.verify_hash():
             logger.error(
@@ -1376,52 +1402,130 @@ class TransactionW2W(serializers.Serializer):
 
         ### ALL CHECK OK ###
 
-        # Si c'est un refill, on génère la monnaie avant :
-        if action == Transaction.REFILL:
+        # Retry sur "database is locked". SQLite n'a qu'UN writer : sous forte
+        # affluence, une ecriture peut trouver le verrou occupe au-dela du
+        # busy_timeout (5 s). Rejouer est sans danger, et c'est precisement ce que
+        # nous offre l'atomicite : le rollback est complet, donc au moment ou l'on
+        # retente il n'existe ni doublon ni CREATION orpheline.
+        # Sans ce retry, la caisse LaBoutik renvoie l'erreur au benevole, qui doit
+        # refaire l'operation devant le client : refill_wallet leve NotAcceptable
+        # et ne retente jamais d'elle-meme. Le webhook Stripe, lui, se rattrape par
+        # ses propres relances ; la caisse est donc le seul canal sans filet.
+        # / Retry on "database is locked": the rollback is complete, so replaying is
+        # safe. LaBoutik never retries by itself, unlike the Stripe webhook.
+        # ON NE REJOUE QUE CE QU'ON SAIT ANNULER. Seul le REFILL est atomique.
+        # Partout ailleurs (SALE, SUBSCRIBE, QRCODE_SALE...), Transaction.save()
+        # committe les soldes en autocommit AVANT d'inserer la transaction
+        # (models.py : deux UPDATE de Token, puis super().save()). Un "locked" sur
+        # l'INSERT laisse donc le debit du client deja passe : rejouer le
+        # debiterait une SECONDE fois, en silence. Ces actions remontent l'erreur
+        # telles quelles, comme avant.
+        # / Only the refill path is atomic and therefore replayable. Elsewhere the
+        # balances are already committed when the insert fails: replaying would
+        # silently double-charge the customer.
+        peut_etre_rejoue = action == Transaction.REFILL
+        debut_des_tentatives = monotonic()
 
-            crea_transac_dict = {
+        for tentative in range(1, NOMBRE_DE_TENTATIVES_SI_BASE_VERROUILLEE + 1):
+            try:
+                transaction = self._ecrire_la_paire(request, action)
+                break
+            except OperationalError as erreur:
+                derniere_tentative = tentative == NOMBRE_DE_TENTATIVES_SI_BASE_VERROUILLEE
+                budget_epuise = (monotonic() - debut_des_tentatives
+                                 > BUDGET_MAXIMAL_DU_RETRY_EN_SECONDES)
+                if (not peut_etre_rejoue
+                        or "locked" not in str(erreur).lower()
+                        or derniere_tentative
+                        or budget_epuise):
+                    raise
+                logger.warning(
+                    f"{timezone.localtime()} base verrouillee, tentative "
+                    f"{tentative}/{NOMBRE_DE_TENTATIVES_SI_BASE_VERROUILLEE} : {erreur}")
+                sleep(DELAI_ENTRE_TENTATIVES_EN_SECONDES * tentative)
+
+        self.transaction = transaction
+        return attrs
+
+    def _ecrire_la_paire(self, request, action):
+        """
+        Ecrit la CREATION puis le REFILL, en tout-ou-rien.
+        / Writes the mint then the refill, all-or-nothing.
+
+        C'est l'absence d'atomicite ici qui a laisse 24 CREATION orphelines les
+        28-29/08/2026 (monnaie creee, jamais transferee - cf TECH_DEV/DRIFT).
+        On n'englobe QUE cette paire : un SUBSCRIBE passe par le meme validate()
+        et son signal post_save appelle Lespass en synchrone (jusqu'a 3 s) ; hors
+        de question de tenir le verrou d'ecriture SQLite pendant ce temps.
+        Rejouable tel quel : appele en boucle par validate() si la base est verrouillee.
+        / Only the mint+refill pair is wrapped, and the method is replayable as is.
+        """
+        contexte_atomique = atomic() if action == Transaction.REFILL else nullcontext()
+        with contexte_atomique:
+            crea_transaction = None
+
+            if action == Transaction.REFILL:
+                # Django 4.2 ouvre la transaction en BEGIN DEFERRED : le verrou d'ecriture
+                # n'est pris qu'a la premiere ecriture. Si un autre worker committe entre
+                # nos premieres lectures et notre premiere ecriture, SQLite renvoie
+                # SQLITE_BUSY_SNAPSHOT IMMEDIATEMENT, sans respecter le busy_timeout.
+                # On prend donc le verrou des l'entree du bloc par une ecriture neutre :
+                # les workers concurrents attendent au lieu d'echouer aussitot.
+                # (transaction_mode="IMMEDIATE" n'existe qu'a partir de Django 5.1)
+                # / Grab the write lock upfront: BEGIN DEFERRED + SQLITE_BUSY_SNAPSHOT
+                # would otherwise bypass busy_timeout entirely.
+                Token.objects.filter(wallet=self.sender, asset=self.asset).update(value=F("value"))
+
+                # Si c'est un refill, on génère la monnaie avant :
+                crea_transac_dict = {
+                    "ip": get_request_ip(request),
+                    "sender": self.sender,
+                    "receiver": self.sender,
+                    "asset": self.asset,
+                    "comment": self.comment,
+                    "metadata": self.metadata,
+                    "checkout_stripe": self.checkout_stripe,
+                    "amount": self.amount,
+                    "action": Transaction.CREATION,
+                    "primary_card": self.primary_card,
+                    "card": self.user_card,
+                }
+                crea_transaction = Transaction.objects.create(**crea_transac_dict)
+
+                if not crea_transaction.verify_hash():
+                    logger.error(
+                        f"{timezone.localtime()} ERROR NewTransactionWallet2WalletValidator : transaction hash is not valid on CREATION")
+                    raise serializers.ValidationError("Transaction hash is not valid")
+
+            transaction_dict = {
                 "ip": get_request_ip(request),
                 "sender": self.sender,
-                "receiver": self.sender,
+                "receiver": self.receiver,
                 "asset": self.asset,
                 "comment": self.comment,
                 "metadata": self.metadata,
                 "checkout_stripe": self.checkout_stripe,
                 "amount": self.amount,
-                "action": Transaction.CREATION,
+                "action": action,
                 "primary_card": self.primary_card,
                 "card": self.user_card,
+                "subscription_start_datetime": self.subscription_start_datetime
             }
-            crea_transaction = Transaction.objects.create(**crea_transac_dict)
+            transaction = Transaction(**transaction_dict)
+            if crea_transaction is not None:
+                # On passe explicitement la creation monetaire qui adosse cette
+                # recharge : le modele ne peut plus la deviner en lisant la derniere
+                # transaction de l'asset, qui n'est pas la bonne sous concurrence.
+                # / Hand the model the exact mint backing this refill.
+                transaction.creation_associee = crea_transaction
+            transaction.save(force_insert=True)
 
-            if not crea_transaction.verify_hash():
+            if not transaction.verify_hash():
                 logger.error(
-                    f"{timezone.localtime()} ERROR NewTransactionWallet2WalletValidator : transaction hash is not valid on CREATION")
+                    f"{timezone.localtime()} ERROR NewTransactionWallet2WalletValidator : transaction hash is not valid")
                 raise serializers.ValidationError("Transaction hash is not valid")
 
-        transaction_dict = {
-            "ip": get_request_ip(request),
-            "sender": self.sender,
-            "receiver": self.receiver,
-            "asset": self.asset,
-            "comment": self.comment,
-            "metadata": self.metadata,
-            "checkout_stripe": self.checkout_stripe,
-            "amount": self.amount,
-            "action": action,
-            "primary_card": self.primary_card,
-            "card": self.user_card,
-            "subscription_start_datetime": self.subscription_start_datetime
-        }
-        transaction = Transaction.objects.create(**transaction_dict)
-
-        if not transaction.verify_hash():
-            logger.error(
-                f"{timezone.localtime()} ERROR NewTransactionWallet2WalletValidator : transaction hash is not valid")
-            raise serializers.ValidationError("Transaction hash is not valid")
-
-        self.transaction = transaction
-        return attrs
+        return transaction
 
 
 class CachedTransactionSerializer(serializers.ModelSerializer):

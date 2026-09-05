@@ -548,6 +548,53 @@ class Transaction(models.Model):
         # Order by date. The newest is the last wrote in database.
         return self.asset.transactions.all().order_by('datetime').last() or self
 
+    def _verifie_creation_monetaire_associee(self):
+        """
+        INVARIANT METIER : une recharge transfere une monnaie qui a ete creee.
+        Ce n'est PAS "la derniere transaction de tout l'asset est une creation".
+
+        L'ancien assert lisait _previous_asset_transaction(), c'est a dire la
+        derniere transaction de l'ASSET ENTIER, sans verrou. Avec 5 workers
+        gunicorn, deux recharges s'entrelacent CRE_A, CRE_B, REF_A, REF_B :
+        REF_B voyait REF_A comme precedent et cassait. Sa CREATION restait
+        committee => monnaie creee jamais transferee. 24 cas / 381,00 EUR
+        bloques les 28-29/08/2026 (cf TECH_DEV/DRIFT/README.md).
+        / Business invariant: a refill moves money that HAS been minted, not
+        "the asset's last transaction is a mint", which concurrency breaks.
+        """
+        # (a) Le serializer vient de creer la paire CREATION/REFILL et nous passe
+        #     la creation en clair : appariement certain, aucune requete.
+        #     / Serializer just minted the pair and hands us the mint: exact match.
+        creation_associee = getattr(self, 'creation_associee', None)
+        if creation_associee is not None:
+            assert creation_associee.action == Transaction.CREATION, \
+                "creation_associee must be a creation money."
+            assert creation_associee.asset_id == self.asset_id, \
+                "creation_associee must be on the same asset."
+            assert creation_associee.receiver_id == self.sender_id, \
+                "creation_associee must have credited the wallet sending this refill."
+            assert creation_associee.amount >= self.amount, \
+                "creation_associee amount must cover the refill."
+            return
+
+        creations_de_l_asset = self.asset.transactions.filter(action=Transaction.CREATION)
+
+        # (b) Recharge Stripe rejouee hors serializer (commande de rattrapage) :
+        #     la creation porte le meme checkout. Appariement exact, insensible a
+        #     l'entrelacement de la chaine, donc rejouable des mois plus tard.
+        #     / Stripe path replayed outside the serializer: the mint carries the
+        #     same checkout. Exact match, immune to chain interleaving.
+        if self.checkout_stripe_id and creations_de_l_asset.filter(
+                checkout_stripe_id=self.checkout_stripe_id).exists():
+            return
+
+        # (c) Filet historique : il doit exister au moins une creation monetaire sur
+        #     cet asset. Meme garantie qu'avant, moins le couplage a l'ordre. Le vrai
+        #     garde-fou monetaire reste "token_sender.value >= amount", juste apres.
+        #     / Historical safety net; the real money guard is the sender balance.
+        assert creations_de_l_asset.exists(), \
+            "Previous transaction of Refill must be a creation money."
+
     def create_hash(self):
         dict_for_hash = self.dict_for_hash()
         encoded_block = json.dumps(dict_for_hash, sort_keys=True).encode('utf-8')
@@ -633,8 +680,9 @@ class Transaction(models.Model):
 
         # Validator 2 : IF REFILL
         if self.action == Transaction.REFILL:
-            # On vérifie que la transaction précédente soit bien une création monétaire
-            assert self.previous_transaction.action == Transaction.CREATION, "Previous transaction of Refill must be a creation money."
+            # On vérifie qu'une création monétaire adosse CETTE recharge.
+            # / Check that a money creation backs THIS refill.
+            self._verifie_creation_monetaire_associee()
 
             # Nous avons besoin que le sender possède assez de token
             if not token_sender.value >= self.amount:
@@ -793,6 +841,19 @@ class Transaction(models.Model):
 
     class Meta:
         ordering = ['-datetime']
+        indexes = [
+            # _previous_asset_transaction() fait "WHERE asset_id=? ORDER BY datetime"
+            # a CHAQUE ecriture (2 fois par recharge, 1 fois par vente). Sans cet
+            # index, SQLite trie l'integralite des transactions de l'asset : mesure
+            # sur la base de prod (78 931 lignes sur l'asset federe) = 95 ms par
+            # appel, contre 0,003 ms avec. C'est decisif depuis que la paire
+            # CREATION+REFILL est atomique : ce temps est passe DANS le verrou
+            # d'ecriture SQLite, qui est global et unique.
+            # / Without this index SQLite full-sorts the asset's transactions on
+            # every write: 95 ms vs 0.003 ms measured on production data.
+            models.Index(fields=['asset', 'datetime'],
+                         name='transaction_asset_datetime'),
+        ]
 
 
 # #
