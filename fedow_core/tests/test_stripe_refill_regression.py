@@ -950,3 +950,56 @@ class WebhookStripeEndToEndTest(FedowTestCase):
             asset=self.stripe_asset,
         )
         self.assertEqual(token_de_la_carte.value, montant_recu_en_centimes)
+
+    @patch('fedow_core.views.stripe.checkout.Session.retrieve')
+    def test_webhook_repond_208_si_deja_credite_meme_si_le_statut_n_est_pas_paid(
+            self, mock_session_retrieve):
+        """
+        Un checkout deja credite mais dont le statut n'est PAS PAID doit repondre
+        208, pas 500. / An already-credited checkout whose status is not PAID must
+        answer 208, never 500.
+
+        POURQUOI : le statut peut valoir REFUND (rembourse depuis), FROM_LESPASS,
+        ou avoir ete ecrase par une course POST/GET. Le webhook relancait alors la
+        validation, l'anti-rejeu levait ValidationError, et le "except Exception"
+        global renvoyait 500 : Stripe relancait pendant 3 jours (issues Sentry
+        FEDOW-DJANGO-4N et 4P, 118 + 102 evenements). Seule la presence du REFILL
+        prouve que l'argent est arrive.
+        """
+        checkout_en_base, signed_data, objet_stripe_reel = \
+            self._construire_checkout_paye(2000)
+        mock_session_retrieve.return_value = objet_stripe_reel
+
+        payload_stripe = {
+            'type': 'checkout.session.completed',
+            'data': {'object': {
+                'id': checkout_en_base.checkout_session_id_stripe,
+                'metadata': {'signed_data': signed_data},
+            }},
+        }
+
+        # 1er passage : la recharge est creditee normalement.
+        premiere_reponse = self._poster_webhook_signe(payload_stripe)
+        self.assertEqual(premiere_reponse.status_code, 200)
+        token_utilisateur = Token.objects.get(
+            wallet=self.wallet_utilisateur, asset=self.stripe_asset)
+        self.assertEqual(token_utilisateur.value, 2000)
+
+        # Le porteur se fait rembourser ensuite : le statut n'est plus PAID.
+        # / The holder is refunded afterwards: the status is no longer PAID.
+        checkout_en_base.refresh_from_db()
+        checkout_en_base.status = CheckoutStripe.REFUND
+        checkout_en_base.save(update_fields=['status'])
+
+        # Stripe relivre le meme event : doublon benin, on repond 208.
+        seconde_reponse = self._poster_webhook_signe(payload_stripe)
+        self.assertEqual(
+            seconde_reponse.status_code, 208,
+            "Un checkout deja credite doit repondre 208, sinon Stripe relance 3 jours")
+
+        # Et surtout : aucun double credit.
+        token_utilisateur.refresh_from_db()
+        self.assertEqual(token_utilisateur.value, 2000)
+        self.assertEqual(
+            Transaction.objects.filter(
+                checkout_stripe=checkout_en_base, action=Transaction.REFILL).count(), 1)

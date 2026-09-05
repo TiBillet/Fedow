@@ -1386,6 +1386,21 @@ def create_account_link_for_onboard(place: Place):
 """
 
 
+def _recharge_deja_creditee(checkout_db: CheckoutStripe) -> bool:
+    """
+    Le porteur a-t-il DEJA ete credite pour ce paiement ?
+    / Has the holder already been credited for this payment?
+
+    On se fie a la presence du REFILL, pas au statut du checkout : le statut peut
+    dire REFUND (rembourse depuis), FROM_LESPASS, ou avoir ete ecrase par une
+    course, alors que l'argent est bien arrive. C'est la seule preuve qui compte
+    pour decider si une nouvelle livraison Stripe est un doublon (208) ou une
+    vraie erreur a relancer (500).
+    """
+    return Transaction.objects.filter(
+        checkout_stripe=checkout_db, action=Transaction.REFILL).exists()
+
+
 # TODO: passer dans le StripeAPI
 @permission_classes([IsStripe])
 class WebhookStripe(APIView):
@@ -1449,12 +1464,35 @@ class WebhookStripe(APIView):
 
             if checkout_db.status != CheckoutStripe.PAID:
 
+                # Le statut n'est pas PAID, mais le porteur a-t-il DEJA ete credite ?
+                # Un checkout peut etre credite sans etre PAID : remboursement
+                # ulterieur (statut REFUND), flux Lespass, ou statut ecrase par une
+                # course POST/GET. Rejouer creerait un double credit ; repondre 500
+                # ferait relancer Stripe pendant 3 jours pour rien.
+                # / Already credited but not PAID: replaying would double-credit,
+                # answering 500 would make Stripe retry for three days.
+                if _recharge_deja_creditee(checkout_db):
+                    logger.info(
+                        f"WebhookStripe 208 recharge deja creditee, statut {checkout_db.status}")
+                    return Response("Déja traité", status=status.HTTP_208_ALREADY_REPORTED)
+
                 try:
                     checkout_db = StripeAPI.validate_stripe_checkout_and_make_transaction(
                         checkout_db, request)
                 except ValueError as e:
                     return Response(f"Error validate_stripe_checkout_and_make_transaction : {e}",
                                     status=status.HTTP_400_BAD_REQUEST)
+                except (ValidationError, IntegrityError) as e:
+                    # Anti-rejeu ou contrainte d'unicite : deux livraisons du meme
+                    # event se sont croisees. Si le porteur est credite, le doublon
+                    # a ete correctement empeche -> 208, Stripe cesse de relancer.
+                    # Sinon c'est une vraie erreur -> 500, et Stripe relance.
+                    # / Concurrent delivery: 208 only if we can prove the credit
+                    # landed, otherwise let it fail so Stripe retries.
+                    if _recharge_deja_creditee(checkout_db):
+                        logger.info(f"WebhookStripe 208 doublon empeche : {e}")
+                        return Response("Déja traité", status=status.HTTP_208_ALREADY_REPORTED)
+                    raise
                 except Exception as e:
                     raise e
 

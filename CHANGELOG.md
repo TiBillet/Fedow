@@ -51,6 +51,18 @@ festival derrière un verrou d'un tiers de seconde par recharge.
 / Making the pair atomic moves this read inside SQLite's single global write lock;
 the index cuts it from 159 ms to 1.3 ms per call on production data.
 
+**Réponses à Stripe / Stripe responses:** un checkout **déjà crédité** dont le
+statut n'est pas `PAID` (remboursé depuis, géré par Lespass, ou statut écrasé par
+une course POST/GET) relançait la validation, l'anti-rejeu levait `ValidationError`,
+et le `except Exception` global répondait **500** — Stripe relançait alors pendant
+3 jours (issues `FEDOW-DJANGO-4N` et `4P`, 118 + 102 événements, soit ~5 relances
+par recharge cassée). Le webhook répond désormais **208** dès qu'un `REFILL` existe
+pour ce checkout, et `ValidationError`/`IntegrityError` sont rattrapées : 208 si le
+crédit est prouvé, 500 sinon (vraie erreur, Stripe doit relancer). La présence du
+`REFILL` est le seul juge — le statut, lui, peut mentir.
+/ An already-credited checkout whose status is not PAID used to answer 500, making
+Stripe retry for three days. Now 208, judged on the REFILL's existence alone.
+
 **Retry borné / Bounded retry:** 3 tentatives (100 puis 200 ms) sur
 `OperationalError … locked`, **uniquement sur le chemin REFILL**. Ailleurs
 (`SALE`, `SUBSCRIBE`, `QRCODE_SALE`), `Transaction.save()` committe les deux soldes
@@ -80,7 +92,8 @@ traite les `SUBSCRIBE`, dont le signal `post_save` appelle Lespass en synchrone.
 |---|---|
 | `fedow_core/models.py` | `_verifie_creation_monetaire_associee()` remplace l'assert du REFILL ; index `(asset, datetime)` |
 | `fedow_core/migrations/0026_transaction_transaction_asset_datetime.py` | **Nouveau.** L'index ci-dessus |
-| `fedow_core/serializers.py` | `creation_associee` posée dans `TransactionW2W` et `TransactionRefilFromLespassSerializer` ; paire atomique |
+| `fedow_core/serializers.py` | `creation_associee` posée dans `TransactionW2W` et `TransactionRefilFromLespassSerializer` ; paire atomique ; retry borné |
+| `fedow_core/views.py` | `_recharge_deja_creditee()` : le webhook répond 208 au lieu de 500 sur un checkout déjà crédité |
 | `fedow_core/management/commands/rattrapage_recharges_perdues.py` | **Nouveau.** Termine les recharges restées à mi-chemin (dry-run par défaut) |
 | `fedow_core/tests/test_refill_creation_pairing.py` | **Nouveau.** 4 tests, dont la séquence entrelacée |
 | `fedow_core/tests/test_rattrapage_recharges_perdues_command.py` | **Nouveau.** 8 tests sur les 3 lots |
