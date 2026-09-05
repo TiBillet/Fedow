@@ -51,6 +51,21 @@ festival derrière un verrou d'un tiers de seconde par recharge.
 / Making the pair atomic moves this read inside SQLite's single global write lock;
 the index cuts it from 159 ms to 1.3 ms per call on production data.
 
+**Un seul crédit par paiement, garanti par la base / One credit per payment,
+enforced by the database:** contrainte `UniqueConstraint(checkout_stripe, action)`,
+**partielle** : elle ne couvre que `CRE` et `REF`, et seulement quand un checkout
+existe. La règle « un paiement Stripe = une création + un transfert » ne vivait
+jusqu'ici que dans un `.exists()` du serializer, vérifié **hors du verrou** — deux
+livraisons simultanées du même event pouvaient donc la franchir toutes les deux.
+Périmètre vérifié sur la base de production : les **159 128** transactions sans
+checkout (ventes, adhésions, fusions, corrections, QR codes) sont hors du filtre,
+et `RFD` / `BNK` restent libres bien qu'ils portent un checkout — un remboursement
+consomme déjà le sien (`refund_payment_intent` le passe en `REFUND`) et chaque
+virement crée le sien. **0 violation sur 201 419 lignes**, migration appliquée sans
+erreur sur une copie de la production.
+/ Deliberately partial unique constraint: mint/refill pair only, checkout-bearing
+rows only. Refunds, deposits and all checkout-less transactions are untouched.
+
 **Réponses à Stripe / Stripe responses:** un checkout **déjà crédité** dont le
 statut n'est pas `PAID` (remboursé depuis, géré par Lespass, ou statut écrasé par
 une course POST/GET) relançait la validation, l'anti-rejeu levait `ValidationError`,
@@ -74,6 +89,36 @@ n'ont de clé d'idempotence.
 / Retries only the atomic refill path, and stops after 4 s since LaBoutik gives up
 at 5 s and a late success would duplicate the operation.
 
+**Détection plutôt que prévention / Detection over prevention:** rendre la paire
+atomique a **supprimé une trace**. Avant, une panne en cours de recharge laissait une
+`CREATION` orpheline, que la commande de rattrapage savait voir ; désormais le
+rollback n'en laisse aucune. Deux chemins pourraient donc échouer sans rien laisser
+derrière eux : le TPE (checkout créé en `PAID` avant la transaction) et les recharges
+Lespass (checkout créé hors du `@atomic`). Ces deux scénarios ne se sont **jamais**
+produits — 0 sur 7 193 paiements TPE, 0 sur 388 recharges Lespass — et les corriger
+demanderait de modifier des chemins d'encaissement. On a donc remplacé la trace
+perdue par un **contrôle explicite** dans le rapport de la commande, qui signale tout
+checkout affirmant un paiement sans aucune transaction. Aucun chemin de paiement
+touché. Le contrôle inclut le statut **`ERROR`** — il n'est posé qu'après
+confirmation du paiement par Stripe, et c'était la signature de **18 des 26** cas de
+l'incident — et ne filtre pas sur `checkout_session_id_stripe`, sans quoi 56 % des
+checkouts Lespass (renouvellements portant un `invoice_stripe_id`) resteraient hors
+champ. Vérifié sur la production : **0 faux positif**.
+⚠️ Ce filet ne sert que si le dry-run est lancé régulièrement.
+/ Atomicity removed the orphan CREATION that used to reveal such crashes; replaced
+by an explicit check instead of rewriting payment paths for a never-observed case.
+
+**Anomalies visibles dans Sentry / Anomalies surface in Sentry:** la commande
+n'écrivait que sur `stdout` : ses anomalies n'atteignaient jamais Sentry. Elle a
+désormais un logger de module, et chaque anomalie part en `logger.error`
+(événement Sentry) ou `logger.warning` (fil d'Ariane) : checkout payé sans
+transaction, destinataire non résolu, cas écarté car déjà remboursé, échec
+d'écriture. Côté webhook, les retours **400** partaient sans aucune trace et sont
+désormais logués, et un doublon rattrapé par la contrainte est passé de `info` à
+`warning`. Deux tests vérifient ces logs et échouent si l'un disparaît.
+/ The command only wrote to stdout, so nothing reached Sentry. Every anomaly is now
+logged, and two tests fail if a log disappears.
+
 **Limite du lot B / Lot B caveat:** la commande suppose un remboursement Stripe
 **intégral**. Un remboursement partiel demanderait d'ajuster le montant du `REFUND`.
 
@@ -92,6 +137,7 @@ traite les `SUBSCRIBE`, dont le signal `post_save` appelle Lespass en synchrone.
 |---|---|
 | `fedow_core/models.py` | `_verifie_creation_monetaire_associee()` remplace l'assert du REFILL ; index `(asset, datetime)` |
 | `fedow_core/migrations/0026_transaction_transaction_asset_datetime.py` | **Nouveau.** L'index ci-dessus |
+| `fedow_core/migrations/0027_transaction_une_seule_creation_et_un_seul_refill_par_checkout.py` | **Nouveau.** La contrainte d'unicité partielle |
 | `fedow_core/serializers.py` | `creation_associee` posée dans `TransactionW2W` et `TransactionRefilFromLespassSerializer` ; paire atomique ; retry borné |
 | `fedow_core/views.py` | `_recharge_deja_creditee()` : le webhook répond 208 au lieu de 500 sur un checkout déjà crédité |
 | `fedow_core/management/commands/rattrapage_recharges_perdues.py` | **Nouveau.** Termine les recharges restées à mi-chemin (dry-run par défaut) |
@@ -101,9 +147,10 @@ traite les `SUBSCRIBE`, dont le signal `post_save` appelle Lespass en synchrone.
 ### Migration
 
 - **Migration nécessaire / Migration required:** Oui / Yes —
-  `0026_transaction_transaction_asset_datetime`, création d'index seule. Aucun champ
-  ajouté, donc **aucun hash invalidé** ; création mesurée à 0,3 s sur la base de
-  production. `creation_associee` reste un attribut d'instance non persisté : une FK
+  `0026` (index `(asset, datetime)`) et `0027` (contrainte d'unicité partielle).
+  Index et contrainte uniquement : **aucun champ ajouté, donc aucun hash invalidé**.
+  Les deux migrations appliquées sans erreur sur une copie de la production
+  (201 419 transactions), en quelques secondes. `creation_associee` reste un attribut d'instance non persisté : une FK
   serait entrée dans `dict_for_hash()` et aurait invalidé tous les hash existants.
 
 ---

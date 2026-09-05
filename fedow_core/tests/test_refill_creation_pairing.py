@@ -38,6 +38,7 @@ from unittest.mock import patch
 from uuid import uuid4
 
 from django.core.signing import Signer
+from django.db import IntegrityError
 from django.db.utils import OperationalError
 from rest_framework.test import APIRequestFactory
 from stripe import StripeObject
@@ -506,3 +507,89 @@ class RetryLimiteAuCheminAtomiqueTest(FedowTestCase):
         self.assertEqual(
             tentatives['nombre'], 1,
             "Une vente ne doit JAMAIS etre rejouee : son debit est deja committe")
+
+
+class ContrainteUnCreditParCheckoutTest(FedowTestCase):
+    """
+    La contrainte d'unicite (checkout_stripe, action) et son perimetre.
+    / The (checkout_stripe, action) unique constraint and its scope.
+
+    Elle rend structurellement impossible le double credit d'un meme paiement
+    Stripe, la ou la regle ne vivait que dans un .exists() verifie hors verrou.
+    Elle est VOLONTAIREMENT partielle : tout ce qui n'est pas une CREATION ou un
+    REFILL adosse a un checkout doit rester parfaitement libre.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.wallet_primaire = Configuration.get_solo().primary_wallet
+        self.asset_federe = Asset.objects.get(
+            wallet_origin=self.wallet_primaire, category=Asset.STRIPE_FED_FIAT)
+        self.wallet_client, _, _ = self.create_wallet_via_api(email='porteur@test.test')
+        Token.objects.get_or_create(wallet=self.wallet_client, asset=self.asset_federe)
+        self.checkout = CheckoutStripe.objects.create(
+            checkout_session_id_stripe=f"cs_test_{uuid4().hex}",
+            asset=self.asset_federe, status=CheckoutStripe.PAID, metadata="",
+        )
+
+    def _creation(self, **surcharges):
+        donnees = dict(
+            ip="127.0.0.1", checkout_stripe=self.checkout,
+            sender=self.wallet_primaire, receiver=self.wallet_primaire,
+            asset=self.asset_federe, amount=1000, action=Transaction.CREATION)
+        donnees.update(surcharges)
+        return Transaction.objects.create(**donnees)
+
+    def test_un_second_credit_sur_le_meme_paiement_est_impossible(self):
+        """
+        Deux livraisons simultanees du meme event Stripe ne peuvent plus crediter
+        deux fois : la base refuse le doublon.
+        / Two concurrent deliveries can no longer double-credit.
+        """
+        creation = self._creation()
+        refill = Transaction(
+            ip="127.0.0.1", checkout_stripe=self.checkout,
+            sender=self.wallet_primaire, receiver=self.wallet_client,
+            asset=self.asset_federe, amount=1000, action=Transaction.REFILL)
+        refill.creation_associee = creation
+        refill.save(force_insert=True)
+
+        # Le doublon de CREATION est refuse par la base.
+        with self.assertRaises(IntegrityError):
+            self._creation()
+
+    def test_les_autres_transactions_ne_sont_pas_impactees(self):
+        """
+        LA condition posee : rien d'autre ne doit etre gene par la contrainte.
+        / THE requirement: nothing else may be affected.
+        """
+        # 1. Sans checkout : autant de transactions qu'on veut, meme action.
+        #    C'est le cas des 159 128 ventes, adhesions, fusions, corrections.
+        asset_local = Asset.objects.create(
+            name="Libre", currency_code="LIB",
+            category=Asset.TOKEN_LOCAL_FIAT, wallet_origin=self.place.wallet)
+        Token.objects.get_or_create(wallet=self.place.wallet, asset=asset_local)
+        premiere = Transaction.objects.create(
+            ip="127.0.0.1", checkout_stripe=None,
+            sender=self.place.wallet, receiver=self.place.wallet,
+            asset=asset_local, amount=500, action=Transaction.CREATION)
+        seconde = Transaction.objects.create(
+            ip="127.0.0.1", checkout_stripe=None,
+            sender=self.place.wallet, receiver=self.place.wallet,
+            asset=asset_local, amount=700, action=Transaction.CREATION)
+        self.assertNotEqual(premiere.uuid, seconde.uuid)
+        self.assertTrue(seconde.verify_hash())
+
+        # 2. Avec checkout mais hors perimetre : REFUND reste libre.
+        #    Un remboursement partiel puis un autre restent possibles.
+        self._creation()
+        for montant in (100, 200):
+            remboursement = Transaction.objects.create(
+                ip="127.0.0.1", checkout_stripe=self.checkout,
+                sender=self.wallet_primaire, receiver=self.wallet_primaire,
+                asset=self.asset_federe, amount=montant, action=Transaction.REFUND)
+            self.assertIsNotNone(remboursement.uuid)
+        self.assertEqual(
+            Transaction.objects.filter(
+                checkout_stripe=self.checkout, action=Transaction.REFUND).count(), 2,
+            "Les REFUND doivent rester libres : la contrainte ne les couvre pas")

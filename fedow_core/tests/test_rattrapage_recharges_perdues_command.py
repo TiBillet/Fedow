@@ -281,3 +281,129 @@ class RattrapageRechargesPerduesTest(FedowTestCase):
                          '--checkout', 'cs_test_qui_nexiste_pas', stdout=StringIO())
 
         self.assertIn("introuvable", str(contexte.exception))
+
+    def test_signale_un_checkout_paye_sans_aucune_transaction(self):
+        """
+        Un checkout qui affirme un paiement sans transaction doit etre SIGNALE.
+        / A checkout claiming payment with no transaction must be reported.
+
+        POURQUOI : rendre la paire CREATION+REFILL atomique a supprime la trace que
+        laissaient ces pannes. Avant, une CREATION orpheline restait et la commande
+        la voyait ; desormais le rollback n'en laisse aucune. Sans ce controle, une
+        panne sur le chemin TPE ou Lespass ne laisserait plus rien de detectable.
+        """
+        CheckoutStripe.objects.create(
+            checkout_session_id_stripe="pi_test_paye_mais_sans_transaction",
+            asset=self.asset_federe,
+            status=CheckoutStripe.PAID,
+            metadata="",
+            user=self.wallet_porteur.user,
+        )
+
+        sortie = StringIO()
+        call_command('rattrapage_recharges_perdues', '--lot', 'A', stdout=sortie)
+
+        self.assertIn("ATTENTION", sortie.getvalue())
+        self.assertIn("pi_test_paye_mais_sans_transaction", sortie.getvalue())
+        self.assertIn("NON rattrapable", sortie.getvalue())
+
+    def test_ne_signale_pas_un_panier_abandonne(self):
+        """
+        Un checkout jamais paye (panier abandonne) n'a pas de transaction non plus,
+        mais ce n'est pas une anomalie : il ne doit PAS declencher l'alerte.
+        / An abandoned cart has no transaction either, and must not raise the alarm.
+        """
+        CheckoutStripe.objects.create(
+            checkout_session_id_stripe="cs_test_panier_abandonne",
+            asset=self.asset_federe,
+            status=CheckoutStripe.OPEN,
+            metadata="",
+        )
+        self._fabriquer_creation_orpheline(1000)
+
+        sortie = StringIO()
+        call_command('rattrapage_recharges_perdues', '--lot', 'A', stdout=sortie)
+
+        self.assertIn("Controle : 0 checkout paye sans transaction", sortie.getvalue())
+        self.assertNotIn("ATTENTION", sortie.getvalue())
+
+    def test_les_anomalies_partent_bien_dans_les_logs(self):
+        """
+        Chaque anomalie doit atteindre Sentry, pas seulement la console.
+        / Every anomaly must reach Sentry, not just the console.
+
+        Sentry est branche sur le logging (event_level=ERROR par defaut) :
+        logger.error devient un evenement, logger.warning un fil d'Ariane.
+        Une anomalie ecrite uniquement avec self.stdout.write serait invisible
+        en production. Ce test echoue si un logger.error disparait.
+        """
+        # 1. Un checkout qui affirme un paiement sans transaction : logger.error.
+        CheckoutStripe.objects.create(
+            checkout_session_id_stripe="pi_test_anomalie_logguee",
+            asset=self.asset_federe, status=CheckoutStripe.PAID,
+            metadata="", user=self.wallet_porteur.user,
+        )
+        with self.assertLogs(
+                'fedow_core.management.commands.rattrapage_recharges_perdues',
+                level='ERROR') as journal:
+            call_command('rattrapage_recharges_perdues', '--lot', 'A', stdout=StringIO())
+        self.assertTrue(
+            any("pi_test_anomalie_logguee" in ligne for ligne in journal.output),
+            "L'anomalie doit etre loggee en ERROR pour remonter dans Sentry")
+
+    def test_un_checkout_deja_rembourse_est_loggue_en_warning(self):
+        """
+        Un cas ecarte parce que deja rembourse doit laisser une trace.
+        / A case skipped because already refunded must leave a trace.
+        """
+        self._fabriquer_creation_orpheline(2000, statut=CheckoutStripe.REFUND)
+
+        with self.assertLogs(
+                'fedow_core.management.commands.rattrapage_recharges_perdues',
+                level='WARNING') as journal:
+            call_command('rattrapage_recharges_perdues', '--lot', 'A', stdout=StringIO())
+        self.assertTrue(
+            any("deja en REFUND" in ligne for ligne in journal.output),
+            "Un checkout ecarte doit etre loggue")
+
+    def test_detecte_la_signature_exacte_de_l_incident(self):
+        """
+        Un checkout en ERROR sans transaction doit etre detecte.
+        / A checkout left in ERROR with no transaction must be detected.
+
+        POURQUOI : ERROR n'est pose qu'APRES confirmation du paiement par Stripe.
+        Il signifie donc "paye, mais credit refuse" — c'etait le cas de 18 des 26
+        recharges perdues du 28/08. Avant l'atomicite, ces cas laissaient une
+        CREATION que la commande voyait ; le rollback n'en laisse plus aucune.
+        Sans ce controle, le meme incident rejoue serait invisible.
+        """
+        CheckoutStripe.objects.create(
+            checkout_session_id_stripe="cs_test_paye_puis_refuse",
+            asset=self.asset_federe, status=CheckoutStripe.ERROR,
+            metadata="", user=self.wallet_porteur.user,
+        )
+
+        sortie = StringIO()
+        call_command('rattrapage_recharges_perdues', '--lot', 'A', stdout=sortie)
+
+        self.assertIn("ATTENTION", sortie.getvalue())
+        self.assertIn("cs_test_paye_puis_refuse", sortie.getvalue())
+
+    def test_detecte_un_renouvellement_lespass_sans_session_stripe(self):
+        """
+        Un renouvellement d'adhesion n'a pas de checkout_session_id_stripe : il
+        porte un invoice_stripe_id. Il doit quand meme etre detecte.
+        / Membership renewals carry an invoice id, not a session id.
+        """
+        CheckoutStripe.objects.create(
+            checkout_session_id_stripe=None,
+            invoice_stripe_id="in_test_renouvellement",
+            asset=self.asset_federe, status=CheckoutStripe.FROM_LESPASS,
+            metadata="", user=self.wallet_porteur.user,
+        )
+
+        sortie = StringIO()
+        call_command('rattrapage_recharges_perdues', '--lot', 'A', stdout=sortie)
+
+        self.assertIn("ATTENTION", sortie.getvalue())
+        self.assertIn("in_test_renouvellement", sortie.getvalue())

@@ -854,6 +854,34 @@ class Transaction(models.Model):
             models.Index(fields=['asset', 'datetime'],
                          name='transaction_asset_datetime'),
         ]
+        constraints = [
+            # Un paiement Stripe ne peut donner qu'UNE creation monetaire et UN
+            # transfert au porteur. Jusqu'ici cette regle ne vivait que dans le
+            # code (un .exists() dans le serializer, verifie HORS du verrou) :
+            # deux livraisons simultanees du meme event pouvaient donc la passer
+            # toutes les deux. On la fait respecter par la base.
+            #
+            # CONTRAINTE VOLONTAIREMENT PARTIELLE : elle ne s'applique qu'aux
+            # actions 'CRE' et 'REF' (Transaction.CREATION et Transaction.REFILL,
+            # valeurs litterales car une classe Meta imbriquee ne voit pas les
+            # attributs de sa classe englobante), ET uniquement quand un checkout
+            # existe. Tout le reste est intact :
+            #   - les 159 128 transactions sans checkout (ventes, adhesions,
+            #     fusions, corrections...) sont hors du filtre ;
+            #   - RFD et BNK portent un checkout mais restent libres, car un
+            #     remboursement partiel consomme deja son checkout
+            #     (refund_payment_intent le passe en REFUND) et chaque virement
+            #     bancaire cree son propre checkout.
+            # Verifie sur la base de production : 0 violation sur 201 419 lignes.
+            # / Deliberately partial: only the mint/refill pair, only when a
+            # checkout exists. Refunds, deposits and every checkout-less
+            # transaction are untouched. Zero violation on production data.
+            UniqueConstraint(
+                fields=['checkout_stripe', 'action'],
+                condition=Q(action__in=['CRE', 'REF'], checkout_stripe__isnull=False),
+                name='une_seule_creation_et_un_seul_refill_par_checkout',
+            ),
+        ]
 
 
 # #

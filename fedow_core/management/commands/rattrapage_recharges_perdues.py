@@ -34,6 +34,8 @@ DRY-RUN PAR DEFAUT : aucune ecriture sans --apply.
 Contexte : incident des 28-29/08/2026, 24 recharges / 381,00 EUR.
 Cf TECH_DEV/DRIFT/README.md et le correctif de Transaction.save().
 """
+import logging
+
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
@@ -42,6 +44,8 @@ from django.db import transaction as db_transaction
 from fedow_core.models import (
     Asset, CheckoutStripe, Configuration, Place, Token, Transaction,
 )
+
+logger = logging.getLogger(__name__)
 
 LOTS = ("A", "B", "C")
 
@@ -261,6 +265,75 @@ class Command(BaseCommand):
             checkout.save(update_fields=["status"])
             return remboursement, None
 
+    @staticmethod
+    def _identifiant_lisible(checkout):
+        # Un checkout porte soit une session Stripe, soit une facture (renouvellement
+        # d'adhesion), soit ni l'une ni l'autre : on retombe sur son uuid.
+        # / Session id, invoice id, or the uuid as a last resort.
+        return (checkout.checkout_session_id_stripe
+                or checkout.invoice_stripe_id
+                or str(checkout.uuid))
+
+    def _signaler_les_checkouts_sans_transaction(self):
+        """
+        Une panne peut laisser un checkout qui AFFIRME un paiement alors qu'aucune
+        transaction n'existe : argent encaisse chez Stripe, rien en base.
+        / A crash can leave a checkout claiming payment with no transaction at all.
+
+        Ce cas n'est PAS rattrapable par cette commande (elle part des CREATION
+        orphelines, or ici il n'y a aucune CREATION). On se contente donc de le
+        SIGNALER, ce qui suffit : il ne s'est jamais produit (0 sur 7 581 paiements
+        au 05/09/2026), et le corriger demanderait de modifier les chemins
+        d'encaissement eux-memes.
+
+        Ce controle existe parce que rendre la paire CREATION+REFILL atomique a
+        supprime la trace que laissaient ces pannes : avant, une CREATION orpheline
+        restait et cette commande la voyait ; desormais le rollback n'en laisse
+        aucune. On remplace donc la trace perdue par une detection explicite.
+        / Kept as detection only: making the pair atomic removed the orphan CREATION
+        that used to reveal such crashes.
+        """
+        # ERROR est dans la liste, et c'est essentiel : ce statut n'est pose qu'APRES
+        # confirmation du paiement par Stripe (views.py, sous payment_status=='paid'),
+        # il signifie donc "paye, mais credit refuse". C'etait la signature de
+        # l'incident du 28/08 : 18 des 26 cas. Avant l'atomicite, ces cas laissaient
+        # une CREATION reperable ; desormais le rollback n'en laisse aucune, et sans
+        # ERROR ici le meme incident rejoue demain serait invisible.
+        # On ne filtre PAS sur checkout_session_id_stripe : les renouvellements
+        # d'adhesion Lespass n'en ont pas (ils portent un invoice_stripe_id), soit
+        # 56 % des checkouts Lespass qui seraient sinon hors detection.
+        # / ERROR is included on purpose: it is only set after Stripe confirms
+        # payment, and it was the signature of 18 of the 26 incident cases.
+        anomalies = CheckoutStripe.objects.filter(
+            status__in=[CheckoutStripe.PAID, CheckoutStripe.WALLET_USER_OK,
+                        CheckoutStripe.FROM_LESPASS, CheckoutStripe.REFUND,
+                        CheckoutStripe.ERROR],
+        ).exclude(
+            uuid__in=Transaction.objects.filter(
+                checkout_stripe__isnull=False).values_list("checkout_stripe_id", flat=True)
+        )
+        nombre = anomalies.count()
+        if not nombre:
+            self.stdout.write("Controle : 0 checkout paye sans transaction. OK.")
+            return
+        message = (f"ATTENTION : {nombre} checkout(s) affirment un paiement sans aucune "
+                   f"transaction. Argent encaisse chez Stripe, rien en base. "
+                   f"NON rattrapable par cette commande, verification manuelle requise.")
+        # logger.error -> evenement Sentry (event_level=ERROR par defaut).
+        # De l'argent encaisse sans contrepartie doit reveiller quelqu'un.
+        # / logger.error raises a Sentry event: money in without counterpart.
+        # Une seule evaluation : sinon le log Sentry et la sortie console pourraient
+        # differer si une ecriture concurrente change la selection entre les deux.
+        # / Evaluate once, so the Sentry log and the console listing cannot diverge.
+        echantillon = list(anomalies[:20])
+        logger.error(message + " " + ", ".join(
+            self._identifiant_lisible(c) for c in echantillon))
+        self.stdout.write(message + " :")
+        for checkout in echantillon:
+            self.stdout.write(
+                f"   {checkout.datetime.strftime('%Y-%m-%d %H:%M')}  statut={checkout.status}  "
+                f"{self._identifiant_lisible(checkout)}")
+
     # ------------------------------------------------------------------
 
     def handle(self, *args, **options):
@@ -293,12 +366,17 @@ class Command(BaseCommand):
             wallet_du_lieu = lieu.wallet
             self.stdout.write(f"Lot C : destinataire {lieu.name} ({wallet_du_lieu.uuid})")
 
+        # Controle independant du rattrapage : il doit tourner meme quand il n'y a
+        # aucune recharge orpheline. / Runs even when there is nothing to repair.
+        self._signaler_les_checkouts_sans_transaction()
+
         creations, deja_rembourses = self._creations_orphelines(
             checkouts_demandes, options["exclure"])
         for creation in deja_rembourses:
-            self.stdout.write(
-                f"  IGNORE (checkout deja en REFUND, argent deja sorti) "
-                f"{creation.amount / 100:.2f} EUR  {creation.checkout_stripe.uuid}")
+            message = (f"IGNORE (checkout deja en REFUND, argent deja sorti) "
+                       f"{creation.amount / 100:.2f} EUR  {creation.checkout_stripe.uuid}")
+            logger.warning(f"rattrapage_recharges_perdues : {message}")
+            self.stdout.write("  " + message)
 
         # Un --checkout demande mais introuvable est une coquille, pas un no-op.
         # / A requested checkout that matches nothing is a typo, not a no-op.
@@ -338,9 +416,12 @@ class Command(BaseCommand):
                 f"wallet:{str(wallet_porteur.uuid)[:8]}  ({origine})  "
                 f"{(checkout.checkout_session_id_stripe or '')[:24]}")
         for creation, raison in cas_bloques:
-            self.stdout.write(
-                f"  A VERIFIER  {creation.amount / 100:>8.2f} EUR  {raison}  "
-                f"checkout {creation.checkout_stripe.uuid}")
+            message = (f"A VERIFIER  {creation.amount / 100:.2f} EUR  {raison}  "
+                       f"checkout {creation.checkout_stripe.uuid}")
+            # Destinataire non resolu : personne ne sera credite sans intervention.
+            # / Unresolved recipient: nobody gets credited without a human.
+            logger.error(f"rattrapage_recharges_perdues : {message}")
+            self.stdout.write("  " + message)
 
         # ---- garde-fous / guards ----
         if cas_bloques:
@@ -386,6 +467,11 @@ class Command(BaseCommand):
                     ecrits += 1
             except Exception as erreur:
                 echecs.append((creation, erreur))
+                # Echec d'une ecriture d'argent : evenement Sentry.
+                # / A money write failed: Sentry event.
+                logger.error(
+                    f"rattrapage_recharges_perdues ECHEC checkout "
+                    f"{creation.checkout_stripe.uuid} : {erreur}", exc_info=True)
                 self.stdout.write(f"  ECHEC {creation.checkout_stripe.uuid} : {erreur}")
 
         # Les totaux admin, total_by_place et les wallets serialises sont caches

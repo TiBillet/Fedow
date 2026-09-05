@@ -771,8 +771,28 @@ class WalletAPI(viewsets.ViewSet):
                 checkout_db = StripeAPI.validate_stripe_checkout_and_make_transaction(
                     checkout_db, request)
             except ValueError as e:
+                # Si le webhook POST est en panne, ce GET est le seul chemin :
+                # son echec doit etre visible. / When the webhook is down, this GET
+                # is the only path left: its failure must surface.
+                logger.error(f"retrieve_from_refill_checkout 400 : {e}")
                 return Response(f"Error validate_stripe_checkout_and_make_transaction : {e}",
                                 status=status.HTTP_400_BAD_REQUEST)
+            except (ValidationError, IntegrityError) as e:
+                # Course avec le webhook POST : les deux ont valide le meme checkout
+                # en meme temps. Le perdant se prend l'anti-rejeu ou la contrainte
+                # d'unicite. Mais du point de vue du porteur, qui attend devant son
+                # navigateur, il n'y a pas d'erreur : son argent est bien arrive.
+                # On lui rend son wallet, comme dans le cas nominal.
+                # / Race with the POST webhook: the loser hits the anti-replay or the
+                # unique constraint, but for the user waiting in their browser the
+                # money did land. Hand back the wallet as in the nominal case.
+                if _recharge_deja_creditee(checkout_db):
+                    logger.warning(
+                        f"retrieve_from_refill_checkout : course avec le webhook POST, "
+                        f"recharge deja creditee : {e}")
+                    serializer = WalletSerializer(wallet, context={'request': request})
+                    return Response(serializer.data)
+                raise
             except Exception as e:
                 raise e
 
@@ -1416,6 +1436,10 @@ class WebhookStripe(APIView):
 
                 # On vérifie qu'une transaction avec ce checkout n'a pas déja été enregistrée
                 if CheckoutStripe.objects.filter(checkout_session_id_stripe=payment_intent_stripe_id).exists():
+                    # Par coherence avec le chemin web, qui loggue ses 208.
+                    # / Consistency with the web path, which logs its 208s.
+                    logger.warning(
+                        f"WebhookStripe TPE 208 payment_intent deja connu : {payment_intent_stripe_id}")
                     return Response("payment_intent Already reported", status=status.HTTP_208_ALREADY_REPORTED)
 
                 try:
@@ -1426,6 +1450,7 @@ class WebhookStripe(APIView):
                             f"WebhookStripe 200 OK validate_stripe_reader_wise_pose_and_make_transaction checkout_db.status {checkout_db.status}")
                         return Response("OK", status=status.HTTP_200_OK)
                 except ValueError as e:
+                    logger.error(f"WebhookStripe TPE 400 : {e}")
                     return Response(f"Error validate_stripe_checkout_and_make_transaction : {e}",
                                     status=status.HTTP_400_BAD_REQUEST)
                 except IntegrityError as e:
@@ -1480,6 +1505,9 @@ class WebhookStripe(APIView):
                     checkout_db = StripeAPI.validate_stripe_checkout_and_make_transaction(
                         checkout_db, request)
                 except ValueError as e:
+                    # 400 : Stripe va relancer. On veut le savoir.
+                    # / 400 means Stripe will retry: make it visible.
+                    logger.error(f"WebhookStripe 400 : {e}")
                     return Response(f"Error validate_stripe_checkout_and_make_transaction : {e}",
                                     status=status.HTTP_400_BAD_REQUEST)
                 except (ValidationError, IntegrityError) as e:
@@ -1490,7 +1518,10 @@ class WebhookStripe(APIView):
                     # / Concurrent delivery: 208 only if we can prove the credit
                     # landed, otherwise let it fail so Stripe retries.
                     if _recharge_deja_creditee(checkout_db):
-                        logger.info(f"WebhookStripe 208 doublon empeche : {e}")
+                        # Une course concurrente a bien eu lieu et le doublon a ete
+                        # empeche : fil d'Ariane Sentry, pas une erreur.
+                        # / A real race was caught: Sentry breadcrumb, not an error.
+                        logger.warning(f"WebhookStripe 208 doublon empeche : {e}")
                         return Response("Déja traité", status=status.HTTP_208_ALREADY_REPORTED)
                     raise
                 except Exception as e:
@@ -1507,7 +1538,10 @@ class WebhookStripe(APIView):
 
 
         except Exception as e:
-            logger.error(f"WebhookStripe 500 ERROR : {e}")
+            # logger.exception attache la stacktrace : l'exception etant avalee
+            # ici, la DjangoIntegration de Sentry ne la verra jamais autrement.
+            # / The exception is swallowed here, so Sentry only gets what we attach.
+            logger.exception(f"WebhookStripe 500 ERROR : {e}")
             return Response("ERROR", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
