@@ -1038,8 +1038,22 @@ class PlaceAPI(viewsets.ViewSet):
                 # Mode test, on ajoute ce nouveau lieu dans la federation de test
                 # request.place = place
                 self.add_me_to_test_fed(place)
-                # C'est un test place : le handshake lespass a pas été réalisé, on rentre l'adresse
+                # REPLI, et seulement un repli : le lieu de test n'a declare aucun domaine
+                # Lespass a sa creation, donc on lui prete celui du lieu nomme 'Lespass'.
+                # C'est un pis-aller : les webhooks de ce lieu — la notification d'adhesion
+                # en tete — partiront vers CE Lespass-la, meme si le cashless est adosse a
+                # un tout autre tenant. Un appelant qui declare son domaine
+                # (`lespass_domain` dans le payload de get_new_place_token_for_test) ne
+                # passe jamais ici.
+                # / FALLBACK ONLY: the test venue declared no Lespass domain at creation, so
+                #   we lend it the one of the venue named 'Lespass'. Its webhooks will go
+                #   there even if the cashless is paired with another tenant. Callers that
+                #   declare their domain never reach this branch.
                 if not place.lespass_domain:
+                    logger.warning(
+                        f"Place de test '{place.name}' sans domaine Lespass declare : "
+                        f"repli sur celui du lieu 'Lespass'. Ses webhooks partiront la-bas."
+                    )
                     place.lespass_domain = Place.objects.get(name='Lespass').lespass_domain
                     place.save()
 
@@ -1799,17 +1813,39 @@ def get_new_place_token_for_test(request, name_enc):
         if settings.DEBUG:
             out = StringIO()
             faker = Faker()
-            name = b64_to_data(name_enc).get('name')
+            donnees_du_lieu = b64_to_data(name_enc)
+            name = donnees_du_lieu.get('name')
+
+            # Le domaine du Lespass de ce lieu, tel que l'appelant le declare.
+            # POURQUOI IL COMPTE : c'est vers lui que partiront les webhooks du lieu, dont
+            # la notification d'adhesion (fedow_core/signals.py). Sans lui, le lieu de test
+            # naît sans domaine et le repli plus bas l'envoie vers le lieu nomme 'Lespass' —
+            # ce qui est faux des qu'un cashless de test est adosse a un AUTRE tenant.
+            # Une adhesion vendue au comptoir arrivait alors sur le mauvais Lespass, en
+            # silence : la vente reussit, la notification part, mais personne ne la recoit.
+            # Facultatif : un appelant qui ne le declare pas garde l'ancien comportement.
+            # / WHY IT MATTERS: this is where the venue's webhooks go, including the
+            #   membership notification. Without it a test venue is born domain-less and the
+            #   fallback below sends it to the venue named 'Lespass' — wrong as soon as a
+            #   test cashless is paired with ANOTHER tenant. Optional: callers that declare
+            #   nothing keep the previous behaviour.
+            domaine_lespass_declare = donnees_du_lieu.get('lespass_domain')
+
             if not Federation.objects.filter(name='TEST FED').exists():
                 call_command('federations',
                              '--create',
                              '--name', f'TEST FED',
                              stdout=out)
 
-            call_command('places', '--create',
-                         '--name', f'{name}',
-                         '--email', f'{faker.email()}',
-                         stdout=out)
+            arguments_de_creation = [
+                '--create',
+                '--name', f'{name}',
+                '--email', f'{faker.email()}',
+            ]
+            if domaine_lespass_declare:
+                arguments_de_creation += ['--lespass-domain', f'{domaine_lespass_declare}']
+
+            call_command('places', *arguments_de_creation, stdout=out)
             encoded_data = out.getvalue().split('\n')[-2]
 
             return JsonResponse({"encoded_data": encoded_data})

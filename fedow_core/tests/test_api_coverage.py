@@ -175,6 +175,82 @@ class WalletAPITest(FedowTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['uuid'], str(self.wallet.uuid))
 
+    def test_retrieve_by_signature_wallet_without_public_key(self):
+        """Un wallet sans clé publique (wallet de lieu, wallet éphémère de carte)
+        doit être refusé proprement et non provoquer une erreur 500."""
+        place_wallet = self.place.wallet
+        self.assertIsNone(place_wallet.public_pem)
+
+        # Signature bien formée, mais faite avec une autre clé : elle ne pourra pas
+        # être vérifiée puisque le wallet visé ne possède aucune clé publique.
+        private_rsa = get_private_key(self.private_pem)
+        date_iso = datetime.now().isoformat()
+        message = f"{place_wallet.uuid}:{date_iso}".encode('utf8')
+        signature = sign_message(
+            message,
+            private_rsa,
+        ).decode('utf-8')
+
+        response = self.client.get(
+            '/wallet/retrieve_by_signature/',
+            headers={
+                'Authorization': f'Api-Key {self.temp_key_place}',
+                'Wallet': str(place_wallet.uuid),
+                'Date': date_iso,
+                'Signature': signature,
+            }
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_place_key_and_wallet_signature_wallet_without_public_key(self):
+        """Même refus propre sur les routes protégées par HasPlaceKeyAndWalletSignature."""
+        place_wallet = self.place.wallet
+        self.assertIsNone(place_wallet.public_pem)
+
+        private_rsa = get_private_key(self.private_pem)
+        date_iso = datetime.now().isoformat()
+        data = {'uuid': str(uuid4()), 'user_uuid': str(uuid4())}
+        signature = sign_message(
+            data_to_b64(data),
+            private_rsa,
+        ).decode('utf-8')
+
+        response = self.client.post(
+            '/wallet/local_asset_bank_deposit/',
+            json.dumps(data),
+            content_type='application/json',
+            headers={
+                'Authorization': f'Api-Key {self.temp_key_place}',
+                'Wallet': str(place_wallet.uuid),
+                'Date': date_iso,
+                'Signature': signature,
+            }
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_place_key_and_wallet_signature_without_wallet_header(self):
+        """Sans header Wallet, HasPlaceKeyAndWalletSignature ne trouve aucun wallet :
+        refus propre attendu, pas une erreur 500."""
+        private_rsa = get_private_key(self.private_pem)
+        date_iso = datetime.now().isoformat()
+        data = {'uuid': str(uuid4()), 'user_uuid': str(uuid4())}
+        signature = sign_message(
+            data_to_b64(data),
+            private_rsa,
+        ).decode('utf-8')
+
+        response = self.client.post(
+            '/wallet/local_asset_bank_deposit/',
+            json.dumps(data),
+            content_type='application/json',
+            headers={
+                'Authorization': f'Api-Key {self.temp_key_place}',
+                'Date': date_iso,
+                'Signature': signature,
+            }
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
     def test_retrieve(self):
         """Test retrieving wallet information."""
         # Add trailing slash to avoid 301 redirect

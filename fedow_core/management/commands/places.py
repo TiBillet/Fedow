@@ -3,6 +3,34 @@ from django.core.management.base import BaseCommand, CommandError
 from fedow_core.models import Place, Configuration, get_or_create_user, OrganizationAPIKey, wallet_creator
 from fedow_core.utils import dict_to_b64_utf8
 
+
+def _domaine_lespass_normalise(domaine_declare):
+    """Ramene un domaine Lespass a la forme stockee : sans schema ni slash final.
+    / Normalises a Lespass domain to the stored form: no scheme, no trailing slash.
+
+    `Place.lespass_domain` est un nom d'hote nu (`festival.tibillet.localhost`), parce que
+    les webhooks le composent eux-memes : `f"https://{place.lespass_domain}/fwh/..."`
+    (fedow_core/signals.py). Or les appelants tiennent souvent une URL complete — cote
+    LaBoutik, `Configuration.billetterie_url` vaut `https://festival.tibillet.localhost/`.
+    Stocker cette URL telle quelle fabriquerait `https://https://…//fwh/…`, et le webhook
+    partirait dans le vide sans que personne ne le voie.
+    / lespass_domain is a bare host, because webhooks build the URL themselves. Callers
+      usually hold a full URL, which would yield `https://https://…//fwh/…`.
+
+    :param domaine_declare: str ou None — domaine ou URL complete
+    :return: str ou None — le nom d'hote seul
+    """
+    if not domaine_declare:
+        return None
+
+    domaine = domaine_declare.strip()
+    for schema in ("https://", "http://"):
+        if domaine.startswith(schema):
+            domaine = domaine[len(schema):]
+    # On ne garde que l'hote : ni chemin, ni slash final.
+    # / Keep the host only: no path, no trailing slash.
+    return domaine.split("/")[0] or None
+
 """
 Pense bête :
 
@@ -37,6 +65,17 @@ class Command(BaseCommand):
         parser.add_argument('--name', type=str)
         parser.add_argument('--email', type=str)
         parser.add_argument('--description', type=str)
+        parser.add_argument(
+            '--lespass-domain', type=str,
+            help=(
+                "Domaine du Lespass de ce lieu (ex : festival.tibillet.localhost). "
+                "C'est l'adresse vers laquelle partiront les webhooks du lieu — "
+                "adhesions notamment (fedow_core/signals.py). "
+                "Accepte une URL complete : le schema et le slash final sont retires. "
+                "Sans lui, le lieu naît sans domaine, et le mode TEST retombe sur celui "
+                "du lieu nomme 'Lespass' (fedow_core/views.py)."
+            ),
+        )
 
     def handle(self, *args, **options):
 
@@ -80,6 +119,9 @@ class Command(BaseCommand):
                     name=place_name,
                     description=description,
                     wallet=wallet_creator(),
+                    lespass_domain=_domaine_lespass_normalise(
+                        options.get('lespass_domain')
+                    ),
                 )
 
                 place.admins.add(user)

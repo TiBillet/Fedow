@@ -94,7 +94,13 @@ class HasWalletSignature(permissions.BasePermission):
         signature = self.get_signature(request)
         if not signature:
             raise PermissionDenied("Missing signature")
-        wallet_public_key = wallet.public_key() if wallet else None
+
+        # Un wallet de lieu ou un wallet éphémère de carte n'a pas de clé publique :
+        # la signature ne peut pas être vérifiée.
+        if not wallet.public_pem:
+            logger.warning(f"HasWalletSignature : wallet {wallet.uuid} sans clé publique")
+            raise PermissionDenied("Wallet has no public key")
+        wallet_public_key = wallet.public_key()
 
         # SIGNATURE ( GET / POST )
         # On signe la donnée si c'est du post.
@@ -169,6 +175,12 @@ class HasPlaceKeyAndWalletSignature(BaseHasAPIKey):
         signature = self.get_signature(request)
         if not signature:
             return False  # Signature manquante
+
+        # Wallet absent/inconnu, ou wallet de lieu ou éphémère de carte sans clé publique :
+        # la signature ne peut pas être vérifiée.
+        if not wallet or not wallet.public_pem:
+            logger.warning(f"HasPlaceKeyAndWalletSignature : wallet absent ou sans clé publique")
+            return False
         wallet_public_key = wallet.public_key()
 
         # SIGNATURE ( GET / POST )
