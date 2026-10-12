@@ -5,6 +5,33 @@ Toutes les évolutions notables du projet. Format bilingue FR/EN, le plus récen
 
 ---
 
+## Renommer les places des lieux supprimés dans Lespass — 2026-10-07
+
+**Quoi / What:** nouvelle commande `renommer_places_orphelines`. Elle lit le CSV des traces
+externes de Lespass (`supprimer_lieux_inactifs --traces-externes`, colonne `place_fedow`) et
+ajoute un suffixe au nom de chaque place (défaut « (fermé 2026-10) »). Le nom est tronqué pour
+tenir dans la longueur maximum, en gardant le suffixe entier. S'il est déjà pris, un numéro est
+ajouté avant le suffixe. À blanc par défaut, `--executer` pour écrire, une seule transaction.
+Une place déjà suffixée est sautée (la commande est rejouable) ; une place introuvable est
+signalée. Seul le nom change.
+/ New command: suffixes the name of the places of venues deleted in Lespass, read from
+Lespass's external traces CSV. Dry run by default, replayable, name only.
+
+**Why:** une place ne se supprime pas et son nom est unique. Quand Lespass supprime un lieu
+jamais utilisé (nuit de la bascule, chantier 05-R §18), sa place reste avec son nom :
+recréer un espace du même nom échouait à l'onboarding.
+/ A place cannot be deleted and its name is unique: re-creating a venue with the same name
+failed at onboarding.
+
+**Fichiers / Files:**
+- `fedow_core/management/commands/renommer_places_orphelines.py`
+- `fedow_core/tests/test_renommer_places_orphelines_command.py` (9 tests)
+
+**Tester / Test:**
+`poetry run python manage.py test fedow_core.tests.test_renommer_places_orphelines_command`
+
+---
+
 ## Recharges perdues sous concurrence : appariement CREATION/REFILL — 2026-09-04
 
 **Quoi / What:** `Transaction.save()` validait une recharge avec
