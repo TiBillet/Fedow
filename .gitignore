@@ -167,3 +167,8 @@ logs/nginxError.log
 tempo/
 /resume_git_*
 /debug_format.txt
+
+# Sauvegarde borg (backup/save.sh)
+backup/snapshot/
+backup/.backup.lock
+backup/dumps/*.gz

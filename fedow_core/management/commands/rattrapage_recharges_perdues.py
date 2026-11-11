@@ -22,11 +22,10 @@ Methode (en clair) :
               encaissement). Le lieu recupere son du au prochain virement.
  4. On vide le cache : les totaux admin et les soldes Lespass sont caches 5 min.
 
-Pourquoi REFILL+REFUND et pas CORRECTION pour les lots B et C : l'action
-CORRECTION est volontairement absente des listes de reconcile_tokens.py
-(ACTIONS_CREDIT_RECEIVER / ACTIONS_DEBIT_SENDER). Un transfert de valeur ecrit
-en CORRECTION creerait un ecart que le prochain "reconcile_tokens --apply"
-annulerait silencieusement. REFILL et REFUND, eux, sont comptes des deux cotes.
+Pourquoi REFILL+REFUND et pas CORRECTION pour les lots B et C : une
+CORRECTION ne deplace pas de valeur entre deux wallets. Elle ne change qu'un
+seul solde, avec le wallet primaire comme pivot (Transaction.save()).
+REFILL et REFUND sont les actions metier prevues pour ces mouvements.
 
 DRY-RUN PAR DEFAUT : aucune ecriture sans --apply.
 / DRY-RUN by default: no write without --apply.

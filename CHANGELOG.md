@@ -5,6 +5,49 @@ Toutes les évolutions notables du projet. Format bilingue FR/EN, le plus récen
 
 ---
 
+## Sauvegarde borg : snapshot cohérent, déduplication, compact, vérification — 2026-11-11
+
+**Quoi / What:** `backup/save.sh` réécrit. Snapshot de la base par l'API backup de SQLite
+en une seule étape (cohérent, WAL compris, sans bloquer les écritures), `quick_check` du
+snapshot avant archivage, `borg create` en blocs fixes de 4 Kio, `prune --glob-archives`,
+puis `compact`. Verrou `flock`, `timeout` autour de borg, SSH en `BatchMode` avec
+`ServerAlive`. Un avertissement de `borg create` est une erreur (archive peut-être sans la
+base). Base vivante corrompue : archive de secours `KO-*` hors prune, code 3.
+Nouveau `backup/check_backup.sh` (fraîcheur, présence, extraction et `integrity_check`
+complet) et `Makefile` (`make backup / check / list / info / compact`).
+/ `save.sh` rewritten: consistent non-blocking SQLite snapshot, checked before archiving,
+fixed 4 KiB chunks, prune limited to Fedow archives, compact. New `check_backup.sh` and
+`Makefile`.
+
+**Why:** trois défauts de l'ancien script.
+1. `gzip -c db.sqlite3` sur une base en WAL : le `-wal` n'était pas copié et la copie
+   n'était pas cohérente. Aucune archive n'était garantie restaurable.
+2. Un flux gzip ne se déduplique pas : 156 Mo neufs par passage, ~15 Go par jour.
+3. Jamais de `borg compact` (borg ≥ 1.2) : `prune` ne libérait rien. Le dépôt atteignait
+   340 Go pour une base de 668 Mo.
+Déclencheur : un verrou orphelin côté BorgWarehouse bloquait les sauvegardes depuis le
+2026-11-08 (procédure dans `TECH_DOC/SESSIONS/backup-borg/RESTAURATION.md`).
+/ The old script copied a WAL database with gzip (inconsistent, `-wal` missing), defeated
+deduplication, and never compacted: 340 GB repository for a 668 MB database.
+
+**Compatibilité / Compatibility:** même chemin, mêmes variables (`PREFIX_SAVE_DB`,
+`BORG_REPO`, `BORG_PASSPHRASE`), même clé SSH, même rétention. Le nom d'archive prend les
+secondes (`<préfixe>-M0027-2026-11-11-10-50-33`). Le prune ne touche plus que
+`<préfixe>-*`. `PREFIX_SAVE_DB` doit ne contenir que `[a-zA-Z0-9_-]`, sinon le script refuse
+de démarrer. Premier passage : `make compact` d'abord, puis `make backup` (voir `PLAN.md`).
+
+**Fichiers / Files:**
+- `backup/save.sh`, `backup/check_backup.sh`, `backup/commun.sh`, `backup/verifier_sqlite.py`
+- `Makefile`, `.gitignore`, `.dockerignore`
+- `TECH_DOC/SESSIONS/backup-borg/PLAN.md`, `TECH_DOC/SESSIONS/backup-borg/RESTAURATION.md`
+
+**Tester / Test:** pas de test automatisé (scripts shell). Testé en local dans le
+conteneur, dépôt jetable : écrivain concurrent (0 erreur, latence max 31 ms), 18 Mo neufs
+pour ~8 600 insertions, `flock`, base corrompue (archive `KO-*`), `check_backup.sh` OK et
+KO, restauration fidèle de la base de dev. En prod : `make backup`, puis `make check`.
+
+---
+
 ## Renommer les places des lieux supprimés dans Lespass — 2026-10-07
 
 **Quoi / What:** nouvelle commande `renommer_places_orphelines`. Elle lit le CSV des traces

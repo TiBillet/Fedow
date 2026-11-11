@@ -7,3 +7,5 @@ SaveDb
 logs/gunicorn.logs
 logs/nginxAccess.log
 logs/nginxError.log
+backup/snapshot/
+backup/.backup.lock
