@@ -5,6 +5,26 @@ Toutes les évolutions notables du projet. Format bilingue FR/EN, le plus récen
 
 ---
 
+## Statistiques du réseau pour l'observatoire de Lespass — 2026-11-12
+
+**Quoi / What:** nouvelle route `GET /statistiques_reseau/` (`StatistiquesReseauAPI`,
+`fedow_core/views.py`), lecture seule. Elle rend les recharges par asset (total, nombre) et
+le nombre de cartes, dont celles liées à un compte. Seule la clé « root » de la billetterie
+(`CreatePlaceAPIKey`, permission `CanCreatePlace`) y accède. Réponse gardée 1 h en cache.
+/ New read-only route returning refills per asset and card counts, root key only, cached 1 h.
+
+**Why:** l'observatoire des instances de Lespass affiche des ordres de grandeur du réseau
+(transactions = recharges, cartes distribuées). Ces chiffres vivent dans Fedow tant que la
+migration vers le moteur V2 n'est pas finie. 2 requêtes agrégées, appelées une fois par
+nuit : aucune charge notable sur la base.
+/ The Lespass observatory shows network-wide figures that live in Fedow until migration.
+
+**Fichiers / Files:** `fedow_core/views.py`, `fedow_core/urls.py`,
+`fedow_core/tests/test_statistiques_reseau.py` (4 tests). Migration : non.
+
+**Tester / Test:** `curl -H "Authorization: Api-Key <clé root>" https://<fedow>/statistiques_reseau/`
+→ 200 et un JSON ; sans clé ou avec une clé de lieu → 403.
+
 ## Sauvegarde borg : snapshot cohérent, déduplication, compact, vérification — 2026-11-11
 
 **Quoi / What:** `backup/save.sh` réécrit. Snapshot de la base par l'API backup de SQLite

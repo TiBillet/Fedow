@@ -4,7 +4,7 @@ from django.contrib import admin
 from fedow_dashboard import urls as dashboard_urls
 from fedow_core.views import TransactionAPI, TestApiKey, HelloWorld, WalletAPI, PlaceAPI, FederationAPI, \
     WebhookStripe, CardAPI, AssetAPI, get_new_place_token_for_test, \
-    root_tibillet_handshake, StripeAPI, index
+    root_tibillet_handshake, StripeAPI, index, StatistiquesReseauAPI
 # from django.conf import settings
 from rest_framework import routers
 
@@ -20,6 +20,9 @@ router.register(r'asset', AssetAPI, basename='asset')
 router.register(r'wallet', WalletAPI, basename='wallet')
 router.register(r'card', CardAPI, basename='card')
 router.register(r'stripe', StripeAPI, basename='stripe')
+# Totaux du reseau pour l'observatoire de Lespass (cle root seulement, lecture seule).
+# / Network totals for the Lespass observatory (root key only, read-only).
+router.register(r'statistiques_reseau', StatistiquesReseauAPI, basename='statistiques_reseau')
 
 
 urlpatterns = [

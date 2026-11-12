@@ -1772,6 +1772,79 @@ class TransactionAPI(viewsets.ViewSet):
         return [permission() for permission in permission_classes]
 
 
+class StatistiquesReseauAPI(viewsets.ViewSet):
+    """
+    Totaux de tout le reseau, pour l'observatoire des instances de Lespass.
+    / Network-wide totals, for the Lespass instance observatory.
+
+    LOCALISATION : fedow_core/views.py
+    ROUTE : GET /statistiques_reseau/ (fedow_core/urls.py)
+
+    QUI L'APPELLE : la commande `refresh_observatoire` de Lespass, une fois par nuit,
+    avec la cle « root » de la billetterie (celle qui cree les lieux). Aucune cle de
+    lieu ne passe : ces chiffres couvrent tous les lieux.
+    / Called nightly by Lespass with the root key. No place key gets in.
+
+    LECTURE SEULE, 2 requetes agregees, gardees 1 h en cache : la base de production
+    est fragile (SQLite, verrou d'ecriture global). Un appel repete ne relit pas la base.
+    / READ-ONLY, 2 aggregated queries, cached for 1 h.
+
+    REPONSE :
+    {
+      "recharges_par_asset": [{"uuid", "nom", "categorie", "devise", "total", "nombre"}],
+      "cartes": {"total": 9000, "liees_a_un_compte": 6000}
+    }
+    `total` est dans l'unite de l'asset (centimes pour une monnaie en euros).
+    / `total` is in the asset's unit (cents for a euro currency).
+    """
+
+    permission_classes = [CanCreatePlace]
+    CLE_DU_CACHE = "statistiques_reseau_pour_observatoire"
+    DUREE_DU_CACHE_EN_SECONDES = 60 * 60
+
+    def list(self, request):
+        statistiques = cache.get(self.CLE_DU_CACHE)
+        if statistiques is None:
+            statistiques = self.calculer_les_statistiques()
+            cache.set(self.CLE_DU_CACHE, statistiques, self.DUREE_DU_CACHE_EN_SECONDES)
+        return Response(statistiques)
+
+    @staticmethod
+    def calculer_les_statistiques():
+        from django.db.models import Count, Sum
+
+        # 1. Les recharges, asset par asset : une seule requete groupee.
+        # / 1. Refills, asset by asset: one grouped query.
+        recharges_par_asset = []
+        lignes = (
+            Transaction.objects.filter(action=Transaction.REFILL)
+            .values("asset__uuid", "asset__name", "asset__category", "asset__currency_code")
+            .annotate(total=Sum("amount"), nombre=Count("uuid"))
+            .order_by("asset__name")
+        )
+        for ligne in lignes:
+            recharges_par_asset.append({
+                "uuid": str(ligne["asset__uuid"]),
+                "nom": ligne["asset__name"],
+                "categorie": ligne["asset__category"],
+                "devise": ligne["asset__currency_code"],
+                "total": ligne["total"] or 0,
+                "nombre": ligne["nombre"],
+            })
+
+        # 2. Les cartes : toutes, et celles liees a un compte (carte d'adhesion).
+        # / 2. Cards: all of them, and those linked to an account.
+        cartes = Card.objects.aggregate(
+            total=Count("uuid"),
+            liees_a_un_compte=Count("uuid", filter=Q(user__isnull=False)),
+        )
+
+        return {
+            "recharges_par_asset": recharges_par_asset,
+            "cartes": cartes,
+        }
+
+
 # Le premier handshake de la billetterie
 def root_tibillet_handshake(request):
     if request.method == 'GET':
