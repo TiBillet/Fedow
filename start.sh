@@ -19,4 +19,4 @@ echo "https://$DOMAIN/dashboard/"
 sqlite3 ./database/db.sqlite3 'PRAGMA journal_mode=WAL;'
 sqlite3 ./database/db.sqlite3 'PRAGMA synchronous=normal;'
 poetry run gunicorn fedowallet_django.wsgi --log-level=info --log-file /home/fedow/Fedow/logs/gunicorn.logs -w 5 -b 0.0.0.0:8000
-
+# reboot : docker exec fedow_django bash -c 'kill -HUP $(pgrep -o -f "gunicorn fedowallet_django.wsgi")'
