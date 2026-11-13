@@ -5,6 +5,26 @@ Toutes les évolutions notables du projet. Format bilingue FR/EN, le plus récen
 
 ---
 
+## Ventes par lieu dans les statistiques du réseau — 2026-11-13
+
+**Quoi / What:** `GET /statistiques_reseau/` rend un troisième agrégat, `ventes_par_lieu` :
+pour chaque Place (clé `uuid.hex`) et chaque mois (`AAAA-MM`, UTC) des 25 derniers mois, le
+nombre de transactions de vente (`SAL` carte NFC, `QRS` QR code) et de porte-monnaie
+distincts qui ont payé. Nouvelle clé de cache (`..._v2`), pour ne pas servir l'ancienne
+forme juste après un déploiement.
+/ The route also returns sales per place and per month (NFC and QR code). New cache key.
+
+**Why:** l'observatoire de Lespass ne voyait pas les lieux qui encaissent avec la caisse
+V1 : leurs paiements vivent ici. Une requête groupée, 0,4 s sur une copie de 235 000
+transactions, gardée 1 h en cache.
+/ The Lespass observatory could not see V1 till venues. One grouped query, cached.
+
+**Fichiers / Files:** `fedow_core/views.py`, `fedow_core/tests/test_statistiques_reseau.py`
+(8 tests). Migration : non.
+
+**Tester / Test:** `curl -H "Authorization: Api-Key <clé root>" https://<fedow>/statistiques_reseau/`
+→ le JSON contient `ventes_par_lieu`.
+
 ## Statistiques du réseau pour l'observatoire de Lespass — 2026-11-12
 
 **Quoi / What:** nouvelle route `GET /statistiques_reseau/` (`StatistiquesReseauAPI`,

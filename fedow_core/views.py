@@ -1785,21 +1785,28 @@ class StatistiquesReseauAPI(viewsets.ViewSet):
     lieu ne passe : ces chiffres couvrent tous les lieux.
     / Called nightly by Lespass with the root key. No place key gets in.
 
-    LECTURE SEULE, 2 requetes agregees, gardees 1 h en cache : la base de production
+    LECTURE SEULE, 3 requetes agregees, gardees 1 h en cache : la base de production
     est fragile (SQLite, verrou d'ecriture global). Un appel repete ne relit pas la base.
-    / READ-ONLY, 2 aggregated queries, cached for 1 h.
+    / READ-ONLY, 3 aggregated queries, cached for 1 h.
 
     REPONSE :
     {
       "recharges_par_asset": [{"uuid", "nom", "categorie", "devise", "total", "nombre"}],
-      "cartes": {"total": 9000, "liees_a_un_compte": 6000}
+      "cartes": {"total": 9000, "liees_a_un_compte": 6000},
+      "ventes_par_lieu": {"<uuid.hex de la Place>": {"2026-10": {"transactions": 812, "portemonnaies": 240}}}
     }
     `total` est dans l'unite de l'asset (centimes pour une monnaie en euros).
     / `total` is in the asset's unit (cents for a euro currency).
     """
 
     permission_classes = [CanCreatePlace]
-    CLE_DU_CACHE = "statistiques_reseau_pour_observatoire"
+    # Le suffixe change quand la forme de la reponse change : sinon, juste apres un
+    # deploiement, le cache rendrait l'ancienne forme pendant une heure.
+    # / The suffix changes with the response shape, so a deploy never serves the old shape.
+    CLE_DU_CACHE = "statistiques_reseau_pour_observatoire_v2"
+    # Un peu plus que les 24 mois lus par l'observatoire de Lespass.
+    # / A bit more than the 24 months read by the Lespass observatory.
+    NOMBRE_DE_MOIS_DES_VENTES = 25
     DUREE_DU_CACHE_EN_SECONDES = 60 * 60
 
     def list(self, request):
@@ -1839,9 +1846,41 @@ class StatistiquesReseauAPI(viewsets.ViewSet):
             liees_a_un_compte=Count("uuid", filter=Q(user__isnull=False)),
         )
 
+        # 3. Les ventes par lieu et par mois : cartes NFC (SAL) et QR code (QRS), recues
+        # par le wallet d'une Place. Une requete groupee. Pas d'index sur `action` : la
+        # table est lue en entier (0,4 s sur une copie de 235 000 transactions).
+        # Les mois sont en UTC : Fedow ne connait pas le fuseau des lieux.
+        # / 3. Sales per place and per month (NFC and QR code), one grouped query, UTC months.
+        from django.db.models.functions import TruncMonth
+
+        debut_des_ventes = timezone.now() - timedelta(days=31 * StatistiquesReseauAPI.NOMBRE_DE_MOIS_DES_VENTES)
+        ventes_par_lieu = {}
+        lignes_des_ventes = (
+            Transaction.objects.filter(
+                action__in=[Transaction.SALE, Transaction.QRCODE_SALE],
+                datetime__gte=debut_des_ventes,
+                receiver__place__isnull=False,
+            )
+            .annotate(mois=TruncMonth("datetime"))
+            .values("receiver__place__uuid", "mois")
+            .annotate(transactions=Count("uuid"), portemonnaies=Count("sender", distinct=True))
+        )
+        for ligne in lignes_des_ventes:
+            # Cles en texte : un UUID ou une date en cle de dict ne passe pas en JSON.
+            # / Text keys: a UUID or a date as a dict key does not serialize to JSON.
+            cle_du_lieu = ligne["receiver__place__uuid"].hex
+            cle_du_mois = ligne["mois"].strftime("%Y-%m")
+            if cle_du_lieu not in ventes_par_lieu:
+                ventes_par_lieu[cle_du_lieu] = {}
+            ventes_par_lieu[cle_du_lieu][cle_du_mois] = {
+                "transactions": ligne["transactions"],
+                "portemonnaies": ligne["portemonnaies"],
+            }
+
         return {
             "recharges_par_asset": recharges_par_asset,
             "cartes": cartes,
+            "ventes_par_lieu": ventes_par_lieu,
         }
 
 
