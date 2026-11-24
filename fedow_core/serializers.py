@@ -20,7 +20,7 @@ from rest_framework.generics import get_object_or_404
 
 from fedow_core.models import Place, FedowUser, Card, Wallet, Transaction, OrganizationAPIKey, Asset, Token, \
     get_or_create_user, Origin, asset_creator, Configuration, Federation, CheckoutStripe
-from fedow_core.utils import get_request_ip, get_public_key, dict_to_b64, verify_signature, data_to_b64
+from fedow_core.utils import get_request_ip, get_public_key, dict_to_b64, verify_signature, data_to_b64, carte_courte
 
 logger = logging.getLogger(__name__)
 
@@ -306,7 +306,7 @@ class CardCreateValidator(serializers.ModelSerializer):
         validated_data.pop('generation')
         validated_data['origin'] = self.origin
 
-        print(f"attemp to create card : {validated_data['number_printed']}")
+        print(f"attemp to create card : {carte_courte(validated_data['number_printed'])}")
         card = Card.objects.create(**validated_data)
         if is_primary:
             self.origin.place.primary_cards.add(card)
@@ -1238,7 +1238,7 @@ class TransactionW2W(serializers.Serializer):
             noms_des_lieux_primaires = [lieu.name for lieu in lieux_primaires]
             logger.error(
                 f"{nom_du_champ} : carte {carte.first_tag_id} "
-                f"(n° {carte.number_printed}, origine {carte.origin.place.name}) "
+                f"(n° {carte_courte(carte.number_printed)}, origine {carte.origin.place.name}) "
                 f"non primaire pour le lieu demandeur « {self.place.name} ». "
                 f"Lieux primaires enregistres : "
                 f"{noms_des_lieux_primaires if noms_des_lieux_primaires else 'AUCUN'}"

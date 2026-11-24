@@ -38,7 +38,7 @@ from fedow_core.serializers import TransactionSerializer, HandshakeValidator, \
     CachedTransactionSerializer, TransactionQrCodeSerializer, TransactionRefilFromLespassSerializer, \
     LinkWalletCard_card_number, TransactionSimpleSerializer
 from fedow_core.utils import fernet_encrypt, dict_to_b64_utf8, utf8_b64_to_dict, b64_to_data, get_request_ip, \
-    get_public_key, rsa_encrypt_string, verify_signature, data_to_b64
+    get_public_key, rsa_encrypt_string, verify_signature, data_to_b64, carte_courte, uuid_court
 from fedow_core.validators import PlaceValidator, FederationAddValidator, LocalAssetBankDepositValidator
 
 logger = logging.getLogger(__name__)
@@ -381,7 +381,7 @@ class CardAPI(viewsets.ViewSet):
             card = Card.objects.get(first_tag_id=pk)
             serializer = CardSerializer(card, context={'request': request})
 
-            logger.info(f"\nCHECK CARTE N° {card.number_printed} - TagId {card.first_tag_id}")
+            logger.info(f"CHECK CARTE N° {carte_courte(card.number_printed)} - TagId {carte_courte(card.first_tag_id)}")
             for token in serializer.data['wallet']['tokens']:
                 logger.info(f"Asset {token['asset']['name']} : {dround(token['value'])}\n")
 
@@ -974,7 +974,7 @@ class PlaceAPI(viewsets.ViewSet):
 
         # TODO :A tester :
         if user not in place.admins.all():
-            logger.error(f"link_cashless_to_place : {user.email} not an admin email")
+            logger.error(f"link_cashless_to_place : user {uuid_court(user.pk)} not an admin email")
             return Response("not an admin email", status=status.HTTP_403_FORBIDDEN)
 
         # Ne se lance pas lors du premier Flush de Laboutik
@@ -1601,6 +1601,42 @@ class Onboard_stripe_return(APIView):
 """
 
 
+def ecrire_l_evenement_transaction(route, request, transaction):
+    """
+    Ecrit UNE ligne d'evenement par transaction creee, cherchable dans la
+    supervision avec str_match(message, 'evenement=transaction').
+    Pas d'e-mail ni de tag entier : les uuid et la carte sont raccourcis.
+    / Writes ONE event line per created transaction, searchable in the monitoring.
+
+    LOCALISATION : fedow_core/views.py
+    Appelee par TransactionAPI.create, refill_from_lespass_to_user_wallet et qrcodescanpay.
+    """
+    lieu_de_la_requete = getattr(request, 'place', None)
+    nom_du_lieu = lieu_de_la_requete.name if lieu_de_la_requete else "aucun"
+    carte_de_la_transaction = transaction.card.number_printed if transaction.card else None
+    logger.info(
+        f"evenement=transaction resultat=acceptee route={route} action={transaction.action} "
+        f"lieu={nom_du_lieu!r} asset={transaction.asset.name!r} montant_centimes={transaction.amount} "
+        f"expediteur={uuid_court(transaction.sender_id)} destinataire={uuid_court(transaction.receiver_id)} "
+        f"carte={carte_courte(carte_de_la_transaction)} transaction={uuid_court(transaction.uuid)}"
+    )
+
+
+def ecrire_le_refus_de_transaction(route, request, erreurs):
+    """
+    Ecrit UNE ligne d'evenement par transaction refusee, avec les erreurs du validateur.
+    / Writes ONE event line per refused transaction, with the validator errors.
+    """
+    lieu_de_la_requete = getattr(request, 'place', None)
+    nom_du_lieu = lieu_de_la_requete.name if lieu_de_la_requete else "aucun"
+    # ERROR comme avant : un refus de transaction reste une alerte (Sentry).
+    # / ERROR as before: a refused transaction stays an alert.
+    logger.error(
+        f"evenement=transaction resultat=refusee route={route} lieu={nom_du_lieu!r} "
+        f"erreurs={dict(erreurs)}"
+    )
+
+
 class TransactionAPI(viewsets.ViewSet):
     """
     GET /transaction/ : liste des transactions
@@ -1704,10 +1740,11 @@ class TransactionAPI(viewsets.ViewSet):
         # import ipdb; ipdb.set_trace()
         if transaction_validator.is_valid():
             transaction: Transaction = transaction_validator.transaction
+            ecrire_l_evenement_transaction("create", request, transaction)
             transaction_serialized = TransactionSerializer(transaction, context={'request': request})
             return Response(transaction_serialized.data, status=status.HTTP_201_CREATED)
 
-        logger.error(f"{timezone.localtime()} ERROR - Transaction create error : {transaction_validator.errors}")
+        ecrire_le_refus_de_transaction("create", request, transaction_validator.errors)
         return Response(transaction_validator.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['POST'])
@@ -1716,13 +1753,13 @@ class TransactionAPI(viewsets.ViewSet):
         # Exemple : Une adhésion à une caisse sociale alimentaire,
         # un produit qui recharge une future carte lors de l'achat d'un billet,
         # une récompense après qu'une action bénévole soit terminée
-        logger.info(f"Refill from lespass to user wallet : {request.data}")
         transaction_validator = TransactionRefilFromLespassSerializer(data=request.data, context={'request': request})
         if not transaction_validator.is_valid():
-            logger.error(f"{timezone.localtime()} ERROR - Transaction create error : {transaction_validator.errors}")
+            ecrire_le_refus_de_transaction("refill_from_lespass", request, transaction_validator.errors)
             return Response(transaction_validator.errors, status=status.HTTP_400_BAD_REQUEST)
 
         transaction: Transaction = transaction_validator.transaction
+        ecrire_l_evenement_transaction("refill_from_lespass", request, transaction)
         transactions_serialized = TransactionSerializer(transaction, context={'request': request})
         return Response(transactions_serialized.data, status=status.HTTP_201_CREATED)
 
@@ -1735,10 +1772,12 @@ class TransactionAPI(viewsets.ViewSet):
 
         transaction_validator = TransactionQrCodeSerializer(data=request.data, context={'request': request})
         if not transaction_validator.is_valid():
-            logger.error(f"{timezone.localtime()} ERROR - Transaction create error : {transaction_validator.errors}")
+            ecrire_le_refus_de_transaction("qrcodescanpay", request, transaction_validator.errors)
             return Response(transaction_validator.errors, status=status.HTTP_400_BAD_REQUEST)
 
         transactions: Transaction = transaction_validator.transactions
+        for transaction_du_paiement in transactions:
+            ecrire_l_evenement_transaction("qrcodescanpay", request, transaction_du_paiement)
         transactions_serialized = TransactionSerializer(transactions, many=True, context={'request': request})
         return Response(transactions_serialized.data, status=status.HTTP_201_CREATED)
 

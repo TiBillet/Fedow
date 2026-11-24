@@ -5,6 +5,29 @@ Toutes les évolutions notables du projet. Format bilingue FR/EN, le plus récen
 
 ---
 
+## Logs lisibles dans la supervision — 2026-11-23
+
+**Quoi / What:** les logs de la console portent le niveau et le module
+(`NIVEAU module : message`). Le check carte n'écrit plus le tag NFC entier : `CHECK CARTE N° 89EE…
+- TagId 89EE…` (fonctions `carte_courte()` et `uuid_court()` dans `fedow_core/utils.py`, mêmes
+noms que dans Lespass). Une ligne `evenement=transaction` par transaction créée ou refusée sur
+`create`, `refill_from_lespass_to_user_wallet` et `qrcodescanpay` : route, action, lieu,
+monnaie, montant, wallets et carte raccourcis. Le `request.data` complet de la recharge n'est
+plus loggé. Les refus restent en ERROR (alerte Sentry).
+/ Console logs carry level and module; no full NFC tag; one event line per created or refused
+transaction.
+
+**Why:** tous les logs arrivent dans OpenObserve. Il faut pouvoir recouper un paiement Lespass
+et sa transaction Fedow (même `wallet` / `expediteur`), sans y laisser d'identifiant qui
+permette de cloner une carte.
+/ Lespass payments and Fedow transactions can be matched by wallet, without full card tags.
+
+**Fichiers / Files:** `fedowallet_django/settings.py`, `fedow_core/utils.py`,
+`fedow_core/views.py`. Migration : non.
+
+**Tester / Test:** payer par carte depuis Lespass, puis `docker logs fedow_django | grep
+evenement=transaction` → une ligne `resultat=acceptee route=qrcodescanpay`.
+
 ## Ventes par lieu dans les statistiques du réseau — 2026-11-13
 
 **Quoi / What:** `GET /statistiques_reseau/` rend un troisième agrégat, `ventes_par_lieu` :

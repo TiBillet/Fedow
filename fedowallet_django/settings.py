@@ -226,9 +226,19 @@ if not STRIPE_KEY_TEST and not STRIPE_KEY and not DEBUG:
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "formatters": {
+        # Format de la console, lue par la supervision (OpenObserve).
+        # Pas d'heure : Docker et la supervision horodatent deja chaque ligne.
+        # Le niveau dit la gravite, le nom dit quel module ecrit la ligne.
+        # / Console format read by the monitoring. No time: Docker already stamps lines.
+        "console": {
+            "format": "%(levelname)s %(name)s : %(message)s",
+        },
+    },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
+            "formatter": "console",
         },
     },
     "root": {
